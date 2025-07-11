@@ -33,10 +33,6 @@ def ecrire_titre():
 # Nettoyage des données du tableau Excel importé
 def nettoyer_donnees(df):
     try:
-        # if st.session_state.get("erreur_colonnes"):
-        #     st.error("Le fichier ne contient pas toutes les colonnes attendues.")
-        #     del st.session_state["erreur_colonnes"] 
-
         # Nettoyage noms de colonnes : suppression espaces et normalisation accents
         df.columns = df.columns.str.strip().str.replace("\u202f", " ").str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8")
 
@@ -108,7 +104,8 @@ def get_activites_supprimables(df, planifies):
         # Format date
         date_str = str(int(row["Date"])) if pd.notnull(row["Date"]) else ""
         titre = f"{row['Spectacle']} ({row['Theatre']}) - P{formatter_cellule_int(row['Priorite'])}" if not pd.isna(row["Spectacle"]) else f"{row['Autres']}"
-        desc = f"Le {date_str} de {row['Heure'].strip()} à {heure_fin.strftime('%Hh%M')} ({row['Duree'].strip()}) - " + titre
+        # desc = f"{date_str} de {row['Heure'].strip()} à {heure_fin.strftime('%Hh%M')} ({row['Duree'].strip()}) - " + titre
+        desc = f"{date_str} - {row['Heure'].strip()} - " + titre
         activites_planifies.append((desc, row.name))
     return activites_planifies
 
@@ -127,7 +124,7 @@ def get_creneaux(df, planifies, traiter_pauses):
             if get_activites_planifiables_avant(df, planifies, row["Date"], heure_debut, traiter_pauses):
                 titre = row["Spectacle"] if not pd.isna(row["Spectacle"]) else row["Autres"]
                 creneaux.append((
-                    f"Le {date_str} avant {heure_debut.strftime('%Hh%M')} - {titre}",
+                    f"{date_str} - {heure_debut.strftime('%Hh%M')} - {titre} - Avant",
                     ("avant", row.name)
                 ))
         # Après
@@ -135,7 +132,7 @@ def get_creneaux(df, planifies, traiter_pauses):
             if get_activites_planifiables_apres(df, planifies, row["Date"], heure_fin, traiter_pauses):
                 titre = row["Spectacle"] if not pd.isna(row["Spectacle"]) else row["Autres"]
                 creneaux.append((
-                    f"Le {date_str} après {heure_fin.strftime('%Hh%M')} - {titre}",
+                    f"{date_str} - {heure_fin.strftime('%Hh%M')} - {titre} - Après",
                     ("apres", row.name)
                 ))
     return creneaux
@@ -189,7 +186,8 @@ def get_activites_planifiables_avant(df, planifies, date_ref, debut_ref, traiter
         # Le spectacle doit commencer après debut_min et finir avant fin_max
         if h_debut >= debut_min and h_fin <= fin_max and est_hors_relache(row["Relache"], date_ref):
             titre = f"{row['Spectacle']} ({row['Theatre']}) - P{formatter_cellule_int(row['Priorite'])}" if not pd.isna(row["Spectacle"]) else f"{row['Autres']}"
-            desc = f"Le {int(date_ref)} de {row['Heure'].strip()} à {h_fin.strftime('%Hh%M')} ({row['Duree'].strip()}) - " + titre
+            # desc = f"{int(date_ref)} de {row['Heure'].strip()} à {h_fin.strftime('%Hh%M')} ({row['Duree'].strip()}) - " + titre
+            desc = f"{int(date_ref)} - {row['Heure'].strip()} - " + titre
             proposables.append((h_debut, desc, row.name, "ActiviteExistante"))
     if traiter_pauses:
         ajouter_pauses_possibles(proposables, planifies, date_ref, debut_ref, "avant", est_pause_ref)
@@ -209,7 +207,8 @@ def get_activites_planifiables_apres(df, planifies, date_ref, fin_ref, traiter_p
         # Le spectacle doit commencer après debut_min et finir avant fin_max
         if h_debut >= debut_min and h_fin <= fin_max and est_hors_relache(row["Relache"], date_ref):
             titre = f"{row['Spectacle']} ({row['Theatre']}) - P{formatter_cellule_int(row['Priorite'])}" if not pd.isna(row["Spectacle"]) else f"{row['Autres']}"
-            desc = f"Le {int(date_ref)} de {row['Heure'].strip()} à {h_fin.strftime('%Hh%M')} ({row['Duree'].strip()}) - " + titre
+            # desc = f"{int(date_ref)} de {row['Heure'].strip()} à {h_fin.strftime('%Hh%M')} ({row['Duree'].strip()}) - " + titre
+            desc = f"{int(date_ref)} - {row['Heure'].strip()} - " + titre
             proposables.append((h_debut, desc, row.name, "ActiviteExistante"))
     if traiter_pauses:
         ajouter_pauses_possibles(proposables, planifies, date_ref, fin_ref, "apres", est_pause_ref)
@@ -226,7 +225,8 @@ def pause_deja_existante(planifies, jour, type_pause):
 def ajouter_pauses_possibles(proposables, planifies, date_ref, heure_ref, type_creneau, est_pause_ref):
 
     def desc(h, duree, nom):
-        return f"Le {int(date_ref)} de {h.strftime('%Hh%M')} à {(h + duree).time().strftime('%Hh%M')} ({formatter_timedelta(duree)}) - {nom}"
+        # return f"{int(date_ref)} de {h.strftime('%Hh%M')} à {(h + duree).time().strftime('%Hh%M')} ({formatter_timedelta(duree)}) - {nom}"
+        return f"{int(date_ref)} - {h.strftime('%Hh%M')} - {nom}"
     
     # Récupération des bornes du créneau
     if type_creneau == "avant":
@@ -406,7 +406,7 @@ def main():
             traiter_pauses = st.checkbox("Tenir compte des pauses (déjeuner, dîner, café)", value=False)  
 
             # Affichage des activités planifiées
-            st.markdown("###### Activités planifiées")
+            st.markdown("##### Activités planifiées")
             planifies = get_activites_planifiees(df)
             afficher_activites_planifiees(planifies)
 
@@ -427,7 +427,7 @@ def main():
                     st.rerun()
 
             # Planification de nouvelles activités
-            st.markdown("###### Planification de nouvelles activités")
+            st.markdown("##### Planification de nouvelles activités")
             if not planifies.empty:
                 # Création des créneaux avant/après pour chaque spectacle planifié
                 creneaux = get_creneaux(df, planifies, traiter_pauses)
