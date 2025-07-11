@@ -200,6 +200,8 @@ def get_creneau_bounds_apres(planifies, ligne_ref):
     debut_ref = ligne_ref["Heure_dt"]
     duree_ref = ligne_ref["Duree_dt"]
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
+    if fin_ref.day != debut_ref.day:
+        date_ref = date_ref + 1
 
     # Chercher l'activité planifiée suivante sur le même jour
     planifies_jour_ref = planifies[planifies["Date"] == date_ref]
@@ -255,9 +257,13 @@ def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=Tr
     date_ref = ligne_ref["Date"]
     debut_ref = ligne_ref["Heure_dt"]
     duree_ref = ligne_ref["Duree_dt"]
-    fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
+    fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None   
     debut_min, fin_max = get_creneau_bounds_apres(planifies, ligne_ref)
     proposables = []
+
+    if fin_ref.day != debut_ref.day:
+        return proposables  # Pas d'activités planifiables après si le jour a changé
+
     for _, row in df[df["Date"].isna()].iterrows():
         if pd.isna(row["Heure_dt"]) or pd.isna(row["Duree_dt"]):
             continue
@@ -499,8 +505,8 @@ def main():
                 creneaux = get_creneaux(df, planifies, traiter_pauses)
 
                 if creneaux:
-                    # Choix d'un créneau à planifier
-                    choix_creneau = st.selectbox("Choix du créneau à planifier", [c[0] for c in creneaux])
+                    # Choix d'un créneau à planifier
+                    choix_creneau = st.selectbox("Choix du créneau à planifier", [c[0] for c in creneaux])
                     type_creneau, idx = dict(creneaux)[choix_creneau]
 
                     ligne_ref = planifies.loc[idx]
@@ -514,14 +520,14 @@ def main():
                         proposables = get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses)
 
                     if proposables:
-                        choix_activite = st.selectbox("Choix de l'activité à planifier dans le créneau sélectionné", [p[1] for p in proposables])
+                        choix_activite = st.selectbox("Choix de l'activité à planifier dans le créneau sélectionné", [p[1] for p in proposables])
                         col1, col2 = st.columns(2)
                         with col1:
                             ajouter_activite(date_ref, proposables, choix_activite)
                         with col2:
                             telecharger_Excel()
                     else:
-                        st.info("Aucune activité compatible avec ce créneau.")
+                        st.info("Aucune activité compatible avec ce créneau.")
                 else:
                     st.info("Aucun créneau disponible.")
             
