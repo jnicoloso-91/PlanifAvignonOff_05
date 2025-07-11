@@ -88,7 +88,7 @@ def afficher_activites_planifiees(planifies):
         "Duree": "Durée",
         "Theatre": "Théâtre",
         "Relache": "Relâche",
-        "Autres": "Autres    "
+        "Autres": "Autres                "
     })
     df_affichage = df_affichage.sort_values(by=["Date", "Heure"])
     st.dataframe(df_affichage.fillna(""), hide_index=True,)
