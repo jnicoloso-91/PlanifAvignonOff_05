@@ -200,8 +200,8 @@ def get_creneau_bounds_apres(planifies, ligne_ref):
     debut_ref = ligne_ref["Heure_dt"]
     duree_ref = ligne_ref["Duree_dt"]
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
-    #if fin_ref.day != debut_ref.day:
-    #date_ref = date_ref + 1
+    if fin_ref.day != debut_ref.day:
+        date_ref = date_ref + 1
 
     # Chercher l'activité planifiée suivante sur le même jour
     planifies_jour_ref = planifies[planifies["Date"] == date_ref]
@@ -261,8 +261,8 @@ def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=Tr
     debut_min, fin_max = get_creneau_bounds_apres(planifies, ligne_ref)
     proposables = []
 
-    #if fin_ref.day != debut_ref.day:
-    #    return proposables  # Pas d'activités planifiables après si le jour a changé
+    if fin_ref.day != debut_ref.day:
+        return proposables  # Pas d'activités planifiables après si le jour a changé
 
     for _, row in df[df["Date"].isna()].iterrows():
         if pd.isna(row["Heure_dt"]) or pd.isna(row["Duree_dt"]):
