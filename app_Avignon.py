@@ -86,8 +86,6 @@ def afficher_activites_planifiees(planifies):
         "Autres": "Autres                  "
     })
 
-    #df_affichage = df_affichage.sort_values(by=["Date", "Heure"])
-
     st.dataframe(df_affichage.fillna(""), hide_index=True,)
 
 # Vérifie si une date de référence est compatible avec la valeur de la colonne Relache qui donne les jours de relache pour un spectacle donné
