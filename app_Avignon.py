@@ -109,6 +109,21 @@ def get_activites_supprimables(df, planifies):
         activites_planifies.append((desc, row.name))
     return activites_planifies
 
+def supprimer_activite(planifies, supprimables):
+    # Choix d'une activité planifiée à supprimer
+    choix_activite = st.selectbox("Choix d'une activité à supprimer", [p[0] for p in supprimables])
+    # Récupération de l'index de l'activité choisie
+    idx = dict((p[0], p[1]) for p in supprimables)[choix_activite]
+    ligne_ref = planifies.loc[idx]
+    # Suppression de l'activité choisie
+    if st.button("Supprimer"):
+        st.session_state.df.at[idx, "Date"] = None
+        if est_pause(ligne_ref):
+            st.session_state.df.at[idx, "Heure"] = None
+            st.session_state.df.at[idx, "Duree"] = None
+            st.session_state.df.at[idx, "Autres"] = None
+        st.rerun()
+
 # Création de la liste des créneaux avant/après pour chaque spectacle planifié
 def get_creneaux(df, planifies, traiter_pauses):
     creneaux = []
@@ -124,7 +139,7 @@ def get_creneaux(df, planifies, traiter_pauses):
             if get_activites_planifiables_avant(df, planifies, row["Date"], heure_debut, traiter_pauses):
                 titre = row["Spectacle"] if not pd.isna(row["Spectacle"]) else row["Autres"]
                 creneaux.append((
-                    f"{date_str} - {heure_debut.strftime('%Hh%M')} - {titre} - Avant",
+                    f"Avant - {date_str} - {heure_debut.strftime('%Hh%M')} - {titre}",
                     ("avant", row.name)
                 ))
         # Après
@@ -132,7 +147,7 @@ def get_creneaux(df, planifies, traiter_pauses):
             if get_activites_planifiables_apres(df, planifies, row["Date"], heure_fin, traiter_pauses):
                 titre = row["Spectacle"] if not pd.isna(row["Spectacle"]) else row["Autres"]
                 creneaux.append((
-                    f"{date_str} - {heure_fin.strftime('%Hh%M')} - {titre} - Après",
+                    f"Après - {date_str} - {heure_fin.strftime('%Hh%M')} - {titre}",
                     ("apres", row.name)
                 ))
     return creneaux
@@ -413,18 +428,7 @@ def main():
             # Gestion de la liste des activités planifiées
             supprimables = get_activites_supprimables(df, planifies)
             if supprimables:
-                # Choix d'une activité planifiée à supprimer
-                choix_activite = st.selectbox("Choix d'une activité à supprimer", [p[0] for p in supprimables])
-                # Récupération de l'index de l'activité choisie
-                idx = dict((p[0], p[1]) for p in supprimables)[choix_activite]
-                ligne_ref = planifies.loc[idx]
-                # Suppression de l'activité choisie
-                if st.button("Supprimer"):
-                    st.session_state.df.at[idx, "Date"] = None
-                    st.session_state.df.at[idx, "Heure"] = None
-                    st.session_state.df.at[idx, "Duree"] = None
-                    st.session_state.df.at[idx, "Autres"] = None
-                    st.rerun()
+                supprimer_activite(planifies, supprimables)
 
             # Planification de nouvelles activités
             st.markdown("##### Planification de nouvelles activités")
