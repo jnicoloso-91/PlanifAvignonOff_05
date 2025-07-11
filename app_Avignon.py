@@ -94,6 +94,7 @@ def afficher_activites_planifiees(planifies):
         "Relache": "Relâche",
         "Autres": "Autres    "
     })
+    df_affichage = df_affichage.sort_values(by=["Date", "Heure"])
     st.dataframe(df_affichage.fillna(""), hide_index=True,)
 
 # Renvoie la liste des activités planifiées
