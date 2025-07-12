@@ -207,19 +207,11 @@ def get_creneau_bounds_avant(planifies, ligne_ref):
     if not prev.empty:
         prev_fin = datetime.datetime.combine(BASE_DATE, prev["Heure_dt"].iloc[0].time()) + prev["Duree_dt"].iloc[0]
         debut_min = prev_fin
-        if not est_pause_cafe(ligne_ref):
-            debut_min = debut_min + MARGE
     else:
         debut_min = datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
 
     # Calculer l'heure de fin max du créneau
     fin_max = datetime.datetime.combine(BASE_DATE, debut_ref.time())
-    if not est_pause_cafe(ligne_ref):
-        fin_max = fin_max - MARGE
-
-    # Si le créneau est invalide, on ajuste
-    if debut_min > fin_max:
-        debut_min = fin_max  
 
     return debut_min, fin_max
 
@@ -242,19 +234,11 @@ def get_creneau_bounds_apres(planifies, ligne_ref):
     # Calculer l'heure de fin max du créneau
     if not next.empty:
         fin_max = datetime.datetime.combine(BASE_DATE, next["Heure_dt"].iloc[0].time())
-        if not est_pause_cafe(ligne_ref):
-            fin_max = fin_max - MARGE
     else:
         fin_max = datetime.datetime.combine(BASE_DATE, datetime.time(23, 59))
 
     # Calculer l'heure de début minimum du créneau
     debut_min = datetime.datetime.combine(BASE_DATE, fin_ref.time())
-    if not est_pause_cafe(ligne_ref):
-        debut_min = debut_min + MARGE
-
-    # Si le créneau est invalide, on ajuste
-    if debut_min > fin_max:
-        fin_max = debut_min   
 
     return debut_min, fin_max
 
@@ -265,18 +249,20 @@ def get_activites_planifiables_avant(df, planifies, ligne_ref, traiter_pauses=Tr
     duree_ref = ligne_ref["Duree_dt"]
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None
 
-    debut_min, fin_max = get_creneau_bounds_avant(planifies, ligne_ref)
+    proposables = [] 
 
-    proposables = []   
+    debut_min, fin_max = get_creneau_bounds_avant(planifies, ligne_ref)
+    if debut_min >= fin_max:
+        return proposables  # Pas d'activités planifiables avant si le créneau est invalide
+
     for _, row in df[df["Date"].isna()].iterrows():
         if pd.isna(row["Heure_dt"]) or pd.isna(row["Duree_dt"]):
             continue
         h_debut = datetime.datetime.combine(BASE_DATE, row["Heure_dt"].time())
         h_fin = h_debut + row["Duree_dt"]
         # Le spectacle doit commencer après debut_min et finir avant fin_max
-        if h_debut >= debut_min and h_fin <= fin_max and est_hors_relache(row["Relache"], date_ref):
+        if h_debut >= debut_min + MARGE and h_fin <= fin_max - MARGE and est_hors_relache(row["Relache"], date_ref):
             titre = f"{row['Spectacle']} ({row['Theatre']}) - P{formatter_cellule_int(row['Priorite'])}" if not pd.isna(row["Spectacle"]) else f"{row['Autres']}"
-            # desc = f"{int(date_ref)} de {row['Heure'].strip()} à {h_fin.strftime('%Hh%M')} ({row['Duree'].strip()}) - " + titre
             desc = f"{int(date_ref)} - {row['Heure'].strip()} - " + titre
             proposables.append((h_debut, desc, row.name, "ActiviteExistante"))
     if traiter_pauses:
@@ -292,9 +278,12 @@ def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=Tr
     duree_ref = ligne_ref["Duree_dt"]
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None   
 
-    debut_min, fin_max = get_creneau_bounds_apres(planifies, ligne_ref)
-
     proposables = []
+
+    debut_min, fin_max = get_creneau_bounds_apres(planifies, ligne_ref)
+    if debut_min >= fin_max:
+        return proposables  # Pas d'activités planifiables avant si le créneau est invalide
+
     if fin_ref.day != debut_ref.day:
         return proposables  # Pas d'activités planifiables après si le jour a changé
 
@@ -304,9 +293,8 @@ def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=Tr
         h_debut = datetime.datetime.combine(BASE_DATE, row["Heure_dt"].time())
         h_fin = h_debut + row["Duree_dt"]
         # Le spectacle doit commencer après debut_min et finir avant fin_max
-        if h_debut >= debut_min and h_fin <= fin_max and est_hors_relache(row["Relache"], date_ref):
+        if h_debut >= debut_min + MARGE and h_fin <= fin_max - MARGE and est_hors_relache(row["Relache"], date_ref):
             titre = f"{row['Spectacle']} ({row['Theatre']}) - P{formatter_cellule_int(row['Priorite'])}" if not pd.isna(row["Spectacle"]) else f"{row['Autres']}"
-            # desc = f"{int(date_ref)} de {row['Heure'].strip()} à {h_fin.strftime('%Hh%M')} ({row['Duree'].strip()}) - " + titre
             desc = f"{int(date_ref)} - {row['Heure'].strip()} - " + titre
             proposables.append((h_debut, desc, row.name, "ActiviteExistante"))
     if traiter_pauses:
@@ -322,6 +310,55 @@ def pause_deja_existante(planifies, jour, type_pause):
 
 # Ajoute les pauses possibles (déjeuner, dîner, café) à une liste d'activités planifiables pour une activité donnée par son descripteur ligne_ref
 def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
+
+    # Pause repas
+    def ajouter_pause_repas(proposables, date_ref, debut_min, fin_max, type_repas):
+        if not pause_deja_existante(planifies, date_ref, "déjeuner"):
+            if type_creneau == "Avant":
+                h_dej = fin_max - DUREE_REPAS
+                if h_dej.time() >= PAUSE_DEJ_DEBUT_MIN:
+                    if h_dej.time() > PAUSE_DEJ_DEBUT_MAX:
+                        h_dej = datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MAX)  
+                    if fin_max >= datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MIN) + DUREE_REPAS:
+                        if h_dej >= debut_min + MARGE and h_dej + DUREE_REPAS <= fin_max - MARGE:
+                            proposables.append((h_dej, desc(h_dej, DUREE_REPAS, f"Pause {type_repas}"), None, type_repas))
+            elif type_creneau == "Après":
+                h_dej = debut_min
+                if h_dej.time() <= PAUSE_DEJ_DEBUT_MAX:
+                    if h_dej.time() < PAUSE_DEJ_DEBUT_MIN:
+                        h_dej = datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MIN)  
+                    if debut_min <= datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MAX):
+                        if h_dej >= debut_min + MARGE and h_dej+ DUREE_REPAS <= fin_max - MARGE:
+                            proposables.append((h_dej, desc(h_dej, DUREE_REPAS, f"Pause {type_repas}"), None, type_repas))
+    
+    def ajouter_pause_cafe(proposables, debut_min, fin_max):
+        if not est_pause(ligne_ref):
+            theatre_ref = ligne_ref["Theatre"]
+            if type_creneau == "Avant":
+                i = planifies.index.get_loc(ligne_ref.name)  
+                theatre_prev = planifies.iloc[i - 1]["Theatre"] if i > 0 else None
+                h_cafe = fin_max - DUREE_CAFE
+                if theatre_ref == theatre_prev: 
+                    # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle précédent 
+                    if h_cafe >= debut_min: 
+                        proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
+                else: 
+                    # Dans ce cas on tient compte de la marge avec le spectacle précédent 
+                    if h_cafe >= debut_min + MARGE:
+                        proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
+            elif type_creneau == "Après":
+                i = planifies.index.get_loc(ligne_ref.name)  
+                theatre_suiv = planifies.iloc[i + 1]["Theatre"] if i < len(planifies) - 1 else None
+                h_cafe = debut_min
+                if theatre_ref == theatre_suiv: 
+                    # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle suivant 
+                    if h_cafe + DUREE_CAFE <= fin_max: 
+                        proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
+                else: 
+                    # Dans ce cas on tient compte de la marge avec le spectacle suivant 
+                    if h_cafe + DUREE_CAFE <= fin_max - MARGE:
+                        proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
+
     date_ref = ligne_ref["Date"]
     debut_ref = ligne_ref["Heure_dt"]
     duree_ref = ligne_ref["Duree_dt"]
@@ -337,70 +374,16 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
     elif type_creneau == "Après":
         debut_min, fin_max = get_creneau_bounds_apres(planifies, ligne_ref)
     else:
-        raise ValueError("type_creneau doit être 'avant' ou 'apres'")
+        raise ValueError("type_creneau doit être 'Avant' ou 'Après'")
 
     # Pause déjeuner
-    if not pause_deja_existante(planifies, date_ref, "déjeuner"):
-        if type_creneau == "Avant":
-            h_dej = fin_max - DUREE_REPAS
-            if h_dej.time() >= PAUSE_DEJ_DEBUT_MIN:
-                if h_dej.time() > PAUSE_DEJ_DEBUT_MAX:
-                    h_dej = datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MAX)  
-                if fin_max >= datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MIN) + DUREE_REPAS:
-                    if h_dej >= debut_min and h_dej + DUREE_REPAS <= fin_max:
-                        proposables.append((h_dej, desc(h_dej, DUREE_REPAS, "Pause déjeuner"), None, "PauseDejeuner"))
-        elif type_creneau == "Après":
-            h_dej = debut_min
-            if h_dej.time() <= PAUSE_DEJ_DEBUT_MAX:
-                if h_dej.time() < PAUSE_DEJ_DEBUT_MIN:
-                    h_dej = datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MIN)  
-                if debut_min <= datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MAX):
-                    if h_dej >= debut_min and h_dej+ DUREE_REPAS <= fin_max:
-                        proposables.append((h_dej, desc(h_dej, DUREE_REPAS, "Pause déjeuner"), None, "PauseDejeuner"))
+    ajouter_pause_repas(proposables, date_ref, debut_min, fin_max, "déjeuner")
 
     # Pause dîner
-    if not pause_deja_existante(planifies, date_ref, "dîner"):
-        if type_creneau == "Avant":
-            h_din = fin_max - DUREE_REPAS
-            if h_din.time() >= PAUSE_DIN_DEBUT_MIN:
-                if h_din.time() > PAUSE_DIN_DEBUT_MAX:
-                    h_din = datetime.datetime.combine(BASE_DATE, PAUSE_DIN_DEBUT_MAX)  
-                if fin_max >= datetime.datetime.combine(BASE_DATE, PAUSE_DIN_DEBUT_MIN) + DUREE_REPAS:
-                    if h_din >= debut_min and h_din + DUREE_REPAS <= fin_max:
-                        proposables.append((h_din, desc(h_din, DUREE_REPAS, "Pause diner"), None, "PauseDiner"))
-        elif type_creneau == "Après":
-            h_din = debut_min
-            if h_din.time() <= PAUSE_DIN_DEBUT_MAX:
-                if h_din.time() < PAUSE_DIN_DEBUT_MIN:
-                    h_din = datetime.datetime.combine(BASE_DATE, PAUSE_DIN_DEBUT_MIN)  
-                if debut_min <= datetime.datetime.combine(BASE_DATE, PAUSE_DIN_DEBUT_MAX):
-                    if h_din >= debut_min and h_din + DUREE_REPAS <= fin_max:
-                        proposables.append((h_din, desc(h_din, DUREE_REPAS, "Pause diner"), None, "PauseDiner"))
+    ajouter_pause_repas(proposables, date_ref, debut_min, fin_max, "dîner")
 
     # Pause café
-    if not est_pause(ligne_ref):
-        theatre_ref = ligne_ref["Theatre"]
-        theatre_prev = planifies.loc[ligne_ref.name - 1, "Theatre"] if ligne_ref.name > 0 else None
-        if type_creneau == "Avant":
-            h_cafe = fin_max - DUREE_CAFE + MARGE
-            if theatre_ref == theatre_prev: 
-                # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle précédent incluse dans debut_min
-                if h_cafe >= debut_min - MARGE: 
-                    proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "PauseCafe"))
-            else: 
-                # Dans ce cas on tient compte de la marge avec le spectacle précédent incluse dans debut_min
-                if h_cafe >= debut_min:
-                    proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "PauseCafe"))
-        elif type_creneau == "Après":
-            h_cafe = debut_min - MARGE
-            if theatre_ref == theatre_prev: 
-                # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle suivant incluse dans fin_max
-                if h_cafe + DUREE_CAFE <= fin_max - MARGE: 
-                    proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "PauseCafe"))
-            else: 
-                # Dans ce cas on tient compte de la marge avec le spectacle suivant incluse dans fin_max
-                if h_cafe + DUREE_CAFE <= fin_max:
-                    proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "PauseCafe"))
+    ajouter_pause_cafe(proposables, debut_min, fin_max)
    
 def est_pause(ligne_ref):
     val = str(ligne_ref["Autres"]).strip()
@@ -460,21 +443,21 @@ def ajouter_activite(date_ref, proposables, choix_activite):
             # Pour les spectacles, on planifie la date et l'heure
             index = dict((p[1], p[2]) for p in proposables)[choix_activite]
             st.session_state.df.at[index, "Date"] = date_ref
-        elif type_activite == "PauseDejeuner":
+        elif type_activite == "déjeuner":
             # Pour les pauses, on ne planifie pas d'heure spécifique
             index = len(st.session_state.df)  # Ajouter à la fin du DataFrame
             st.session_state.df.at[index, "Date"] = date_ref
             st.session_state.df.at[index, "Heure"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             st.session_state.df.at[index, "Duree"] = formatter_timedelta(DUREE_REPAS)
             st.session_state.df.at[index, "Autres"] = "Pause déjeuner"
-        elif type_activite == "PauseDiner":
+        elif type_activite == "dîner":
             # Pour les pauses, on ne planifie pas d'heure spécifique
             index = len(st.session_state.df)  # Ajouter à la fin du DataFrame
             st.session_state.df.at[index, "Date"] = date_ref
             st.session_state.df.at[index, "Heure"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             st.session_state.df.at[index, "Duree"] = formatter_timedelta(DUREE_REPAS)
             st.session_state.df.at[index, "Autres"] = "Pause dîner"
-        elif type_activite == "PauseCafe":
+        elif type_activite == "café":
             # Pour les pauses, on ne planifie pas d'heure spécifique
             index = len(st.session_state.df)  # Ajouter à la fin du DataFrame
             st.session_state.df.at[index, "Date"] = date_ref
