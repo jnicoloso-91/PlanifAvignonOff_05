@@ -3,6 +3,7 @@ import pandas as pd
 import datetime
 import io
 from openpyxl import load_workbook
+from openpyxl.styles import Font
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -50,35 +51,40 @@ def afficher_aide():
         <p style="margin-bottom: 0.2em">Cette application offre les fonctionnalités suivantes:</p>
         <ul style="margin-top: 0em; margin-bottom: 2em">
         <li>Chargement d'un fichier Excel contenant les spectacles à planifier</li>
-        <li>Affichage des activités planifiées</li>
+        <li>Affichage des activités planifiées (i.e. dont le champ Date est renseigné)</li>
         <li>Suppression d'une activité planifiée (si non réservée)</li>
         <li>Sélection d'un créneau avant ou après une activité planifiée</li>
         <li>Sélection d'une activité à planifier dans le créneau sélectionné</li>
-        <li>Renvoi du ficher Excel modifié</li>
+        <li>Sauvegarde du ficher Excel modifié</li>
         <li>Prise en compte optionnelle des pauses (déjeuner, dîner, café)</li>
         </ul>
         
-        <p style="margin-bottom: 0.2em">Conditions à respecter pour la planification des activités:</p>
+        <p style="margin-bottom: 0.2em">Conditions adoptées pour la planification des activités:</p>
         <ul style="margin-top: 0em; margin-bottom: 2em">
         <li>30 minutes de marge entre activités</li>
         <li>1 heure par pause repas</li>
         <li>1/2 heure par pause café sans marge avec l'activité précédente ou suivante</li>
         <li>Respect des relâches pour les spectacles</li>
         </ul>
-   
-        
+      
         <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir les colonnes suivantes:</p>
         <ul style="margin-top: 0em; margin-bottom: 2em">
-        <li>Réservé : Indique si l'activité est réservée (oui/non)</li>
         <li>Date : Date de l'activité (entier)</li>
         <li>Heure : Heure de début de l'activité (format HHhMM)</li>
         <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
-        <li>Théâtre : Nom du théâtre où se déroule l'activité</li>
         <li>Spectacle : Nom du spectacle (optionnel, peut être vide si l'activité est autre)</li>
+        <li>Théâtre : Nom du théâtre où se déroule l'activité</li>
         <li>Relâche : Jours de relâche pour le spectacle (entier, peut être vide)</li>
+        <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
         <li>Autres : Autres activités, pauses par exemple (optionnel, pour une pause mettre le mot pause suivi du type de pause, par exemple "pause déjeuner")</li>
-        </div>
         </ul>
+
+        <p style="margin-bottom: 0.2em">📥Un modèle Excel est disponible <a href="https://github.com/jnicoloso-91/PlanifAvignon-05/raw/main/Mod%C3%A8le%20Excel.xlsx" download>
+        ici
+        </a></p>
+        <p>ℹ️ Si le téléchargement ne démarre pas, faites un clic droit → "Enregistrer le lien sous...".</p>
+
+        </div>
         """, unsafe_allow_html=True)   
 
 # Nettoyage des données du tableau Excel importé
@@ -125,6 +131,18 @@ def nettoyer_donnees(df):
             pd.set_option('future.no_silent_downcasting', True)
             df["Priorite"] = df["Priorite"].astype("object").fillna("").astype(str)
 
+            # Lit les hyperliens de la colonne Spectacle
+            liens_spectacles = {}
+            ws = st.session_state.wb.worksheets[0]
+            if "liens_spectacles" not in st.session_state:
+                col_names = [cell.value for cell in ws[1]]
+                col_excel_index = col_names.index("Spectacle") + 1  # 1-based
+                for row in ws.iter_rows(min_row=2, min_col=col_excel_index, max_col=col_excel_index):
+                    cell = row[0]
+                    if cell.hyperlink:
+                        liens_spectacles[cell.value] = cell.hyperlink.target
+                st.session_state.liens_spectacles = liens_spectacles
+            
     except Exception as e:
         st.error(f"Erreur lors du décodage du fichier : {e}")
         st.session_state["fichier_invalide"] = True
@@ -441,7 +459,7 @@ def est_pause_cafe(ligne_ref):
         return False
     return val.split()[0].lower() == "pause" and val.split()[1].lower() == "café"
 
-def renvoyer_excel(uploaded_file):
+def renvoyer_excel():
     if "df" in st.session_state:
 
         # Trier par Date (nombre entier) puis Heure
@@ -455,13 +473,10 @@ def renvoyer_excel(uploaded_file):
             "Autres": "Autres    "
         })
 
-        buffer = io.BytesIO()
-        # with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        #     df_sorted.to_excel(writer, index=False)
-
-        # Charger le classeur avec openpyxl (pour modifier sans perdre le style)
-        wb = load_workbook(uploaded_file)
-        ws = wb["ChatGPT"]
+        # Récupération de la worksheet à traiter
+        wb = st.session_state.wb
+        ws = wb.worksheets[0]
+        liens_spectacles = st.session_state.liens_spectacles
 
         # Effacer le contenu de la feuille Excel existante
         for row in ws.iter_rows(min_row=2, max_row=ws.max_row, max_col=ws.max_column):
@@ -469,6 +484,9 @@ def renvoyer_excel(uploaded_file):
                 cell.value = None  # on garde le style, on efface juste la valeur
 
         # Réinjecter les données du df dans la feuille Excel
+        col_spectacle = [cell.value for cell in ws[1]].index("Spectacle") + 1
+        print("")
+        dernier_lien = ""
         for row_idx, row in df_sorted.iterrows():
             for col_idx, value in enumerate(row, start=1):
                 if pd.isna(value):
@@ -484,8 +502,15 @@ def renvoyer_excel(uploaded_file):
                     except (ValueError, TypeError):
                         ws.cell(row=row_idx + 2, column=col_idx, value=value)                
                         # +2 car openpyxl est 1-indexé et on saute la ligne d’en-tête
-
+                        # Ajoute le lien s’il s’agit de la colonne Spectacle
+                        if col_idx == col_spectacle and liens_spectacles is not None:
+                            lien = liens_spectacles.get(value)
+                            if lien:
+                                ws.cell(row=row_idx + 2, column=col_idx).hyperlink = lien
+                                ws.cell(row=row_idx + 2, column=col_idx).font = Font(color="0000EE", underline="single")
+        
         # Sauvegarde dans un buffer mémoire
+        buffer = io.BytesIO()
         wb.save(buffer)
 
         # Revenir au début du buffer pour le téléchargement
@@ -555,6 +580,7 @@ def file_uploader_callback():
     if fichier is not None:
         try:
             st.session_state.df = pd.read_excel(fichier)
+            st.session_state.wb = load_workbook(fichier)
         except Exception as e:
             st.error(f"Erreur lors du chargement du fichier : {e}")
             st.stop()
@@ -573,7 +599,7 @@ def main():
         type=["xlsx"], 
         key="file_uploader",
         on_change=file_uploader_callback)
-
+    
     # Si le fichier est chargé dans st.session_state.df et valide, on le traite
     if "df" in st.session_state:
 
@@ -624,7 +650,7 @@ def main():
                         with col1:
                             ajouter_activite(date_ref, proposables, choix_activite)
                         with col2:
-                            renvoyer_excel(uploaded_file)
+                            renvoyer_excel()
                     else:
                         st.info("Aucune activité compatible avec ce créneau.")
                 else:
