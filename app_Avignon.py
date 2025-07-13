@@ -180,12 +180,11 @@ def get_activites_supprimables(df, planifies):
 def supprimer_activite(planifies, supprimables):
 
     with st.expander("Supprimer une activité planifiée", expanded=False):
-        # st.markdown("""
-        # <div style='font-size: 14px;'>
-        # Sélectionnez une activité planifiée à supprimer. Seules les activités non réservées sont affichées.
-        # </div>
-        # """, unsafe_allow_html=True)
-        choix_activite = st.selectbox("Choix d'une activité à supprimer (seules les activités non réservées sont affichées)", [p[0] for p in supprimables])
+
+        # Affichage d'une selectbox bidon pour masquer le focus sur mobile de la première selectbox
+        _ = st.selectbox("Init (ignore)", ["placeholder"], label_visibility="collapsed")
+
+        choix_activite = st.selectbox("Seules les activités non réservées sont affichées)", [p[0] for p in supprimables])
         # Récupération de l'index de l'activité choisie
         idx = dict((p[0], p[1]) for p in supprimables)[choix_activite]
         ligne_ref = planifies.loc[idx]
