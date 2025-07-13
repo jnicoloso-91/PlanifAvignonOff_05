@@ -16,17 +16,30 @@ DUREE_CAFE = datetime.timedelta(minutes=30)
 
 # Affiche le titre de la page
 def afficher_titre():
-    # st.title("Planification Avignon 2025",anchor="top")
+
+    # # Empêche la première slectbox de prendre le focus et d'être editable sur mobile
+    # st.markdown("""
+    #     <input id="no-focus" style="opacity:0; height:0; border:none" />
+    #     <script>
+    #     document.getElementById("no-focus").focus();
+    #     </script>
+    # """, unsafe_allow_html=True)
+
     # Réduire l’espace en haut de la page
     st.markdown(
         """
+        <input id="no-focus" style="opacity:0; height:0; border:none" />
+        <script>
+        document.getElementById("no-focus").focus();
+        </script>
+
         <style>
             .block-container {
-                padding-top: 2rem;
+                padding-top: 1rem;
             }
         </style>
-        """,
-        unsafe_allow_html=True
+
+        """, unsafe_allow_html=True
     )
     st.markdown("## Planification Avignon 2025")
 
@@ -47,30 +60,38 @@ def afficher_aide():
     with st.expander("ℹ️ À propos"):
         st.markdown("""
         <div style='font-size: 14px;'>
-        Cette application offre les fonctionnalités suivantes:<br>
-            - Chargement d'un fichier Excel contenant les spectacles à planifier<br>
-            - Affichage des activités planifiées<br>
-            - Suppression d'une activité planifiée (si non réservée)<br>
-            - Sélection d'un créneau avant ou après une activité planifiée<br>
-            - Sélection d'une activité à planifier dans le créneau sélectionné<br>
-            - Renvoi du ficher Excel modifié<br>
-            - Prise en compte optionnelle des pauses (déjeuner, dîner, café)<br><br>
+        <p style="margin-bottom: 0.2em">Cette application offre les fonctionnalités suivantes:</p>
+        <ul style="margin-top: 0em; margin-bottom: 2em">
+        <li>Chargement d'un fichier Excel contenant les spectacles à planifier</li>
+        <li>Affichage des activités planifiées</li>
+        <li>Suppression d'une activité planifiée (si non réservée)</li>
+        <li>Sélection d'un créneau avant ou après une activité planifiée</li>
+        <li>Sélection d'une activité à planifier dans le créneau sélectionné</li>
+        <li>Renvoi du ficher Excel modifié</li>
+        <li>Prise en compte optionnelle des pauses (déjeuner, dîner, café)</li>
+        </ul>
         
-        Conditions à respecter pour la planification des activités:<br>
-            - 30 minutes de marge entre activités<br>
-            - 1 heure par pause repas<br>
-            - 1/2 heure par pause café sans marge avec l'activité précédente ou suivante<br>
-            - Respect des relâches pour les spectacles<br><br>
+        <p style="margin-bottom: 0.2em">Conditions à respecter pour la planification des activités:</p>
+        <ul style="margin-top: 0em; margin-bottom: 2em">
+        <li>30 minutes de marge entre activités</li>
+        <li>1 heure par pause repas</li>
+        <li>1/2 heure par pause café sans marge avec l'activité précédente ou suivante</li>
+        <li>Respect des relâches pour les spectacles</li>
+        </ul>
+   
         
-        Le fichier Excel d'entrée doit contenir les colonnes suivantes:<br>
-            - Date : Date de l'activité (entier, format AAAAMMJJ)<br>
-            - Heure : Heure de début de l'activité (format HHhMM)<br>
-            - Durée : Durée de l'activité (format HHhMM ou HHh)<br>
-            - Théâtre : Nom du théâtre où se déroule l'activité<br>
-            - Spectacle : Nom du spectacle (optionnel, peut être vide si l'activité est autre)<br>
-            - Relâche : Jours de relâche pour le spectacle (entier, peut être vide)<br>
-            - Autres : Autres informations sur l'activité (optionnel, peut être vide)
+        <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir les colonnes suivantes:</p>
+        <ul style="margin-top: 0em; margin-bottom: 2em">
+        <li>Réservé : Indique si l'activité est réservée (oui/non)</li>
+        <li>Date : Date de l'activité (entier)</li>
+        <li>Heure : Heure de début de l'activité (format HHhMM)</li>
+        <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
+        <li>Théâtre : Nom du théâtre où se déroule l'activité</li>
+        <li>Spectacle : Nom du spectacle (optionnel, peut être vide si l'activité est autre)</li>
+        <li>Relâche : Jours de relâche pour le spectacle (entier, peut être vide)</li>
+        <li>Autres : Autres activités, pauses par exemple (optionnel, pour une pause mettre le mot pause suivi du type de pause, par exemple "pause déjeuner")</li>
         </div>
+        </ul>
         """, unsafe_allow_html=True)   
 
 # Nettoyage des données du tableau Excel importé
