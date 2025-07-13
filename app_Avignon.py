@@ -16,19 +16,6 @@ DUREE_CAFE = datetime.timedelta(minutes=30)
 
 # Affiche le titre de la page
 def afficher_titre():
-    # Empêche la première slectbox de prendre le focus et d'être editable sur mobile
-    st.markdown("""
-    <input id="no-focus" style="opacity:0; height:0; border:none" />
-    <script>
-        window.onload = function() {
-            setTimeout(function() {
-                var el = document.getElementById("no-focus");
-                if (el) { el.focus(); }
-            }, 100);
-        };
-    </script>
-    """, unsafe_allow_html=True)
-
     # Réduire l’espace en haut de la page
     st.markdown(
         """
@@ -191,7 +178,20 @@ def get_activites_supprimables(df, planifies):
 
 # Supprime une activité planifiée
 def supprimer_activite(planifies, supprimables):
-    # Choix d'une activité planifiée à supprimer
+
+    # Empêche la première selectbox de prendre le focus et d'être editable sur mobile
+    st.markdown("""
+    <div style="height:1px; overflow:hidden">
+        <input id="no-focus" style="opacity:0; height:1px; border:none" />
+    </div>
+    <script>
+        setTimeout(function() {
+            const el = document.getElementById("no-focus");
+            if (el) el.focus();
+        }, 100);
+    </script>
+    """, unsafe_allow_html=True)    
+
     choix_activite = st.selectbox("Choix d'une activité à supprimer (si non réservée)", [p[0] for p in supprimables])
     # Récupération de l'index de l'activité choisie
     idx = dict((p[0], p[1]) for p in supprimables)[choix_activite]
