@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import io
+from openpyxl import load_workbook
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -13,22 +14,64 @@ PAUSE_DIN_DEBUT_MAX = datetime.time(21, 0)
 DUREE_REPAS = datetime.timedelta(hours=1)
 DUREE_CAFE = datetime.timedelta(minutes=30)
 
-
-# Ecris le titre de la page
-def ecrire_titre():
+# Affiche le titre de la page
+def afficher_titre():
     # st.title("Planification Avignon 2025",anchor="top")
     # Réduire l’espace en haut de la page
     st.markdown(
         """
         <style>
             .block-container {
-                padding-top: 1rem;
+                padding-top: 2rem;
             }
         </style>
         """,
         unsafe_allow_html=True
     )
     st.markdown("## Planification Avignon 2025")
+
+# Affichage de l'aide
+def afficher_aide():
+    
+    # st.sidebar.markdown("### Aide")
+    # st.sidebar.markdown("""
+    # - **Chargement du fichier** : Sélectionnez un fichier Excel contenant les spectacles à planifier.
+    # - **Affichage des activités planifiées** : Consultez les activités déjà planifiées.
+    # - **Suppression d'une activité** : Sélectionnez une activité planifiée pour la supprimer (si elle n'est pas réservée).
+    # - **Sélection d'un créneau** : Choisissez un créneau avant ou après une activité planifiée.
+    # - **Sélection d'une activité à planifier** : Choisissez une activité à planifier dans le créneau sélectionné.
+    # - **Renvoi du fichier modifié** : Renvoyer le fichier Excel modifié.
+    # - **Prise en compte des pauses** : Optionnellement, tenez compte des pauses (déjeuner, dîner, café) lors de la planification des activités.
+    # """, )
+
+    with st.expander("ℹ️ À propos"):
+        st.markdown("""
+        <div style='font-size: 14px;'>
+        Cette application offre les fonctionnalités suivantes:<br>
+            - Chargement d'un fichier Excel contenant les spectacles à planifier<br>
+            - Affichage des activités planifiées<br>
+            - Suppression d'une activité planifiée (si non réservée)<br>
+            - Sélection d'un créneau avant ou après une activité planifiée<br>
+            - Sélection d'une activité à planifier dans le créneau sélectionné<br>
+            - Renvoi du ficher Excel modifié<br>
+            - Prise en compte optionnelle des pauses (déjeuner, dîner, café)<br><br>
+        
+        Conditions à respecter pour la planification des activités:<br>
+            - 30 minutes de marge entre activités<br>
+            - 1 heure par pause repas<br>
+            - 1/2 heure par pause café sans marge avec l'activité précédente ou suivante<br>
+            - Respect des relâches pour les spectacles<br><br>
+        
+        Le fichier Excel d'entrée doit contenir les colonnes suivantes:<br>
+            - Date : Date de l'activité (entier, format AAAAMMJJ)<br>
+            - Heure : Heure de début de l'activité (format HHhMM)<br>
+            - Durée : Durée de l'activité (format HHhMM ou HHh)<br>
+            - Théâtre : Nom du théâtre où se déroule l'activité<br>
+            - Spectacle : Nom du spectacle (optionnel, peut être vide si l'activité est autre)<br>
+            - Relâche : Jours de relâche pour le spectacle (entier, peut être vide)<br>
+            - Autres : Autres informations sur l'activité (optionnel, peut être vide)
+        </div>
+        """, unsafe_allow_html=True)   
 
 # Nettoyage des données du tableau Excel importé
 def nettoyer_donnees(df):
@@ -48,12 +91,6 @@ def nettoyer_donnees(df):
                 del st.session_state["fichier_invalide"] 
 
             # Nettoyage Heure : "10h00" -> datetime.time
-            # df["Heure_dt"] = pd.to_datetime(
-            #     df["Heure"].astype(str).str.replace("h", ":", regex=False).str.strip(),
-            #     format="%H:%M",
-            #     errors="coerce"
-            # )
-            # Nettoyage Heure : "10h00" -> datetime.time
             # Evite les NaN plantants et la date de base à utiliser partout dans le programme
             df["Heure_dt"] = pd.to_datetime(
                 df["Heure"].apply(lambda h: f"{BASE_DATE.isoformat()} {h.strip()}" if pd.notna(h) else None), 
@@ -61,11 +98,6 @@ def nettoyer_donnees(df):
                 errors="coerce"
             )
 
-            # # Nettoyage Duree : "1h00" -> timedelta
-            # df["Duree_dt"] = pd.to_timedelta(
-            #     df["Duree"].astype(str).str.replace("h", ":", regex=False) + ":00",
-            #     errors="coerce"
-            # )
             # Nettoyage Duree : "1h00" -> timedelta
             # Evite les NaN plantants et corrige les formats partiels (ex: "1h" → "1h0m", "0h45" → "0h45m", "30m" → "0h30m")
             df["Duree_dt"] = pd.to_timedelta(
@@ -139,7 +171,7 @@ def get_activites_supprimables(df, planifies):
 # Supprime une activité planifiée
 def supprimer_activite(planifies, supprimables):
     # Choix d'une activité planifiée à supprimer
-    choix_activite = st.selectbox("Choix d'une activité à supprimer", [p[0] for p in supprimables])
+    choix_activite = st.selectbox("Choix d'une activité à supprimer (si non réservée)", [p[0] for p in supprimables])
     # Récupération de l'index de l'activité choisie
     idx = dict((p[0], p[1]) for p in supprimables)[choix_activite]
     ligne_ref = planifies.loc[idx]
@@ -168,9 +200,9 @@ def get_creneaux(df, planifies, traiter_pauses):
 
     for _, row in planifies.iterrows():
 
-        # Heure de début de créneau
+        # Heure de début d'activité
         heure_debut = row["Heure_dt"]
-        # Heure de fin de créneau
+        # Heure de fin d'activité
         heure_fin = heure_debut + row["Duree_dt"] if pd.notnull(heure_debut) and pd.notnull(row["Duree_dt"]) else None
 
         # Ajout des creneaux avant l'activité considérée s'ils existent
@@ -312,24 +344,20 @@ def pause_deja_existante(planifies, jour, type_pause):
 def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
 
     # Pause repas
-    def ajouter_pause_repas(proposables, date_ref, debut_min, fin_max, type_repas):
-        if not pause_deja_existante(planifies, date_ref, "déjeuner"):
+    def ajouter_pause_repas(proposables, date_ref, debut_min, fin_max, pause_debut_min, pause_debut_max, type_repas):
+        if not pause_deja_existante(planifies, date_ref, type_repas):
             if type_creneau == "Avant":
-                h_dej = fin_max - DUREE_REPAS
-                if h_dej.time() >= PAUSE_DEJ_DEBUT_MIN:
-                    if h_dej.time() > PAUSE_DEJ_DEBUT_MAX:
-                        h_dej = datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MAX)  
-                    if fin_max >= datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MIN) + DUREE_REPAS:
-                        if h_dej >= debut_min + MARGE and h_dej + DUREE_REPAS <= fin_max - MARGE:
-                            proposables.append((h_dej, desc(h_dej, DUREE_REPAS, f"Pause {type_repas}"), None, type_repas))
+                h_dej = min(max(fin_max - DUREE_REPAS - MARGE, 
+                    datetime.datetime.combine(BASE_DATE, pause_debut_min)), 
+                    datetime.datetime.combine(BASE_DATE, pause_debut_max))
+                if h_dej - MARGE >= debut_min and h_dej + MARGE <= fin_max:
+                    proposables.append((h_dej, desc(h_dej, DUREE_REPAS, f"Pause {type_repas}"), None, type_repas))
             elif type_creneau == "Après":
-                h_dej = debut_min
-                if h_dej.time() <= PAUSE_DEJ_DEBUT_MAX:
-                    if h_dej.time() < PAUSE_DEJ_DEBUT_MIN:
-                        h_dej = datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MIN)  
-                    if debut_min <= datetime.datetime.combine(BASE_DATE, PAUSE_DEJ_DEBUT_MAX):
-                        if h_dej >= debut_min + MARGE and h_dej+ DUREE_REPAS <= fin_max - MARGE:
-                            proposables.append((h_dej, desc(h_dej, DUREE_REPAS, f"Pause {type_repas}"), None, type_repas))
+                h_dej = min(max(debut_min + MARGE, 
+                    datetime.datetime.combine(BASE_DATE, pause_debut_min)), 
+                    datetime.datetime.combine(BASE_DATE, pause_debut_max))
+                if h_dej - MARGE >= debut_min and h_dej + MARGE <= fin_max:
+                    proposables.append((h_dej, desc(h_dej, DUREE_REPAS, f"Pause {type_repas}"), None, type_repas))
     
     def ajouter_pause_cafe(proposables, debut_min, fin_max):
         if not est_pause(ligne_ref):
@@ -343,8 +371,9 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
                     if h_cafe >= debut_min: 
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
                 else: 
-                    # Dans ce cas on tient compte de la marge avec le spectacle précédent 
-                    if h_cafe >= debut_min + MARGE:
+                    # Dans ce cas on tient compte de la marge avec le spectacle précédent sauf si debut_min = 0h00
+                    marge_cafe = MARGE if debut_min != datetime.datetime.combine(BASE_DATE, datetime.time(0, 0)) else datetime.timedelta(minutes=0) 
+                    if h_cafe >= debut_min + marge_cafe:
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
             elif type_creneau == "Après":
                 i = planifies.index.get_loc(ligne_ref.name)  
@@ -355,8 +384,9 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
                     if h_cafe + DUREE_CAFE <= fin_max: 
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
                 else: 
-                    # Dans ce cas on tient compte de la marge avec le spectacle suivant 
-                    if h_cafe + DUREE_CAFE <= fin_max - MARGE:
+                    # Dans ce cas on tient compte de la marge avec le spectacle suivant sauf si fin_max = 23h59
+                    marge_cafe = MARGE if fin_max != datetime.datetime.combine(BASE_DATE, datetime.time(23, 59)) else datetime.timedelta(minutes=0)
+                    if h_cafe + DUREE_CAFE <= fin_max - marge_cafe:
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
 
     date_ref = ligne_ref["Date"]
@@ -377,10 +407,10 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
         raise ValueError("type_creneau doit être 'Avant' ou 'Après'")
 
     # Pause déjeuner
-    ajouter_pause_repas(proposables, date_ref, debut_min, fin_max, "déjeuner")
+    ajouter_pause_repas(proposables, date_ref, debut_min, fin_max, PAUSE_DEJ_DEBUT_MIN, PAUSE_DEJ_DEBUT_MAX, "déjeuner")
 
     # Pause dîner
-    ajouter_pause_repas(proposables, date_ref, debut_min, fin_max, "dîner")
+    ajouter_pause_repas(proposables, date_ref, debut_min, fin_max, PAUSE_DIN_DEBUT_MIN, PAUSE_DIN_DEBUT_MAX, "dîner")
 
     # Pause café
     ajouter_pause_cafe(proposables, debut_min, fin_max)
@@ -401,13 +431,11 @@ def est_pause_cafe(ligne_ref):
         return False
     return val.split()[0].lower() == "pause" and val.split()[1].lower() == "café"
 
-def telecharger_Excel():
+def renvoyer_excel(uploaded_file):
     if "df" in st.session_state:
-        # Convertir le DataFrame en fichier Excel dans un buffer mémoire
-        buffer = io.BytesIO()
 
         # Trier par Date (nombre entier) puis Heure
-        df_sorted = st.session_state.df.sort_values(by=["Date", "Heure_dt"]).drop(columns=["Heure_dt", "Duree_dt"], errors='ignore')
+        df_sorted = st.session_state.df.sort_values(by=["Date", "Heure_dt"]).reset_index(drop=True).drop(columns=["Heure_dt", "Duree_dt"], errors='ignore')
         df_sorted = df_sorted.rename(columns={
             "Reserve": "Réservé",
             "Priorite": "Priorité",
@@ -417,8 +445,38 @@ def telecharger_Excel():
             "Autres": "Autres    "
         })
 
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            df_sorted.to_excel(writer, index=False)
+        buffer = io.BytesIO()
+        # with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        #     df_sorted.to_excel(writer, index=False)
+
+        # Charger le classeur avec openpyxl (pour modifier sans perdre le style)
+        wb = load_workbook(uploaded_file)
+        ws = wb["ChatGPT"]
+
+        # Effacer le contenu de la feuille Excel existante
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, max_col=ws.max_column):
+            for cell in row:
+                cell.value = None  # on garde le style, on efface juste la valeur
+
+        # Réinjecter les données du df dans la feuille Excel
+        for row_idx, row in df_sorted.iterrows():
+            for col_idx, value in enumerate(row, start=1):
+                if pd.isna(value):
+                        ws.cell(row=row_idx + 2, column=col_idx, value=None)
+                else:
+                    try:
+                        # Tente la conversion en entier (ne garde que les entiers stricts, pas les float)
+                        v = int(value)
+                        if str(v) == str(value).strip():
+                            ws.cell(row=row_idx + 2, column=col_idx, value=v)
+                        else:
+                            ws.cell(row=row_idx + 2, column=col_idx, value=value)
+                    except (ValueError, TypeError):
+                        ws.cell(row=row_idx + 2, column=col_idx, value=value)                
+                        # +2 car openpyxl est 1-indexé et on saute la ligne d’en-tête
+
+        # Sauvegarde dans un buffer mémoire
+        wb.save(buffer)
 
         # Revenir au début du buffer pour le téléchargement
         buffer.seek(0)
@@ -427,7 +485,7 @@ def telecharger_Excel():
 
         # Bouton de téléchargement
         return st.download_button(
-            label="Télécharger Excel",
+            label="Renvoyer Excel",
             data=buffer,
             file_name=nom_fichier,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -495,7 +553,9 @@ def file_uploader_callback():
 
 def main():
     # Affichage du titre
-    ecrire_titre()
+    afficher_titre()
+
+    afficher_aide()
 
     # Chargement du fichier Excel contenant les spectacles à planifier
     uploaded_file = st.file_uploader(
@@ -554,7 +614,7 @@ def main():
                         with col1:
                             ajouter_activite(date_ref, proposables, choix_activite)
                         with col2:
-                            telecharger_Excel()
+                            renvoyer_excel(uploaded_file)
                     else:
                         st.info("Aucune activité compatible avec ce créneau.")
                 else:
