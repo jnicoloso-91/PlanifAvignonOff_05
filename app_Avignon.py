@@ -16,31 +16,29 @@ DUREE_CAFE = datetime.timedelta(minutes=30)
 
 # Affiche le titre de la page
 def afficher_titre():
-
-    # # Empêche la première slectbox de prendre le focus et d'être editable sur mobile
-    # st.markdown("""
-    #     <input id="no-focus" style="opacity:0; height:0; border:none" />
-    #     <script>
-    #     document.getElementById("no-focus").focus();
-    #     </script>
-    # """, unsafe_allow_html=True)
+    # Empêche la première slectbox de prendre le focus et d'être editable sur mobile
+    st.markdown("""
+    <input id="no-focus" style="opacity:0; height:0; border:none" />
+    <script>
+        setTimeout(function() {
+            var el = document.getElementById("no-focus");
+            if (el) { el.focus(); }
+        }, 100);  // 100 ms de délai
+    </script>
+    """, unsafe_allow_html=True)
 
     # Réduire l’espace en haut de la page
     st.markdown(
         """
-        <input id="no-focus" style="opacity:0; height:0; border:none" />
-        <script>
-        document.getElementById("no-focus").focus();
-        </script>
-
         <style>
             .block-container {
-                padding-top: 1rem;
+                padding-top: 0rem;
             }
         </style>
-
         """, unsafe_allow_html=True
     )
+
+    # Titre de la page
     st.markdown("## Planification Avignon 2025")
 
 # Affichage de l'aide
