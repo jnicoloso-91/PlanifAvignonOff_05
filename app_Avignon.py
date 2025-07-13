@@ -181,9 +181,6 @@ def supprimer_activite(planifies, supprimables):
 
     with st.expander("Supprimer une activité planifiée", expanded=False):
 
-        # Affichage d'une selectbox bidon pour masquer le focus sur mobile de la première selectbox
-        _ = st.selectbox("Init (ignore)", ["placeholder1", "placeholder2"])
-
         choix_activite = st.selectbox("Seules les activités non réservées sont affichées)", [p[0] for p in supprimables])
         # Récupération de l'index de l'activité choisie
         idx = dict((p[0], p[1]) for p in supprimables)[choix_activite]
