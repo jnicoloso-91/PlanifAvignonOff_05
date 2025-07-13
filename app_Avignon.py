@@ -20,10 +20,12 @@ def afficher_titre():
     st.markdown("""
     <input id="no-focus" style="opacity:0; height:0; border:none" />
     <script>
-        setTimeout(function() {
-            var el = document.getElementById("no-focus");
-            if (el) { el.focus(); }
-        }, 100);  // 100 ms de délai
+        window.onload = function() {
+            setTimeout(function() {
+                var el = document.getElementById("no-focus");
+                if (el) { el.focus(); }
+            }, 100);
+        };
     </script>
     """, unsafe_allow_html=True)
 
