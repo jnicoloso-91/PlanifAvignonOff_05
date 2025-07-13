@@ -181,7 +181,7 @@ def supprimer_activite(planifies, supprimables):
 
     with st.expander("Supprimer une activité planifiée", expanded=False):
 
-        choix_activite = st.selectbox("Seules les activités non réservées sont affichées)", [p[0] for p in supprimables])
+        choix_activite = st.selectbox("⚠️ Seules les activités non réservées sont proposées", [p[0] for p in supprimables])
         # Récupération de l'index de l'activité choisie
         idx = dict((p[0], p[1]) for p in supprimables)[choix_activite]
         ligne_ref = planifies.loc[idx]
