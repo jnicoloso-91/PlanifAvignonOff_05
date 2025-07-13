@@ -179,31 +179,24 @@ def get_activites_supprimables(df, planifies):
 # Supprime une activité planifiée
 def supprimer_activite(planifies, supprimables):
 
-    # Empêche la première selectbox de prendre le focus et d'être editable sur mobile
-    st.markdown("""
-    <div style="height:1px; overflow:hidden">
-        <input id="no-focus" style="opacity:0; height:1px; border:none" />
-    </div>
-    <script>
-        setTimeout(function() {
-            const el = document.getElementById("no-focus");
-            if (el) el.focus();
-        }, 100);
-    </script>
-    """, unsafe_allow_html=True)    
-
-    choix_activite = st.selectbox("Choix d'une activité à supprimer (si non réservée)", [p[0] for p in supprimables])
-    # Récupération de l'index de l'activité choisie
-    idx = dict((p[0], p[1]) for p in supprimables)[choix_activite]
-    ligne_ref = planifies.loc[idx]
-    # Suppression de l'activité choisie
-    if st.button("Supprimer"):
-        st.session_state.df.at[idx, "Date"] = None
-        if est_pause(ligne_ref):
-            st.session_state.df.at[idx, "Heure"] = None
-            st.session_state.df.at[idx, "Duree"] = None
-            st.session_state.df.at[idx, "Autres"] = None
-        st.rerun()
+    with st.expander("Supprimer une activité planifiée", expanded=False):
+        # st.markdown("""
+        # <div style='font-size: 14px;'>
+        # Sélectionnez une activité planifiée à supprimer. Seules les activités non réservées sont affichées.
+        # </div>
+        # """, unsafe_allow_html=True)
+        choix_activite = st.selectbox("Choix d'une activité à supprimer (seules les activités non réservées sont affichées)", [p[0] for p in supprimables])
+        # Récupération de l'index de l'activité choisie
+        idx = dict((p[0], p[1]) for p in supprimables)[choix_activite]
+        ligne_ref = planifies.loc[idx]
+        # Suppression de l'activité choisie
+        if st.button("Supprimer"):
+            st.session_state.df.at[idx, "Date"] = None
+            if est_pause(ligne_ref):
+                st.session_state.df.at[idx, "Heure"] = None
+                st.session_state.df.at[idx, "Duree"] = None
+                st.session_state.df.at[idx, "Autres"] = None
+            st.rerun()
 
 # Création de la liste des créneaux avant/après pour chaque activité planifiée
 def get_creneaux(df, planifies, traiter_pauses):
