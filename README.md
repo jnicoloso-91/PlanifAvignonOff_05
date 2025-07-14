@@ -1,6 +1,6 @@
 # 🌟 Planificateur de spectacles pour Avignon Off
 
-Cette application Streamlit vous permet de gérer votre planning de spectacles Avignon Off sous la forme d'un fichier Excel personnalisé contenant les informations essentielles de votre programme.
+Cette application Streamlit vous permet de gérer votre planning de spectacles Avignon Off, sous la forme d'un fichier Excel personnalisé contenant les informations essentielles de votre programme.
 
 ---
 
