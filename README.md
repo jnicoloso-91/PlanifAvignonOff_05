@@ -31,13 +31,13 @@ Le fichier doit comporter les colonnes suivantes (sans accents et avec majuscule
 | ----------- | ---------------------- | ---------------------------------------------- |
 | `Date`      | Entier (ex : 20250722) | Jour de l'activité                             |
 | `Heure`     | Texte `Hhmm`           | Heure de début (`10h00`, `9h15`, etc.)         |
-| `Duree`     | Texte `Hhmm`           | Durée (`1h30`, `0h45`, etc.)                   |
+| `Durée`     | Texte `Hhmm`           | Durée (`1h30`, `0h45`, etc.)                   |
 | `Spectacle` | Texte                  | Nom du spectacle (vide pour les pauses)        |
-| `Theatre`   | Texte                  | Nom du théâtre                                 |
-| `Relache`   | Entier ou vide         | Date du jour de relâche                        |
-| `Reserve`   | `Oui` / `Non`          | Si la réservation est faite                    |
+| `Théâtre`   | Texte                  | Nom du théâtre                                 |
+| `Relâche`   | Entier ou vide         | Date du jour de relâche                        |
+| `Réservé`   | `Oui` / `Non`          | Si la réservation est faite                    |
 | `Autres`    | Texte                  | Descriptif d'une pause ("Déjeuner", "Café"...) |
-| `Priorite`  | Entier ou vide         | Priorité d'affichage ou de planification       |
+| `Priorité`  | Entier ou vide         | Priorité d'affichage ou de planification       |
 
 Des colonnes internes (`Heure_dt`, `Duree_dt`) sont ajoutées automatiquement pour les traitements.
 
@@ -79,7 +79,7 @@ L'application est accessible en ligne via Streamlit Cloud :
 
 ## 🙋‍ Auteur
 
-Application conçue et développée pour un usage personnel lors du Festival d'Avignon.
+Application conçue et développée avec chatGPT pour un usage personnel.
 Suggestions bienvenues !
 
 ---
