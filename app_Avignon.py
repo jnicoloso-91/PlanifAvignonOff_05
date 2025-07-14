@@ -23,8 +23,8 @@ def lignes_vides(df, col):
 # retourne le titre d'une activité
 def get_descripteur_activite(date, row):
     titre = f"{date} - {row['Heure'].strip()} - {row['Activite']}"
-    if not (pd.isna(row["Theatre"]) or str(row["Theatre"]).strip() == ""):
-        titre = titre + f"( {row['Theatre']}) - P{formatter_cellule_int(row['Priorite'])}"
+    if not (pd.isna(row["Lieu"]) or str(row["Lieu"]).strip() == ""):
+        titre = titre + f"( {row['Lieu']}) - P{formatter_cellule_int(row['Priorite'])}"
     return titre
 
 # Affiche le titre de la page
@@ -84,9 +84,9 @@ def afficher_aide():
         <li>Date : Date de l'activité (entier)</li>
         <li>Heure : Heure de début de l'activité (format HHhMM)</li>
         <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
-        <li>Activité : Nom du spectacle ou de l'activité s'il s'agit d'une autre activité (pause, visite, ...)</li>
-        <li>Théâtre : Nom du théâtre où se déroule l'activité</li>
-        <li>Relâche : Jours de relâche pour le spectacle (liste d'entiers, peut être vide)</li>
+        <li>Activité : Nom de l'activité (nom de spectacle, pause, visite, ...)</li>
+        <li>Lieu : Lieu de l'activité</li>
+        <li>Relâche : Jours de relâche pour l'activité (liste d'entiers, peut être vide)</li>
         <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
         </ul>
 
@@ -201,8 +201,8 @@ def nettoyer_donnees(df):
         # Nettoyage noms de colonnes : suppression espaces et normalisation accents
         df.columns = df.columns.str.strip().str.replace("\u202f", " ").str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8")
 
-        colonnes_attendues = ["Reserve", "Priorite", "Date", "Heure", "Duree", "Theatre", "Relache"]
-        colonnes_attendues_avec_accents = ["Réservé", "Priorité", "Date", "Heure", "Durée", "Théâtre", "Activité", "Relâche"]
+        colonnes_attendues = ["Reserve", "Priorite", "Date", "Heure", "Duree", "Lieu", "Relache"]
+        colonnes_attendues_avec_accents = ["Réservé", "Priorité", "Date", "Heure", "Durée", "Lieu", "Activité", "Relâche"]
 
         if not all(col in df.columns for col in colonnes_attendues) and ("Activite" in df.columns or "Spectacle" in df.columns):
             st.error("Le fichier ne contient pas toutes les colonnes attendues: " + ", ".join(colonnes_attendues_avec_accents))
@@ -440,11 +440,10 @@ def get_activites_planifiees(df):
 
 # Affiche les activités planifiées dans un tableau
 def afficher_activites_planifiees(planifies):
-    df_affichage = planifies[["Date", "Heure", "Duree", "Activite", "Theatre", "Priorite", "Reserve"]].rename(columns={
+    df_affichage = planifies[["Date", "Heure", "Duree", "Activite", "Lieu", "Priorite", "Reserve"]].rename(columns={
         "Reserve": "Réservé",
         "Priorite": "Priorité",
         "Duree": "Durée",
-        "Theatre": "Théâtre",
         "Relache": "Relâche",
         "Activite": "Activité",
     })
@@ -659,10 +658,7 @@ def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=Tr
     
 # Vérifie si une pause d'un type donné est déjà présente pour un jour donné dans le dataframe des activités planiées
 def pause_deja_existante(planifies, jour, type_pause):
-    df_jour = planifies[
-        (planifies["Date"] == jour) & 
-        (planifies["Theatre"].isna() | planifies["Theatre"].astype(str).str.strip() == "")
-    ]
+    df_jour = planifies[planifies["Date"] == jour]
     return df_jour["Activite"].astype(str).str.contains(type_pause, case=False, na=False).any() 
 
 # Ajoute les pauses possibles (déjeuner, dîner, café) à une liste d'activités planifiables pour une activité donnée par son descripteur ligne_ref
@@ -686,12 +682,12 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
     
     def ajouter_pause_cafe(proposables, debut_min, fin_max):
         if not est_pause(ligne_ref):
-            theatre_ref = ligne_ref["Theatre"]
+            Lieu_ref = ligne_ref["Lieu"]
             if type_creneau == "Avant":
                 i = planifies.index.get_loc(ligne_ref.name)  
-                theatre_prev = planifies.iloc[i - 1]["Theatre"] if i > 0 else None
+                Lieu_ref_prev = planifies.iloc[i - 1]["Lieu"] if i > 0 else None
                 h_cafe = fin_max - DUREE_CAFE
-                if theatre_ref == theatre_prev: 
+                if Lieu_ref == Lieu_ref_prev: 
                     # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle précédent 
                     if h_cafe >= debut_min: 
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
@@ -702,9 +698,9 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
             elif type_creneau == "Après":
                 i = planifies.index.get_loc(ligne_ref.name)  
-                theatre_suiv = planifies.iloc[i + 1]["Theatre"] if i < len(planifies) - 1 else None
+                Lieu_ref_suiv = planifies.iloc[i + 1]["Lieu"] if i < len(planifies) - 1 else None
                 h_cafe = debut_min
-                if theatre_ref == theatre_suiv: 
+                if Lieu_ref == Lieu_ref_suiv: 
                     # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle suivant 
                     if h_cafe + DUREE_CAFE <= fin_max: 
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
@@ -745,9 +741,7 @@ def est_pause(ligne_ref):
     valeurs = val.split()
     if not valeurs:
         return False
-    return (val.split()[0].lower() == "pause" and 
-        (pd.isna(ligne_ref["Theatre"]) or str(ligne_ref["Theatre"]).strip() == "")
-    )
+    return val.split()[0].lower() == "pause"
 
 def est_pause_cafe(ligne_ref):
     if not est_pause(ligne_ref):
@@ -762,18 +756,6 @@ def est_pause_cafe(ligne_ref):
 
 def sauvegarder_excel():
     if "df" in st.session_state:
-
-        # Trier par Date (nombre entier) puis Heure
-        # df_sorted = st.session_state.df.sort_values(by=["Date", "Heure_dt"]).reset_index(drop=True).drop(columns=["Heure_dt", "Duree_dt"], errors='ignore')
-
-        # df_sorted = df_sorted.rename(columns={
-        #     "Reserve": "Réservé",
-        #     "Priorite": "Priorité",
-        #     "Duree": "Durée",
-        #     "Theatre": "Théâtre",
-        #     "Relache": "Relâche",
-        #     "Activite": "Activité",
-        # })
 
         # Récupération de la worksheet à traiter
         wb = st.session_state.wb
@@ -793,30 +775,6 @@ def sauvegarder_excel():
                 col_spectacle = cell.column
         source_font = ws.cell(row=1, column=1).font
 
-        # for row_idx, (_, row) in enumerate(df_sorted.iterrows()):
-        #     for col_idx, value in enumerate(row, start=1):
-        #         if pd.isna(value):
-        #                 ws.cell(row=row_idx + 2, column=col_idx, value=None)
-        #         else:
-        #             try:
-        #                 # Tente la conversion en entier (ne garde que les entiers stricts, pas les float)
-        #                 v = int(value)
-        #                 if str(v) == str(value).strip():
-        #                     ws.cell(row=row_idx + 2, column=col_idx, value=v)
-        #                 else:
-        #                     ws.cell(row=row_idx + 2, column=col_idx, value=value)
-        #             except (ValueError, TypeError):
-        #                 ws.cell(row=row_idx + 2, column=col_idx, value=value)                
-        #                 # +2 car openpyxl est 1-indexé et on saute la ligne d’en-tête
-        #                 # Ajoute le lien s’il s’agit de la colonne Spectacle
-        #                 if col_idx == col_spectacle and liens_spectacles is not None:
-        #                     lien = liens_spectacles.get(value)
-        #                     if lien:
-        #                         ws.cell(row=row_idx + 2, column=col_idx).hyperlink = lien
-        #                         ws.cell(row=row_idx + 2, column=col_idx).font = Font(color="0000EE", underline="single")
-        #                     else:
-        #                         ws.cell(row=row_idx + 2, column=col_idx).hyperlink = None
-        #                         ws.cell(row=row_idx + 2, column=col_idx).font = copy(source_font)
         # Réindexer proprement pour éviter les trous
         df_sorted = st.session_state.df.copy()
         df_sorted = df_sorted.sort_values(by=["Date", "Heure_dt"])
@@ -848,7 +806,6 @@ def sauvegarder_excel():
                         if lien:
                             cell.hyperlink = lien
                             cell.font = Font(color="0000EE", underline="single")
-                            print(f"{row_idx} - {cell.value} - {lien}")
                         else:
                             cell.hyperlink = None
                             cell.font = copy(source_font)   
@@ -1001,8 +958,10 @@ def main():
                             sauvegarder_excel()
                     else:
                         st.info("Aucune activité compatible avec ce créneau.")
+                        sauvegarder_excel()
                 else:
                     st.info("Aucun créneau disponible.")
+                    sauvegarder_excel()
             
 
 if __name__ == "__main__":
