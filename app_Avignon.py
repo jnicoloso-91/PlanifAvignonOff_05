@@ -86,7 +86,7 @@ def afficher_aide():
         <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
         <li>Activité : Nom du spectacle ou de l'activité s'il s'agit d'une autre activité (pause, visite, ...)</li>
         <li>Théâtre : Nom du théâtre où se déroule l'activité</li>
-        <li>Relâche : Jours de relâche pour le spectacle (entier, peut être vide)</li>
+        <li>Relâche : Jours de relâche pour le spectacle (liste d'entiers, peut être vide)</li>
         <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
         </ul>
 
@@ -453,7 +453,6 @@ def afficher_activites_planifiees(planifies):
 
 # Vérifie si une date de référence est compatible avec la valeur de la colonne Relache qui donne les jours de relache pour un spectacle donné
 def est_hors_relache(relache_val, date_val):
-    """Retourne True si la date ne correspond pas à un jour de relâche."""
     if pd.isna(relache_val) or pd.isna(date_val):
         return True  # Aucune relâche spécifiée ou date absente
 
