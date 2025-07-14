@@ -288,6 +288,8 @@ def verifier_coherence(df):
         # ignorer si rien n'est planifié
         if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
             continue
+        if row.isna().all():
+            continue
 
         # Date : uniquement si non NaN
         if pd.notna(row["Date"]) and not est_entier(row["Date"]):
@@ -303,8 +305,12 @@ def verifier_coherence(df):
     # 4. 📆 Spectacles un jour de relâche (Date == Relache)
     bloc_relache = []
     for idx, row in df.iterrows():
+        # ignorer si rien n'est planifié
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+            continue
         if row.isna().all():
             continue
+
         if (
             est_entier(row["Date"]) and
             est_entier(row["Relache"]) and
@@ -320,8 +326,12 @@ def verifier_coherence(df):
     # 5. 🕳️ Heures non renseignées
     bloc_heure_vide = []
     for idx, row in df.iterrows():
+        # ignorer si rien n'est planifié
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+            continue
         if row.isna().all():
             continue
+
         if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
             if pd.isna(row["Heure"]) or str(row["Heure"]).strip() == "":
                 bloc_heure_vide.append(f"Heure vide à la ligne {idx + 2}")
@@ -331,8 +341,12 @@ def verifier_coherence(df):
     # 6. 🕓 Heures au format invalide
     bloc_heure_invalide = []
     for idx, row in df.iterrows():
+        # ignorer si rien n'est planifié
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+            continue
         if row.isna().all():
             continue
+
         if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
             h = row["Heure"]
             if pd.notna(h) and str(h).strip() != "":
@@ -347,8 +361,12 @@ def verifier_coherence(df):
     # 7. 🕳️ Durées non renseignées ou nulles
     bloc_duree_nulle = []
     for idx, row in df.iterrows():
+        # ignorer si rien n'est planifié
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+            continue
         if row.isna().all():
             continue
+
         if isinstance(row["Duree_dt"], pd.Timedelta) and row["Duree_dt"] == pd.Timedelta(0):
             if pd.isna(row["Duree"]) or str(row["Duree"]).strip() == "":
                 msg = f"Durée vide à la ligne {idx + 2}"
@@ -361,8 +379,12 @@ def verifier_coherence(df):
     # 8. ⏱️ Durées au format invalide
     bloc_duree_invalide = []
     for idx, row in df.iterrows():
+        # ignorer si rien n'est planifié
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+            continue
         if row.isna().all():
             continue
+
         if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
             d = row["Duree"]
             if pd.notna(d) and str(d).strip() != "":
