@@ -570,7 +570,7 @@ def est_pause_cafe(ligne_ref):
         return False
     return val.split()[0].lower() == "pause" and val.split()[1].lower() == "café"
 
-def renvoyer_excel():
+def sauvegarder_excel():
     if "df" in st.session_state:
 
         # Trier par Date (nombre entier) puis Heure
@@ -631,7 +631,7 @@ def renvoyer_excel():
 
         # Bouton de téléchargement
         return st.download_button(
-            label="Renvoyer Excel",
+            label="Sauvegarder Excel",
             data=buffer,
             file_name=nom_fichier,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -764,7 +764,7 @@ def main():
                         with col1:
                             ajouter_activite(date_ref, proposables, choix_activite)
                         with col2:
-                            renvoyer_excel()
+                            sauvegarder_excel()
                     else:
                         st.info("Aucune activité compatible avec ce créneau.")
                 else:
