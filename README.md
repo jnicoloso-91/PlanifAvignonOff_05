@@ -36,7 +36,7 @@ Le fichier doit comporter les colonnes suivantes (sans accents et avec majuscule
 | `Théâtre`   | Texte                  | Nom du théâtre                                 |
 | `Relâche`   | Entier ou vide         | Date du jour de relâche                        |
 | `Réservé`   | `Oui` / `Non`          | Si la réservation est faite                    |
-| `Autres`    | Texte                  | Descriptif d'une pause ("Déjeuner", "Café"...) |
+| `Autres`    | Texte                  | Autres activités (pause déjeuner, café...)     |
 | `Priorité`  | Entier ou vide         | Priorité d'affichage ou de planification       |
 
 Des colonnes internes (`Heure_dt`, `Duree_dt`) sont ajoutées automatiquement pour les traitements.
