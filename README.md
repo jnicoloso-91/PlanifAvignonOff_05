@@ -32,14 +32,11 @@ Le fichier doit comporter les colonnes suivantes (sans accents et avec majuscule
 | `Date`      | Entier (ex : 20250722) | Jour de l'activité                             |
 | `Heure`     | Texte `Hhmm`           | Heure de début (`10h00`, `9h15`, etc.)         |
 | `Durée`     | Texte `Hhmm`           | Durée (`1h30`, `0h45`, etc.)                   |
-| `Spectacle` | Texte                  | Nom du spectacle (vide pour les pauses)        |
+| `Activité`  | Texte                  | Nom du spectacle ou de l'activité              |
 | `Théâtre`   | Texte                  | Nom du théâtre                                 |
-| `Relâche`   | Entier ou vide         | Date du jour de relâche                        |
+| `Relâche`   | Liste d'entiers        | Date des jours de relâche                      |
 | `Réservé`   | `Oui` / `Non`          | Si la réservation est faite                    |
-| `Autres`    | Texte                  | Autres activités (pause déjeuner, café...)     |
 | `Priorité`  | Entier ou vide         | Priorité d'affichage ou de planification       |
-
-Des colonnes internes (`Heure_dt`, `Duree_dt`) sont ajoutées automatiquement pour les traitements.
 
 ---
 
