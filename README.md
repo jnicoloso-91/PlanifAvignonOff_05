@@ -46,7 +46,7 @@ Des colonnes internes (`Heure_dt`, `Duree_dt`) sont ajoutées automatiquement po
 ## 📁 Modèle Excel
 
 Un modèle de fichier est disponible ici :
-📄 [Télécharger le modèle Excel](https://github.com/jnicoloso-91/PlanifAvignonOff_01/raw/main/Modèle Excel.xlsx)
+📄 [Télécharger le modèle Excel](https://github.com/jnicoloso-91/PlanifAvignonOff_01/raw/main/Modèle%20Excel.xlsx)
 
 ---
 
