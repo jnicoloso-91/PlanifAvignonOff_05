@@ -30,7 +30,7 @@ def afficher_titre():
     )
 
     # Titre de la page
-    st.markdown("## Planification Avignon 2025")
+    st.markdown("## Planificateur Avignon Off")
 
 # Affichage de l'aide
 def afficher_aide():
@@ -52,7 +52,7 @@ def afficher_aide():
         <p style="margin-bottom: 0.2em">Cette application offre les fonctionnalités suivantes:</p>
         <ul style="margin-top: 0em; margin-bottom: 2em">
         <li>Chargement d'un fichier Excel contenant les spectacles à planifier</li>
-        <li>Affichage des activités planifiées (i.e. dont le champ Date est renseigné)</li>
+        <li>Affichage des activités planifiées (i.e. celles dont le champ Date est renseigné)</li>
         <li>Suppression d'une activité planifiée (si non réservée)</li>
         <li>Sélection d'un créneau avant ou après une activité planifiée</li>
         <li>Sélection d'une activité à planifier dans le créneau sélectionné</li>
@@ -90,6 +90,99 @@ def afficher_aide():
 
 # Nettoyage des données du tableau Excel importé
 def nettoyer_donnees(df):
+
+    def heure_str(val):
+        from datetime import datetime, time
+        if isinstance(val, (datetime, time)):
+            return val.strftime("%Hh%M")
+        if pd.isna(val):
+            return ""
+        return str(val).strip()
+    
+    def parse_heure(h):
+        from datetime import datetime, time
+
+        if pd.isna(h) or str(h).strip() == "":
+            return datetime.combine(BASE_DATE, time(0, 0))  # Heure nulle par défaut        if isinstance(h, time):
+        
+        if isinstance(h, datetime):
+            return datetime.combine(BASE_DATE, h.time())
+        
+        h_str = str(h).strip()
+
+        # Format 10h00
+        if re.match(r"^\d{1,2}h\d{2}$", h_str):
+            try:
+                return datetime.strptime(f"{BASE_DATE.isoformat()} {h_str}", "%Y-%m-%d %Hh%M")
+            except ValueError:
+                return None
+
+        # Format 10:00 ou 10:00:00
+        if re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", h_str):
+            try:
+                t = datetime.strptime(h_str, "%H:%M").time()
+                return datetime.combine(BASE_DATE, t)
+            except ValueError:
+                try:
+                    t = datetime.strptime(h_str, "%H:%M:%S").time()
+                    return datetime.combine(BASE_DATE, t)
+                except ValueError:
+                    return None
+
+        return None
+    
+    def duree_str(val):
+        from datetime import datetime, time
+        if isinstance(val, pd.Timedelta):
+            total_minutes = int(val.total_seconds() // 60)
+            h = total_minutes // 60
+            m = total_minutes % 60
+            return f"{h}h{m:02d}"
+        if pd.isna(val):
+            return ""
+        return str(val).strip()
+
+    def parse_duree(d):
+        from datetime import datetime, time
+
+        if pd.isna(d) or str(d).strip() == "":
+            return pd.Timedelta(0)
+
+        # Si c'est déjà un timedelta
+        if isinstance(d, pd.Timedelta):
+            return d
+
+        # Si c'est un datetime.time
+        if isinstance(d, time):
+            return pd.Timedelta(hours=d.hour, minutes=d.minute, seconds=d.second)
+
+        # Si c'est un datetime.datetime
+        if isinstance(d, datetime):
+            t = d.time()
+            return pd.Timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
+
+        d_str = str(d).strip().lower()
+
+        # Format "1h30"
+        if re.match(r"^\d{1,2}h\d{2}$", d_str):
+            h, m = map(int, d_str.replace("h", " ").split())
+            return pd.Timedelta(hours=h, minutes=m)
+
+        # Format "1:30" ou "1:30:00"
+        if re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", d_str):
+            try:
+                parts = list(map(int, d_str.split(":")))
+                if len(parts) == 2:
+                    h, m = parts
+                    return pd.Timedelta(hours=h, minutes=m)
+                elif len(parts) == 3:
+                    h, m, s = parts
+                    return pd.Timedelta(hours=h, minutes=m, seconds=s)
+            except ValueError:
+                return None
+
+        return None
+    
     try:
         # Nettoyage noms de colonnes : suppression espaces et normalisation accents
         df.columns = df.columns.str.strip().str.replace("\u202f", " ").str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8")
@@ -106,24 +199,12 @@ def nettoyer_donnees(df):
                 del st.session_state["fichier_invalide"] 
 
             # Nettoyage Heure : "10h00" -> datetime.time
-            # Evite les NaN plantants et la date de base à utiliser partout dans le programme
-            df["Heure_dt"] = pd.to_datetime(
-                df["Heure"].apply(lambda h: f"{BASE_DATE.isoformat()} {h.strip()}" if pd.notna(h) else None), 
-                format="%Y-%m-%d %Hh%M",
-                errors="coerce"
-            )
+            df["Heure"] = df["Heure"].apply(heure_str)
+            df["Heure_dt"] = df["Heure"].apply(parse_heure)
 
             # Nettoyage Duree : "1h00" -> timedelta
-            # Evite les NaN plantants et corrige les formats partiels (ex: "1h" → "1h0m", "0h45" → "0h45m", "30m" → "0h30m")
-            df["Duree_dt"] = pd.to_timedelta(
-                df["Duree"]
-                .fillna("")  
-                .str.strip().str.lower()
-                .str.replace(r"^(\d+)h$", r"\1h0m", regex=True) 
-                .str.replace(r"^(\d+)h(\d+)$", r"\1h\2m", regex=True)
-                .str.replace(r"^(\d+)m$", r"0h\1m", regex=True),
-                errors="coerce"
-            )
+            df["Duree"] = df["Duree"].apply(duree_str)
+            df["Duree_dt"] = df["Duree"].apply(parse_duree)
 
             # Convertit explicitement certaines colonnes pour éviter les erreurs de conversion pandas
             df["Reserve"] = df["Reserve"].astype("object").fillna("").astype(str)
@@ -158,17 +239,28 @@ def verifier_coherence(df):
             return not pd.isna(x) and str(x).strip() != "" and int(float(x)) == float(x)
         except Exception:
             return False
-
+        
     # 1. 🔁 Doublons
-    doublons = df[df.duplicated(subset=["Date", "Heure", "Duree", "Spectacle"], keep=False)]
-    if not doublons.empty:
-        bloc = ["🟠 Doublons:"]
-        for _, row in doublons.iterrows():
-            if row.isna().all():
-                continue
-            bloc.append(f"{row['Date']} à {row['Heure']} : **{row['Spectacle']}** ({row['Duree']})")
-        erreurs.append("\n".join(bloc))
+    df_valid = df[df["Spectacle"].notna() & (df["Spectacle"].astype(str).str.strip() != "")]
 
+    # Création d'une colonne temporaire pour la comparaison
+    df_valid = df[df["Spectacle"].notna() & (df["Spectacle"].astype(str).str.strip() != "")]
+    df_valid = df_valid.copy()  # pour éviter SettingWithCopyWarning
+    df_valid["_spectacle_clean"] = df_valid["Spectacle"].astype(str).str.strip().str.lower()
+    doublons = df_valid[df_valid.duplicated(subset=["_spectacle_clean"], keep=False)]
+
+    if not doublons.empty:
+        bloc = ["🟠 Doublons de spectacle :"]
+        for _, row in doublons.iterrows():
+            try:
+                date_str = str(int(float(row["Date"]))) if pd.notna(row["Date"]) else "Vide"
+            except (ValueError, TypeError):
+                date_str = "Vide"
+            heure_str = str(row["Heure"]).strip() if pd.notna(row["Heure"]) else "Vide"
+            duree_str = str(row["Duree"]).strip() if pd.notna(row["Duree"]) else "Vide"
+            bloc.append(f"{date_str} - {heure_str} - {row['Spectacle']} ({duree_str})")
+        erreurs.append("\n".join(bloc))
+        
     # 2. ⛔ Chevauchements
     chevauchements = []
     df_sorted = df.sort_values(by=["Date", "Heure_dt"])
@@ -216,7 +308,7 @@ def verifier_coherence(df):
         if (
             est_entier(row["Date"]) and
             est_entier(row["Relache"]) and
-            int(row["Date"]) == int(row["Relache"]) and
+            int(float(row["Date"])) == int(float(row["Relache"])) and
             str(row["Spectacle"]).strip() != ""
         ):
             bloc_relache.append(
@@ -225,28 +317,67 @@ def verifier_coherence(df):
     if bloc_relache:
         erreurs.append("🛑 Spectacles programmés un jour de relâche:\n" + "\n".join(bloc_relache))
 
-    # 5. ⌛ Durées nulles (valide mais égale à 0)
+    # 5. 🕳️ Heures non renseignées
+    bloc_heure_vide = []
+    for idx, row in df.iterrows():
+        if row.isna().all():
+            continue
+        if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
+            if pd.isna(row["Heure"]) or str(row["Heure"]).strip() == "":
+                bloc_heure_vide.append(f"Heure vide à la ligne {idx + 2}")
+    if bloc_heure_vide:
+        erreurs.append("⚠️ Heures non renseignées:\n" + "\n".join(bloc_heure_vide))
+
+    # 6. 🕓 Heures au format invalide
+    bloc_heure_invalide = []
+    for idx, row in df.iterrows():
+        if row.isna().all():
+            continue
+        if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
+            h = row["Heure"]
+            if pd.notna(h) and str(h).strip() != "":
+                h_str = str(h).strip().lower()
+                is_time_like = isinstance(h, (datetime.datetime, datetime.time))
+                valid_format = bool(re.match(r"^\d{1,2}h\d{2}$", h_str) or re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", h_str))
+                if not is_time_like and not valid_format:
+                    bloc_heure_invalide.append(f"Heure invalide à la ligne {idx + 2} : {h}")
+    if bloc_heure_invalide:
+        erreurs.append("⛔ Heures mal formatées:\n" + "\n".join(bloc_heure_invalide))
+
+    # 7. 🕳️ Durées non renseignées ou nulles
     bloc_duree_nulle = []
     for idx, row in df.iterrows():
         if row.isna().all():
             continue
         if isinstance(row["Duree_dt"], pd.Timedelta) and row["Duree_dt"] == pd.Timedelta(0):
-            bloc_duree_nulle.append(
-                f"Durée égale à 0 à la ligne {idx + 2} : {row['Duree']}"
-            )
+            if pd.isna(row["Duree"]) or str(row["Duree"]).strip() == "":
+                msg = f"Durée vide à la ligne {idx + 2}"
+            else:
+                msg = f"Durée égale à 0 à la ligne {idx + 2} : {row['Duree']}"
+            bloc_duree_nulle.append(msg)
     if bloc_duree_nulle:
-        erreurs.append("⚠️ Durées égales à zéro:\n" + "\n".join(bloc_duree_nulle))
+        erreurs.append("⚠️ Durées nulles ou vides:\n" + "\n".join(bloc_duree_nulle))
 
-    # 6. 📋 Affichage final dans Streamlit
-    # with st.expander("🔍 Vérification de cohérence du fichier"):
-    #     if not erreurs:
-    #         st.markdown("✅ **Aucune erreur détectée. Fichier cohérent.**")
-    #     else:
-    #         st.markdown("\n\n".join(erreurs))
+    # 8. ⏱️ Durées au format invalide
+    bloc_duree_invalide = []
+    for idx, row in df.iterrows():
+        if row.isna().all():
+            continue
+        if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
+            d = row["Duree"]
+            if pd.notna(d) and str(d).strip() != "":
+                d_str = str(d).strip().lower()
+                is_timedelta = isinstance(d, pd.Timedelta)
+                valid_format = bool(re.match(r"^\d{1,2}h\d{2}$", d_str) or re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", d_str))
+                if not is_timedelta and not valid_format:
+                    bloc_duree_invalide.append(f"Durée invalide à la ligne {idx + 2} : {d}")
+    if bloc_duree_invalide:
+        erreurs.append("⛔ Durées mal formatées:\n" + "\n".join(bloc_duree_invalide))
+
     contenu = "<div style='font-size: 14px;'>"
     for bloc in erreurs:
         lignes = bloc.split("\n")
-        if lignes[0].startswith("🟠") or lignes[0].startswith("🔴") or lignes[0].startswith("⚠️") or lignes[0].startswith("🛑"):
+        if lignes[0].startswith(("🟠", "🔴", "⚠️", "🛑", "⛔")):
             contenu += f"<p><strong>{lignes[0]}</strong></p><ul>"
             for ligne in lignes[1:]:
                 contenu += f"<li>{ligne}</li>"
@@ -276,17 +407,48 @@ def afficher_activites_planifiees(planifies):
     st.dataframe(df_affichage.fillna(""), hide_index=True,)
 
 # Vérifie si une date de référence est compatible avec la valeur de la colonne Relache qui donne les jours de relache pour un spectacle donné
+# def est_hors_relache(relache_val, date_val):
+#     if pd.isna(relache_val):
+#         return True  # Aucune relache spécifiée
+#     relache_val_str = str(int(relache_val)).lower().strip() if isinstance(relache_val, (int, float)) else relache_val.lower().strip()
+#     date_val_str = str(int(date_val)).lower().strip() if isinstance(date_val, (int, float)) else date_val.lower().strip()
+#     if relache_val_str == date_val_str:
+#         return False
+#     if "pair" in relache_val_str and int(date_val) % 2 == 0:
+#         return False
+#     if "impair" in relache_val_str and int(date_val) % 2 != 0:
+#         return False
+#     return True
 def est_hors_relache(relache_val, date_val):
-    if pd.isna(relache_val):
-        return True  # Aucune relache spécifiée
-    relache_val_str = str(int(relache_val)).lower().strip() if isinstance(relache_val, (int, float)) else relache_val.lower().strip()
-    date_val_str = str(int(date_val)).lower().strip() if isinstance(date_val, (int, float)) else date_val.lower().strip()
-    if relache_val_str == date_val_str:
+    """Retourne True si la date ne correspond pas à un jour de relâche."""
+    if pd.isna(relache_val) or pd.isna(date_val):
+        return True  # Aucune relâche spécifiée ou date absente
+
+    try:
+        date_int = int(float(date_val))
+    except (ValueError, TypeError):
+        return True  # Si la date n'est pas exploitable, on la considère planifiable
+
+    # Normaliser le champ Relache en chaîne
+    if isinstance(relache_val, (int, float)):
+        relache_str = str(int(relache_val))
+    else:
+        relache_str = str(relache_val).strip().lower()
+
+    # Cas particulier : pair / impair
+    if "pair" in relache_str and date_int % 2 == 0:
         return False
-    if "pair" in relache_val_str and int(date_val) % 2 == 0:
+    if "impair" in relache_str and date_int % 2 != 0:
         return False
-    if "impair" in relache_val_str and int(date_val) % 2 != 0:
-        return False
+
+    # Cas général : liste explicite de jours (ex : "20,21")
+    try:
+        jours = [int(float(x.strip())) for x in relache_str.split(",")]
+        if date_int in jours:
+            return False
+    except ValueError:
+        pass  # ignorer s'il ne s'agit pas d'une liste de jours
+
     return True
 
 # Renvoie la liste des activités planifiées
