@@ -16,6 +16,17 @@ PAUSE_DIN_DEBUT_MAX = datetime.time(21, 0)
 DUREE_REPAS = datetime.timedelta(hours=1)
 DUREE_CAFE = datetime.timedelta(minutes=30)
 
+# Retourne les lignes d'un df pour lesquelles une colonne donnée est vide (None ou "")
+def lignes_vides(df, col):
+    return df[df[col].isna() | (df[col].astype(str).str.strip() == "")]
+
+# retourne le titre d'une activité
+def get_descripteur_activite(date, row):
+    titre = f"{date} - {row['Heure'].strip()} - {row['Activite']}"
+    if not (pd.isna(row["Theatre"]) or str(row["Theatre"]).strip() == ""):
+        titre = titre + f"( {row['Theatre']}) - P{formatter_cellule_int(row['Priorite'])}"
+    return titre
+
 # Affiche le titre de la page
 def afficher_titre():
     # Réduire l’espace en haut de la page
@@ -73,11 +84,10 @@ def afficher_aide():
         <li>Date : Date de l'activité (entier)</li>
         <li>Heure : Heure de début de l'activité (format HHhMM)</li>
         <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
-        <li>Spectacle : Nom du spectacle (optionnel, peut être vide si l'activité est autre)</li>
+        <li>Activité : Nom du spectacle ou de l'activité s'il s'agit d'une autre activité (pause, visite, ...)</li>
         <li>Théâtre : Nom du théâtre où se déroule l'activité</li>
         <li>Relâche : Jours de relâche pour le spectacle (entier, peut être vide)</li>
         <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
-        <li>Autres : Autres activités, pauses par exemple (optionnel, pour une pause mettre le mot pause suivi du type de pause, par exemple "pause déjeuner")</li>
         </ul>
 
         <p style="margin-bottom: 0.2em">📥Un modèle Excel est disponible <a href="https://github.com/jnicoloso-91/PlanifAvignon-05/raw/main/Mod%C3%A8le%20Excel.xlsx" download>
@@ -90,7 +100,8 @@ def afficher_aide():
 
 # Nettoyage des données du tableau Excel importé
 def nettoyer_donnees(df):
-
+    
+    # Renvoie val sous la forme "10h00" si datetime ou time, "" si None, str(val).strip() sinon
     def heure_str(val):
         from datetime import datetime, time
         if isinstance(val, (datetime, time)):
@@ -99,6 +110,7 @@ def nettoyer_donnees(df):
             return ""
         return str(val).strip()
     
+    # Renvoie un datetime basé sur BASE_DATE si h est datetime, time, str de la forme 10h00, 10:00 ou 10:00:00, None dans les autres cas
     def parse_heure(h):
         from datetime import datetime, time
 
@@ -131,6 +143,7 @@ def nettoyer_donnees(df):
 
         return None
     
+    # Renvoie val sous la forme "1h00" si timedelta, "" si None, str(val).strip() sinon
     def duree_str(val):
         from datetime import datetime, time
         if isinstance(val, pd.Timedelta):
@@ -142,6 +155,7 @@ def nettoyer_donnees(df):
             return ""
         return str(val).strip()
 
+    # Renvoie un timedelta si h est timedelta, datetime, time, str de la forme 1h00, 1:00 ou 1:00:00, None dans les autres cas
     def parse_duree(d):
         from datetime import datetime, time
 
@@ -187,16 +201,23 @@ def nettoyer_donnees(df):
         # Nettoyage noms de colonnes : suppression espaces et normalisation accents
         df.columns = df.columns.str.strip().str.replace("\u202f", " ").str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8")
 
-        colonnes_attendues = ["Reserve", "Priorite", "Date", "Heure", "Duree", "Theatre", "Spectacle", "Relache", "Autres"]
-        colonnes_attendues_avec_accents = ["Réservé", "Priorité", "Date", "Heure", "Durée", "Théâtre", "Spectacle", "Relâche", "Autres"]
+        colonnes_attendues = ["Reserve", "Priorite", "Date", "Heure", "Duree", "Theatre", "Relache"]
+        colonnes_attendues_avec_accents = ["Réservé", "Priorité", "Date", "Heure", "Durée", "Théâtre", "Activité", "Relâche"]
 
-        if not all(col in df.columns for col in colonnes_attendues):
+        if not all(col in df.columns for col in colonnes_attendues) and ("Activite" in df.columns or "Spectacle" in df.columns):
             st.error("Le fichier ne contient pas toutes les colonnes attendues: " + ", ".join(colonnes_attendues_avec_accents))
             st.session_state["fichier_invalide"] = True
         else:
             # Suppression du flag "fichier_invalide" s'il existe
             if "fichier_invalide" in st.session_state:
                 del st.session_state["fichier_invalide"] 
+
+            # Changement de la colonne Spectacle en Activite
+            if "Spectacle" in df.columns:
+                df.rename(columns={"Spectacle": "Activite"}, inplace=True)
+            
+            # Suppression des lignes presque vides i.e. ne contenant que des NaN ou des ""
+            df = df[~df.apply(lambda row: all(pd.isna(x) or str(x).strip() == "" for x in row), axis=1)].reset_index(drop=True)
 
             # Nettoyage Heure : "10h00" -> datetime.time
             df["Heure"] = df["Heure"].apply(heure_str)
@@ -208,27 +229,29 @@ def nettoyer_donnees(df):
 
             # Convertit explicitement certaines colonnes pour éviter les erreurs de conversion pandas
             df["Reserve"] = df["Reserve"].astype("object").fillna("").astype(str)
-            df["Autres"] = df["Autres"].astype("object").fillna("").astype(str)
             df["Relache"] = df["Relache"].astype("object").fillna("").astype(str)
             pd.set_option('future.no_silent_downcasting', True)
             df["Priorite"] = pd.to_numeric(df["Priorite"], errors="coerce").astype("Int64")
             df["Priorite"] = df["Priorite"].astype("object").fillna("").astype(str)
-
-            # Lit les hyperliens de la colonne Spectacle
-            liens_spectacles = {}
-            ws = st.session_state.wb.worksheets[0]
-            if "liens_spectacles" not in st.session_state:
-                col_names = [cell.value for cell in ws[1]]
-                col_excel_index = col_names.index("Spectacle") + 1  # 1-based
-                for row in ws.iter_rows(min_row=2, min_col=col_excel_index, max_col=col_excel_index):
-                    cell = row[0]
-                    if cell.hyperlink:
-                        liens_spectacles[cell.value] = cell.hyperlink.target
-                st.session_state.liens_spectacles = liens_spectacles
             
     except Exception as e:
         st.error(f"Erreur lors du décodage du fichier : {e}")
         st.session_state["fichier_invalide"] = True
+    
+    return df
+
+# Renvoie les hyperliens de la colonne Spectacle 
+def get_liens_spectacles():
+    liens_spectacles = {}
+    ws = st.session_state.wb.worksheets[0]
+    for cell in ws[1]:
+        if cell.value and str(cell.value).strip().lower() in ["activité", "spectacle"]:
+            col_excel_index = cell.column
+    for row in ws.iter_rows(min_row=2, min_col=col_excel_index, max_col=col_excel_index):
+        cell = row[0]
+        if cell.hyperlink:
+            liens_spectacles[cell.value] = cell.hyperlink.target
+    return liens_spectacles
 
 # Vérifie la cohérence des informations du dataframe et affiche le résultat dans un expander
 def verifier_coherence(df):
@@ -241,12 +264,12 @@ def verifier_coherence(df):
             return False
         
     # 1. 🔁 Doublons
-    df_valid = df[df["Spectacle"].notna() & (df["Spectacle"].astype(str).str.strip() != "")]
+    df_valid = df[df["Activite"].notna() & (df["Activite"].astype(str).str.strip() != "")]
 
     # Création d'une colonne temporaire pour la comparaison
-    df_valid = df[df["Spectacle"].notna() & (df["Spectacle"].astype(str).str.strip() != "")]
+    df_valid = df[df["Activite"].notna() & (df["Activite"].astype(str).str.strip() != "")]
     df_valid = df_valid.copy()  # pour éviter SettingWithCopyWarning
-    df_valid["_spectacle_clean"] = df_valid["Spectacle"].astype(str).str.strip().str.lower()
+    df_valid["_spectacle_clean"] = df_valid["Activite"].astype(str).str.strip().str.lower()
     doublons = df_valid[df_valid.duplicated(subset=["_spectacle_clean"], keep=False)]
 
     if not doublons.empty:
@@ -258,7 +281,7 @@ def verifier_coherence(df):
                 date_str = "Vide"
             heure_str = str(row["Heure"]).strip() if pd.notna(row["Heure"]) else "Vide"
             duree_str = str(row["Duree"]).strip() if pd.notna(row["Duree"]) else "Vide"
-            bloc.append(f"{date_str} - {heure_str} - {row['Spectacle']} ({duree_str})")
+            bloc.append(f"{date_str} - {heure_str} - {row['Activite']} ({duree_str})")
         erreurs.append("\n".join(bloc))
         
     # 2. ⛔ Chevauchements
@@ -278,7 +301,7 @@ def verifier_coherence(df):
         bloc = ["🔴 Chevauchements:"]
         for r1, r2 in chevauchements:
             bloc.append(
-                f"{r1['Spectacle']} ({r1['Heure']} / {r1['Duree']}) chevauche {r2['Spectacle']} ({r2['Heure']} / {r2['Duree']}) le {r1['Date']}"
+                f"{r1['Activite']} ({r1['Heure']} / {r1['Duree']}) chevauche {r2['Activite']} ({r2['Heure']} / {r2['Duree']}) le {r1['Date']}"
             )
         erreurs.append("\n".join(bloc))
 
@@ -286,7 +309,7 @@ def verifier_coherence(df):
     bloc_format = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
             continue
         if row.isna().all():
             continue
@@ -296,7 +319,7 @@ def verifier_coherence(df):
             bloc_format.append(f"Date invalide à la ligne {idx + 2} : {row['Date']}")
 
         # Ne tester Heure/Duree que si Spectacle ou Autres est renseigné
-        if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
+        if str(row["Activite"]).strip() != "":
             if not re.match(r"^\d{1,2}h\d{2}$", str(row["Heure"]).strip()):
                 bloc_format.append(f"Heure invalide à la ligne {idx + 2} : {row['Heure']}")
             if not re.match(r"^\d{1,2}h\d{2}$", str(row["Duree"]).strip()):
@@ -306,7 +329,7 @@ def verifier_coherence(df):
     bloc_relache = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
             continue
         if row.isna().all():
             continue
@@ -315,10 +338,10 @@ def verifier_coherence(df):
             est_entier(row["Date"]) and
             est_entier(row["Relache"]) and
             int(float(row["Date"])) == int(float(row["Relache"])) and
-            str(row["Spectacle"]).strip() != ""
+            str(row["Activite"]).strip() != ""
         ):
             bloc_relache.append(
-                f"{row['Spectacle']} prévu le jour de relâche ({int(row['Date'])}) à la ligne {idx + 2}"
+                f"{row['Activite']} prévu le jour de relâche ({int(row['Date'])}) à la ligne {idx + 2}"
             )
     if bloc_relache:
         erreurs.append("🛑 Spectacles programmés un jour de relâche:\n" + "\n".join(bloc_relache))
@@ -327,12 +350,12 @@ def verifier_coherence(df):
     bloc_heure_vide = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
             continue
         if row.isna().all():
             continue
 
-        if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
+        if str(row["Activite"]).strip() != "":
             if pd.isna(row["Heure"]) or str(row["Heure"]).strip() == "":
                 bloc_heure_vide.append(f"Heure vide à la ligne {idx + 2}")
     if bloc_heure_vide:
@@ -342,12 +365,12 @@ def verifier_coherence(df):
     bloc_heure_invalide = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
             continue
         if row.isna().all():
             continue
 
-        if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
+        if str(row["Activite"]).strip() != "":
             h = row["Heure"]
             if pd.notna(h) and str(h).strip() != "":
                 h_str = str(h).strip().lower()
@@ -362,7 +385,7 @@ def verifier_coherence(df):
     bloc_duree_nulle = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
             continue
         if row.isna().all():
             continue
@@ -380,12 +403,12 @@ def verifier_coherence(df):
     bloc_duree_invalide = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
             continue
         if row.isna().all():
             continue
 
-        if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
+        if str(row["Activite"]).strip() != "":
             d = row["Duree"]
             if pd.notna(d) and str(d).strip() != "":
                 d_str = str(d).strip().lower()
@@ -417,30 +440,18 @@ def get_activites_planifiees(df):
 
 # Affiche les activités planifiées dans un tableau
 def afficher_activites_planifiees(planifies):
-    df_affichage = planifies[["Date", "Heure", "Duree", "Spectacle", "Theatre", "Priorite", "Reserve", "Autres"]].rename(columns={
+    df_affichage = planifies[["Date", "Heure", "Duree", "Activite", "Theatre", "Priorite", "Reserve"]].rename(columns={
         "Reserve": "Réservé",
         "Priorite": "Priorité",
         "Duree": "Durée",
         "Theatre": "Théâtre",
         "Relache": "Relâche",
-        "Autres": "Autres                  "
+        "Activite": "Activité",
     })
 
     st.dataframe(df_affichage.fillna(""), hide_index=True,)
 
 # Vérifie si une date de référence est compatible avec la valeur de la colonne Relache qui donne les jours de relache pour un spectacle donné
-# def est_hors_relache(relache_val, date_val):
-#     if pd.isna(relache_val):
-#         return True  # Aucune relache spécifiée
-#     relache_val_str = str(int(relache_val)).lower().strip() if isinstance(relache_val, (int, float)) else relache_val.lower().strip()
-#     date_val_str = str(int(date_val)).lower().strip() if isinstance(date_val, (int, float)) else date_val.lower().strip()
-#     if relache_val_str == date_val_str:
-#         return False
-#     if "pair" in relache_val_str and int(date_val) % 2 == 0:
-#         return False
-#     if "impair" in relache_val_str and int(date_val) % 2 != 0:
-#         return False
-#     return True
 def est_hors_relache(relache_val, date_val):
     """Retourne True si la date ne correspond pas à un jour de relâche."""
     if pd.isna(relache_val) or pd.isna(date_val):
@@ -477,15 +488,7 @@ def est_hors_relache(relache_val, date_val):
 def get_activites_supprimables(df, planifies):
     activites_planifies = []
     for _, row in planifies[planifies["Reserve"].astype(str).str.strip().str.lower() != "oui"].iterrows():
-        # Heure de début
-        heure_debut = row["Heure_dt"]
-        # Heure de fin
-        heure_fin = heure_debut + row["Duree_dt"] if pd.notnull(heure_debut) and pd.notnull(row["Duree_dt"]) else None
-        # Format date
-        date_str = str(int(row["Date"])) if pd.notnull(row["Date"]) else ""
-        titre = f"{row['Spectacle']} ({row['Theatre']}) - P{formatter_cellule_int(row['Priorite'])}" if not pd.isna(row["Spectacle"]) else f"{row['Autres']}"
-        # desc = f"{date_str} de {row['Heure'].strip()} à {heure_fin.strftime('%Hh%M')} ({row['Duree'].strip()}) - " + titre
-        desc = f"{date_str} - {row['Heure'].strip()} - " + titre
+        desc = get_descripteur_activite(str(int(row["Date"])) if pd.notnull(row["Date"]) else "", row)
         activites_planifies.append((desc, row.name))
     return activites_planifies
 
@@ -504,14 +507,13 @@ def supprimer_activite(planifies, supprimables):
             if est_pause(ligne_ref):
                 st.session_state.df.at[idx, "Heure"] = None
                 st.session_state.df.at[idx, "Duree"] = None
-                st.session_state.df.at[idx, "Autres"] = None
             st.rerun()
 
 # Création de la liste des créneaux avant/après pour chaque activité planifiée
 def get_creneaux(df, planifies, traiter_pauses):
 
     def description_creneau(row, borne_min, borne_max, type_creneau):
-        titre = row["Spectacle"] if not pd.isna(row["Spectacle"]) else row["Autres"]
+        titre = row["Activite"] if not pd.isna(row["Activite"]) else ""
         date_str = str(int(row["Date"])) if pd.notnull(row["Date"]) else ""
         return ((
             f"{date_str} - [{borne_min.strftime('%Hh%M')} - {borne_max.strftime('%Hh%M')}] - {type_creneau} - {titre}",
@@ -617,8 +619,7 @@ def get_activites_planifiables_avant(df, planifies, ligne_ref, traiter_pauses=Tr
         h_fin = h_debut + row["Duree_dt"]
         # Le spectacle doit commencer après debut_min et finir avant fin_max
         if h_debut >= debut_min + MARGE and h_fin <= fin_max - MARGE and est_hors_relache(row["Relache"], date_ref):
-            titre = f"{row['Spectacle']} ({row['Theatre']}) - P{formatter_cellule_int(row['Priorite'])}" if not pd.isna(row["Spectacle"]) else f"{row['Autres']}"
-            desc = f"{int(date_ref)} - {row['Heure'].strip()} - " + titre
+            desc = get_descripteur_activite(int(date_ref), row)
             proposables.append((h_debut, desc, row.name, "ActiviteExistante"))
     if traiter_pauses:
         ajouter_pauses(proposables, planifies, ligne_ref, "Avant")
@@ -649,8 +650,7 @@ def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=Tr
         h_fin = h_debut + row["Duree_dt"]
         # Le spectacle doit commencer après debut_min et finir avant fin_max
         if h_debut >= debut_min + MARGE and h_fin <= fin_max - MARGE and est_hors_relache(row["Relache"], date_ref):
-            titre = f"{row['Spectacle']} ({row['Theatre']}) - P{formatter_cellule_int(row['Priorite'])}" if not pd.isna(row["Spectacle"]) else f"{row['Autres']}"
-            desc = f"{int(date_ref)} - {row['Heure'].strip()} - " + titre
+            desc = get_descripteur_activite(int(date_ref), row)
             proposables.append((h_debut, desc, row.name, "ActiviteExistante"))
     if traiter_pauses:
         ajouter_pauses(proposables, planifies, ligne_ref, "Après")
@@ -660,8 +660,11 @@ def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=Tr
     
 # Vérifie si une pause d'un type donné est déjà présente pour un jour donné dans le dataframe des activités planiées
 def pause_deja_existante(planifies, jour, type_pause):
-    df_jour = planifies[planifies["Date"] == jour]
-    return df_jour["Autres"].astype(str).str.contains(type_pause, case=False, na=False).any() 
+    df_jour = planifies[
+        (planifies["Date"] == jour) & 
+        (planifies["Theatre"].isna() | planifies["Theatre"].astype(str).str.strip() == "")
+    ]
+    return df_jour["Activite"].astype(str).str.contains(type_pause, case=False, na=False).any() 
 
 # Ajoute les pauses possibles (déjeuner, dîner, café) à une liste d'activités planifiables pour une activité donnée par son descripteur ligne_ref
 def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
@@ -739,14 +742,18 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
     ajouter_pause_cafe(proposables, debut_min, fin_max)
    
 def est_pause(ligne_ref):
-    val = str(ligne_ref["Autres"]).strip()
+    val = str(ligne_ref["Activite"]).strip()
     valeurs = val.split()
     if not valeurs:
         return False
-    return val.split()[0].lower() == "pause"
+    return (val.split()[0].lower() == "pause" and 
+        (pd.isna(ligne_ref["Theatre"]) or str(ligne_ref["Theatre"]).strip() == "")
+    )
 
 def est_pause_cafe(ligne_ref):
-    val = str(ligne_ref["Autres"]).strip()
+    if not est_pause(ligne_ref):
+        return False
+    val = str(ligne_ref["Activite"]).strip()
     valeurs = val.split()
     if not valeurs:
         return False
@@ -758,15 +765,16 @@ def sauvegarder_excel():
     if "df" in st.session_state:
 
         # Trier par Date (nombre entier) puis Heure
-        df_sorted = st.session_state.df.sort_values(by=["Date", "Heure_dt"]).reset_index(drop=True).drop(columns=["Heure_dt", "Duree_dt"], errors='ignore')
-        df_sorted = df_sorted.rename(columns={
-            "Reserve": "Réservé",
-            "Priorite": "Priorité",
-            "Duree": "Durée",
-            "Theatre": "Théâtre",
-            "Relache": "Relâche",
-            "Autres": "Autres    "
-        })
+        # df_sorted = st.session_state.df.sort_values(by=["Date", "Heure_dt"]).reset_index(drop=True).drop(columns=["Heure_dt", "Duree_dt"], errors='ignore')
+
+        # df_sorted = df_sorted.rename(columns={
+        #     "Reserve": "Réservé",
+        #     "Priorite": "Priorité",
+        #     "Duree": "Durée",
+        #     "Theatre": "Théâtre",
+        #     "Relache": "Relâche",
+        #     "Activite": "Activité",
+        # })
 
         # Récupération de la worksheet à traiter
         wb = st.session_state.wb
@@ -777,33 +785,75 @@ def sauvegarder_excel():
         for row in ws.iter_rows(min_row=2, max_row=ws.max_row, max_col=ws.max_column):
             for cell in row:
                 cell.value = None  # on garde le style, on efface juste la valeur
+                cell.hyperlink = None
 
         # Réinjecter les données du df dans la feuille Excel
-        col_spectacle = [cell.value for cell in ws[1]].index("Spectacle") + 1
-        print("")
-        dernier_lien = ""
-        for row_idx, row in df_sorted.iterrows():
+        from copy import copy
+        for cell in ws[1]:
+            if cell.value and str(cell.value).strip().lower() in ["activité", "spectacle"]:
+                col_spectacle = cell.column
+        source_font = ws.cell(row=1, column=1).font
+
+        # for row_idx, (_, row) in enumerate(df_sorted.iterrows()):
+        #     for col_idx, value in enumerate(row, start=1):
+        #         if pd.isna(value):
+        #                 ws.cell(row=row_idx + 2, column=col_idx, value=None)
+        #         else:
+        #             try:
+        #                 # Tente la conversion en entier (ne garde que les entiers stricts, pas les float)
+        #                 v = int(value)
+        #                 if str(v) == str(value).strip():
+        #                     ws.cell(row=row_idx + 2, column=col_idx, value=v)
+        #                 else:
+        #                     ws.cell(row=row_idx + 2, column=col_idx, value=value)
+        #             except (ValueError, TypeError):
+        #                 ws.cell(row=row_idx + 2, column=col_idx, value=value)                
+        #                 # +2 car openpyxl est 1-indexé et on saute la ligne d’en-tête
+        #                 # Ajoute le lien s’il s’agit de la colonne Spectacle
+        #                 if col_idx == col_spectacle and liens_spectacles is not None:
+        #                     lien = liens_spectacles.get(value)
+        #                     if lien:
+        #                         ws.cell(row=row_idx + 2, column=col_idx).hyperlink = lien
+        #                         ws.cell(row=row_idx + 2, column=col_idx).font = Font(color="0000EE", underline="single")
+        #                     else:
+        #                         ws.cell(row=row_idx + 2, column=col_idx).hyperlink = None
+        #                         ws.cell(row=row_idx + 2, column=col_idx).font = copy(source_font)
+        # Réindexer proprement pour éviter les trous
+        df_sorted = st.session_state.df.copy()
+        df_sorted = df_sorted.sort_values(by=["Date", "Heure_dt"])
+        df_sorted = df_sorted.reset_index(drop=True)
+        df_sorted = df_sorted.drop(columns=["Heure_dt", "Duree_dt"], errors='ignore')
+
+        # Réécriture sans saut de ligne
+        for i, (_, row) in enumerate(df_sorted.iterrows()):
+            row_idx = i + 2  # ligne Excel (1-indexée + entête)
             for col_idx, value in enumerate(row, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+
                 if pd.isna(value):
-                        ws.cell(row=row_idx + 2, column=col_idx, value=None)
+                    cell.value = None
                 else:
                     try:
-                        # Tente la conversion en entier (ne garde que les entiers stricts, pas les float)
+                        # Conserve les entiers réels, sinon cast en string
                         v = int(value)
                         if str(v) == str(value).strip():
-                            ws.cell(row=row_idx + 2, column=col_idx, value=v)
+                            cell.value = v
                         else:
-                            ws.cell(row=row_idx + 2, column=col_idx, value=value)
+                            cell.value = value
                     except (ValueError, TypeError):
-                        ws.cell(row=row_idx + 2, column=col_idx, value=value)                
-                        # +2 car openpyxl est 1-indexé et on saute la ligne d’en-tête
-                        # Ajoute le lien s’il s’agit de la colonne Spectacle
-                        if col_idx == col_spectacle and liens_spectacles is not None:
-                            lien = liens_spectacles.get(value)
-                            if lien:
-                                ws.cell(row=row_idx + 2, column=col_idx).hyperlink = lien
-                                ws.cell(row=row_idx + 2, column=col_idx).font = Font(color="0000EE", underline="single")
-        
+                        cell.value = value
+
+                    # Ajout d'hyperlien pour la colonne Spectacle
+                    if col_idx == col_spectacle and liens_spectacles is not None:
+                        lien = liens_spectacles.get(value)
+                        if lien:
+                            cell.hyperlink = lien
+                            cell.font = Font(color="0000EE", underline="single")
+                            print(f"{row_idx} - {cell.value} - {lien}")
+                        else:
+                            cell.hyperlink = None
+                            cell.font = copy(source_font)   
+
         # Sauvegarde dans un buffer mémoire
         buffer = io.BytesIO()
         wb.save(buffer)
@@ -837,21 +887,21 @@ def ajouter_activite(date_ref, proposables, choix_activite):
             st.session_state.df.at[index, "Date"] = date_ref
             st.session_state.df.at[index, "Heure"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             st.session_state.df.at[index, "Duree"] = formatter_timedelta(DUREE_REPAS)
-            st.session_state.df.at[index, "Autres"] = "Pause déjeuner"
+            st.session_state.df.at[index, "Activite"] = "Pause déjeuner"
         elif type_activite == "dîner":
             # Pour les pauses, on ne planifie pas d'heure spécifique
             index = len(st.session_state.df)  # Ajouter à la fin du DataFrame
             st.session_state.df.at[index, "Date"] = date_ref
             st.session_state.df.at[index, "Heure"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             st.session_state.df.at[index, "Duree"] = formatter_timedelta(DUREE_REPAS)
-            st.session_state.df.at[index, "Autres"] = "Pause dîner"
+            st.session_state.df.at[index, "Activite"] = "Pause dîner"
         elif type_activite == "café":
             # Pour les pauses, on ne planifie pas d'heure spécifique
             index = len(st.session_state.df)  # Ajouter à la fin du DataFrame
             st.session_state.df.at[index, "Date"] = date_ref
             st.session_state.df.at[index, "Heure"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             st.session_state.df.at[index, "Duree"] = formatter_timedelta(DUREE_CAFE)
-            st.session_state.df.at[index, "Autres"] = "Pause café"
+            st.session_state.df.at[index, "Activite"] = "Pause café"
         st.rerun()
 
 # Formatte un objet timedelta en une chaîne de caractères "XhYY"
@@ -876,6 +926,7 @@ def file_uploader_callback():
         try:
             st.session_state.df = pd.read_excel(fichier)
             st.session_state.wb = load_workbook(fichier)
+            st.session_state.liens_spectacles = get_liens_spectacles()
         except Exception as e:
             st.error(f"Erreur lors du chargement du fichier : {e}")
             st.stop()
@@ -898,11 +949,11 @@ def main():
     # Si le fichier est chargé dans st.session_state.df et valide, on le traite
     if "df" in st.session_state:
 
-        # Accès au DataFrame
-        df = st.session_state.df
-
         # Nettoyage des données
-        nettoyer_donnees(df)
+        st.session_state.df = nettoyer_donnees(st.session_state.df)
+
+        # Accès au DataFrame après nettoyage
+        df = st.session_state.df
 
         if not "fichier_invalide" in st.session_state:
             # Vérification de cohérence des informations du df
