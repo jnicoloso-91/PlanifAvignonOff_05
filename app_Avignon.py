@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import io
+import re
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 
@@ -129,6 +130,7 @@ def nettoyer_donnees(df):
             df["Autres"] = df["Autres"].astype("object").fillna("").astype(str)
             df["Relache"] = df["Relache"].astype("object").fillna("").astype(str)
             pd.set_option('future.no_silent_downcasting', True)
+            df["Priorite"] = pd.to_numeric(df["Priorite"], errors="coerce").astype("Int64")
             df["Priorite"] = df["Priorite"].astype("object").fillna("").astype(str)
 
             # Lit les hyperliens de la colonne Spectacle
@@ -146,6 +148,115 @@ def nettoyer_donnees(df):
     except Exception as e:
         st.error(f"Erreur lors du décodage du fichier : {e}")
         st.session_state["fichier_invalide"] = True
+
+# Vérifie la cohérence des informations du dataframe et affiche le résultat dans un expander
+def verifier_coherence(df):
+    erreurs = []
+
+    def est_entier(x):
+        try:
+            return not pd.isna(x) and str(x).strip() != "" and int(float(x)) == float(x)
+        except Exception:
+            return False
+
+    # 1. 🔁 Doublons
+    doublons = df[df.duplicated(subset=["Date", "Heure", "Duree", "Spectacle"], keep=False)]
+    if not doublons.empty:
+        bloc = ["🟠 Doublons:"]
+        for _, row in doublons.iterrows():
+            if row.isna().all():
+                continue
+            bloc.append(f"{row['Date']} à {row['Heure']} : **{row['Spectacle']}** ({row['Duree']})")
+        erreurs.append("\n".join(bloc))
+
+    # 2. ⛔ Chevauchements
+    chevauchements = []
+    df_sorted = df.sort_values(by=["Date", "Heure_dt"])
+    for i in range(1, len(df_sorted)):
+        r1 = df_sorted.iloc[i - 1]
+        r2 = df_sorted.iloc[i]
+        if r1.isna().all() or r2.isna().all():
+            continue
+        if r1["Date"] == r2["Date"]:
+            fin1 = r1["Heure_dt"] + r1["Duree_dt"]
+            debut2 = r2["Heure_dt"]
+            if debut2 < fin1:
+                chevauchements.append((r1, r2))
+    if chevauchements:
+        bloc = ["🔴 Chevauchements:"]
+        for r1, r2 in chevauchements:
+            bloc.append(
+                f"{r1['Spectacle']} ({r1['Heure']} / {r1['Duree']}) chevauche {r2['Spectacle']} ({r2['Heure']} / {r2['Duree']}) le {r1['Date']}"
+            )
+        erreurs.append("\n".join(bloc))
+
+    # 3. 🕒 Erreurs de format
+    bloc_format = []
+    for idx, row in df.iterrows():
+        # ignorer si rien n'est planifié
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Spectacle", "Heure", "Duree", "Autres"]):
+            continue
+
+        # Date : uniquement si non NaN
+        if pd.notna(row["Date"]) and not est_entier(row["Date"]):
+            bloc_format.append(f"Date invalide à la ligne {idx + 2} : {row['Date']}")
+
+        # Ne tester Heure/Duree que si Spectacle ou Autres est renseigné
+        if str(row["Spectacle"]).strip() != "" or str(row["Autres"]).strip() != "":
+            if not re.match(r"^\d{1,2}h\d{2}$", str(row["Heure"]).strip()):
+                bloc_format.append(f"Heure invalide à la ligne {idx + 2} : {row['Heure']}")
+            if not re.match(r"^\d{1,2}h\d{2}$", str(row["Duree"]).strip()):
+                bloc_format.append(f"Durée invalide à la ligne {idx + 2} : {row['Duree']}")
+
+    # 4. 📆 Spectacles un jour de relâche (Date == Relache)
+    bloc_relache = []
+    for idx, row in df.iterrows():
+        if row.isna().all():
+            continue
+        if (
+            est_entier(row["Date"]) and
+            est_entier(row["Relache"]) and
+            int(row["Date"]) == int(row["Relache"]) and
+            str(row["Spectacle"]).strip() != ""
+        ):
+            bloc_relache.append(
+                f"{row['Spectacle']} prévu le jour de relâche ({int(row['Date'])}) à la ligne {idx + 2}"
+            )
+    if bloc_relache:
+        erreurs.append("🛑 Spectacles programmés un jour de relâche:\n" + "\n".join(bloc_relache))
+
+    # 5. ⌛ Durées nulles (valide mais égale à 0)
+    bloc_duree_nulle = []
+    for idx, row in df.iterrows():
+        if row.isna().all():
+            continue
+        if isinstance(row["Duree_dt"], pd.Timedelta) and row["Duree_dt"] == pd.Timedelta(0):
+            bloc_duree_nulle.append(
+                f"Durée égale à 0 à la ligne {idx + 2} : {row['Duree']}"
+            )
+    if bloc_duree_nulle:
+        erreurs.append("⚠️ Durées égales à zéro:\n" + "\n".join(bloc_duree_nulle))
+
+    # 6. 📋 Affichage final dans Streamlit
+    # with st.expander("🔍 Vérification de cohérence du fichier"):
+    #     if not erreurs:
+    #         st.markdown("✅ **Aucune erreur détectée. Fichier cohérent.**")
+    #     else:
+    #         st.markdown("\n\n".join(erreurs))
+    contenu = "<div style='font-size: 14px;'>"
+    for bloc in erreurs:
+        lignes = bloc.split("\n")
+        if lignes[0].startswith("🟠") or lignes[0].startswith("🔴") or lignes[0].startswith("⚠️") or lignes[0].startswith("🛑"):
+            contenu += f"<p><strong>{lignes[0]}</strong></p><ul>"
+            for ligne in lignes[1:]:
+                contenu += f"<li>{ligne}</li>"
+            contenu += "</ul>"
+        else:
+            contenu += f"<p>{bloc}</p>"
+    contenu += "</div>"
+
+    with st.expander("🔍 Vérification du fichier"):
+        st.markdown(contenu, unsafe_allow_html=True)
 
 # Renvoie le dataframe des activités planifiées
 def get_activites_planifiees(df):
@@ -610,6 +721,9 @@ def main():
         nettoyer_donnees(df)
 
         if not "fichier_invalide" in st.session_state:
+            # Vérification de cohérence des informations du df
+            verifier_coherence(df) 
+
             # Affectation du flag de traitement des pauses
             traiter_pauses = st.checkbox("Tenir compte des pauses (déjeuner, dîner, café)", value=False)  
 
