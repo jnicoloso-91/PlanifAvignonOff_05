@@ -30,7 +30,8 @@ Le fichier doit comporter les colonnes suivantes (sans accents et avec majuscule
 | Colonne     | Type attendu           | Description                                    |
 | ----------- | ---------------------- | ---------------------------------------------- |
 | `Date`      | Entier (ex : 20250722) | Jour de l'activité                             |
-| `Heure`     | Texte `Hhmm`           | Heure de début (`10h00`, `9h15`, etc.)         |
+| `Début`     | Texte `Hhmm`           | Heure de début (`10h00`, `9h15`, etc.)         |
+| `Fin`       | Texte `Hhmm`           | Heure de fin (`10h00`, `9h15`, etc.)           |
 | `Durée`     | Texte `Hhmm`           | Durée (`1h30`, `0h45`, etc.)                   |
 | `Activité`  | Texte                  | Nom de l'activité                              |
 | `Lieu`      | Texte                  | Lieu de l'activité                             |
