@@ -5,6 +5,8 @@ import io
 import re
 from openpyxl import load_workbook
 from openpyxl.styles import Font
+import requests
+from bs4 import BeautifulSoup
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -15,10 +17,6 @@ PAUSE_DIN_DEBUT_MIN = datetime.time(19, 0)
 PAUSE_DIN_DEBUT_MAX = datetime.time(21, 0)
 DUREE_REPAS = datetime.timedelta(hours=1)
 DUREE_CAFE = datetime.timedelta(minutes=30)
-
-# Retourne les lignes d'un df pour lesquelles une colonne donnée est vide (None ou "")
-def lignes_vides(df, col):
-    return df[df[col].isna() | (df[col].astype(str).str.strip() == "")]
 
 # retourne le titre d'une activité
 def get_descripteur_activite(date, row):
@@ -43,20 +41,9 @@ def afficher_titre():
     # Titre de la page
     st.markdown("## Planificateur Avignon Off")
 
-# Affichage de l'aide
+# Affiche l'aide
 def afficher_aide():
     
-    # st.sidebar.markdown("### Aide")
-    # st.sidebar.markdown("""
-    # - **Chargement du fichier** : Sélectionnez un fichier Excel contenant les spectacles à planifier.
-    # - **Affichage des activités planifiées** : Consultez les activités déjà planifiées.
-    # - **Suppression d'une activité** : Sélectionnez une activité planifiée pour la supprimer (si elle n'est pas réservée).
-    # - **Sélection d'un créneau** : Choisissez un créneau avant ou après une activité planifiée.
-    # - **Sélection d'une activité à planifier** : Choisissez une activité à planifier dans le créneau sélectionné.
-    # - **Renvoi du fichier modifié** : Renvoyer le fichier Excel modifié.
-    # - **Prise en compte des pauses** : Optionnellement, tenez compte des pauses (déjeuner, dîner, café) lors de la planification des activités.
-    # """, )
-
     with st.expander("ℹ️ À propos"):
         st.markdown("""
         <div style='font-size: 14px;'>
@@ -97,9 +84,74 @@ def afficher_aide():
         <p>ℹ️ Si le téléchargement ne démarre pas, faites un clic droit → "Enregistrer le lien sous...".</p>
 
         </div>
-        """, unsafe_allow_html=True)   
+        """, unsafe_allow_html=True)  
 
-# Nettoyage des données du tableau Excel importé
+# 1️⃣ Tentative de récupération depuis site officiel (recherche simple)
+def fetch_off_festival_dates():
+    url = "https://www.festivaloffavignon.com/"
+    r = requests.get(url, timeout=5)
+    soup = BeautifulSoup(r.text, "html.parser")
+    # Recherche dans le texte "du 5 au 26 juillet 2025"
+    text = soup.get_text()
+    match = re.search(r"du\s+(\d{1,2})\s+juillet\s+au\s+(\d{1,2})\s+juillet\s+2025", text, re.IGNORECASE)
+    if match:
+        d1, d2 = map(int, match.groups())
+        base_year = 2025
+        base_month = 7
+        return datetime.date(base_year, base_month, d1), datetime.date(base_year, base_month, d2)
+    return None, None
+
+# Choix de la période à planifier
+def choix_periode_a_planifier(df):
+
+    if "nouveau_fichier" not in st.session_state:
+        st.session_state.nouveau_fichier = True
+    
+    # Initialisation de la periode si nouveau fichier
+    if st.session_state.nouveau_fichier == True:
+        # Reset du flag déclenché par callback upload
+        st.session_state.nouveau_fichier = False
+
+        # Initialisation des variables de début et de fin de période à planifier
+        periode_a_planifier_debut = None
+        periode_a_planifier_fin = None
+
+        # Garde uniquement les valeurs non nulles et convertibles de la colonne Date du df
+        dates_valides = df["Date"].dropna().apply(lambda x: int(float(x)) if str(x).strip() != "" else None)
+        dates_valides = dates_valides.dropna().astype(int)
+
+        if not dates_valides.empty:
+            # Conversion en datetime
+            base_date = datetime.date(datetime.date.today().year, 7, 1)
+            dates_datetime = dates_valides.apply(lambda j: datetime.datetime.combine(base_date, datetime.datetime.min.time()) + datetime.timedelta(days=j - 1))
+
+            if not dates_datetime.empty:
+                periode_a_planifier_debut = dates_datetime.min()
+                periode_a_planifier_fin = dates_datetime.max()
+
+        if periode_a_planifier_debut is None or periode_a_planifier_fin is None:
+            if "festival_debut" not in st.session_state or "festival_fin" not in st.session_state:
+                debut, fin = fetch_off_festival_dates()
+                if debut and fin:
+                    st.session_state.festival_debut = debut
+                    st.session_state.festival_fin = fin
+                else:
+                    # Valeurs de secours (manuelles)
+                    st.session_state.festival_debut = datetime.date(2025, 7, 5)
+                    st.session_state.festival_fin = datetime.date(2025, 7, 26)
+            periode_a_planifier_debut = st.session_state.festival_debut
+            periode_a_planifier_fin = st.session_state.festival_fin
+        
+        st.session_state.periode_a_planifier_debut = periode_a_planifier_debut
+        st.session_state.periode_a_planifier_fin = periode_a_planifier_fin
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.session_state.periode_a_planifier_debut = st.date_input("Début de la période à planifier", value=st.session_state.periode_a_planifier_debut)
+    with col2:
+        st.session_state.periode_a_planifier_fin = st.date_input("Fin de la période à planifier", value=st.session_state.periode_a_planifier_fin)
+
+# Nettoie les données du tableau Excel importé
 def nettoyer_donnees(df):
     
     # Renvoie val sous la forme "10h00" si datetime ou time, "" si None, str(val).strip() sinon
@@ -266,6 +318,12 @@ def get_liens_spectacles():
         cell = row[0]
         if cell.hyperlink:
             liens_spectacles[cell.value] = cell.hyperlink.target
+        else:
+            # Construire l'URL de recherche par défaut
+            if cell.value is not None:
+                url = f"https://www.festivaloffavignon.com/resultats-recherche?recherche={cell.value.replace(' ', '+')}"
+                liens_spectacles[cell.value] = url  # L'enregistrer dans la session
+
     return liens_spectacles
 
 # Vérifie la cohérence des informations du dataframe et affiche le résultat dans un expander
@@ -455,6 +513,8 @@ def get_activites_planifiees(df):
 
 # Affiche les activités planifiées dans un tableau
 def afficher_activites_planifiees(planifies):
+    st.markdown("##### Activités planifiées")
+
     df_affichage = planifies[["Date", "Debut", "Fin", "Activite", "Lieu", "Priorite", "Reserve"]].rename(columns={
         "Debut": "Début",
         "Fin": "Fin",
@@ -465,57 +525,78 @@ def afficher_activites_planifiees(planifies):
         "Activite": "Activité",
     })
 
-    st.dataframe(df_affichage.fillna(""), hide_index=True,)
+    # st.dataframe(df_affichage.fillna(""), hide_index=True,)
 
-# from st_aggrid import AgGrid, GridOptionsBuilder
+    from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
 
-# # Extrait le jour du mois (ex: 21 depuis 20250721)
-# def extraire_jour(date_val):
-#     try:
-#         return int(str(int(float(date_val)))[-2:])  # garde les deux derniers chiffres
-#     except:
-#         return None
+    # Ajout d'une colonne temporaire pour le jour
+    df_display = df_affichage.copy()
+    df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
 
-# # Couleurs pastel claires pour jours 1 à 31
-# couleurs_jours = {
-#     1: "#fce5cd",   2: "#fff2cc",   3: "#d9ead3",   4: "#cfe2f3",   5: "#ead1dc",
-#     6: "#f4cccc",   7: "#fff2cc",   8: "#d0e0e3",   9: "#f9cb9c",  10: "#d9d2e9",
-#    11: "#c9daf8",  12: "#d0e0e3",  13: "#f6b26b",  14: "#ffe599",  15: "#b6d7a8",
-#    16: "#a2c4c9",  17: "#b4a7d6",  18: "#a4c2f4",  19: "#d5a6bd",  20: "#e6b8af",
-#    21: "#fce5cd",  22: "#fff2cc",  23: "#d9ead3",  24: "#cfe2f3",  25: "#ead1dc",
-#    26: "#f4cccc",  27: "#d9d2e9",  28: "#b6d7a8",  29: "#d5a6bd",  30: "#f6b26b",
-#    31: "#d0e0e3"
-# }
+    # Palette de couleurs
+    couleurs_jours = {
+        1: "#fce5cd",   2: "#fff2cc",   3: "#d9ead3",   4: "#cfe2f3",   5: "#ead1dc",
+        6: "#f4cccc",   7: "#fff2cc",   8: "#d0e0e3",   9: "#f9cb9c",  10: "#d9d2e9",
+    11: "#c9daf8",  12: "#d0e0e3",  13: "#f6b26b",  14: "#ffe599",  15: "#b6d7a8",
+    16: "#a2c4c9",  17: "#b4a7d6",  18: "#a4c2f4",  19: "#d5a6bd",  20: "#e6b8af",
+    21: "#fce5cd",  22: "#fff2cc",  23: "#d9ead3",  24: "#cfe2f3",  25: "#ead1dc",
+    26: "#f4cccc",  27: "#d9d2e9",  28: "#b6d7a8",  29: "#d5a6bd",  30: "#f6b26b",
+    31: "#d0e0e3"
+    }
 
-# # Ajoute une colonne temporaire pour le style
-# df_display = df.copy()
-# df_display["__jour"] = df_display["Date"].apply(extraire_jour)
+    # Transformation en JS (objet JSON -> string JS)
+    js_code = JsCode(f"""
+    function(params) {{
+        const jour = params.data.__jour;
+        const couleurs = {couleurs_jours};
+        if (jour && couleurs[jour]) {{
+            return {{ 'backgroundColor': couleurs[jour] }};
+        }}
+        return null;
+    }}
+    """)
 
-# # Construction des options AgGrid
-# gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns="__jour"))
+    # Configuration
+    gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__jour"]))
+    gb.configure_default_column(resizable=True)
+    gb.configure_grid_options(getRowStyle=js_code)
+    gb.configure_grid_options(onFirstDataRendered=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
+    gb.configure_selection(selection_mode="single", use_checkbox=False)
 
-# # Ajout du style de fond selon le jour
-# gb.configure_grid_options(getRowStyle={
-#     "function": f"""
-#     params => {{
-#         const jour = params.data.__jour;
-#         const couleurs = {couleurs_jours};
-#         if (jour && couleurs[jour]) {{
-#             return {{ background: couleurs[jour] }};
-#         }}
-#         return {{}};
-#     }}
-#     """
-# })
+    # Affichage
+    response = AgGrid(
+        df_display,
+        gridOptions=gb.build(),
+        allow_unsafe_jscode=True,
+        height=500,
+        update_mode=GridUpdateMode.SELECTION_CHANGED
+    )
 
-# # Affichage interactif dans Streamlit
-# AgGrid(
-#     df_display,
-#     gridOptions=gb.build(),
-#     enable_enterprise_modules=False,
-#     fit_columns_on_grid_load=True,
-#     height=500
-# )
+    # 🟡 Traitement du clic
+    selected_rows = response["selected_rows"]
+
+    if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
+        row = selected_rows.iloc[0]
+        spectacle_nom = str(row["Activité"]).strip() 
+        if spectacle_nom:
+            if not est_pause_str(spectacle_nom):
+                # Initialiser le dictionnaire si nécessaire
+                if "liens_spectacles" not in st.session_state:
+                    st.session_state["liens_spectacles"] = {}
+
+                liens = st.session_state["liens_spectacles"]
+
+                # Vérifier si un lien existe déjà
+                if spectacle_nom in liens:
+                    url = liens[spectacle_nom]
+                else:
+                    # Construire l'URL de recherche
+                    url = f"https://www.festivaloffavignon.com/resultats-recherche?recherche={spectacle_nom.replace(' ', '+')}"
+                    liens[spectacle_nom] = url  # L'enregistrer dans la session
+
+                # st.markdown(f"🎯 Activité sélectionnée : **{spectacle_nom}**")
+                # st.link_button("🔍 Rechercher sur le net", url)
+                st.markdown(f"[🔍 Rechercher sur le net]({url})", unsafe_allow_html=True)
 
 # Vérifie si une date de référence est compatible avec la valeur de la colonne Relache qui donne les jours de relache pour un spectacle donné
 def est_hors_relache(relache_val, date_val):
@@ -725,8 +806,8 @@ def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=Tr
     
 # Vérifie si une pause d'un type donné est déjà présente pour un jour donné dans le dataframe des activités planiées
 def pause_deja_existante(planifies, jour, type_pause):
-    df_jour = planifies[planifies["Date"] == jour]
-    return df_jour["Activite"].astype(str).str.contains(type_pause, case=False, na=False).any() 
+    activites_planifies_du_jour = planifies[planifies["Date"] == jour]
+    return activites_planifies_du_jour["Activite"].astype(str).str.contains(type_pause, case=False, na=False).any() 
 
 # Ajoute les pauses possibles (déjeuner, dîner, café) à une liste d'activités planifiables pour une activité donnée par son descripteur ligne_ref
 def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
@@ -802,13 +883,16 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
 
     # Pause café
     ajouter_pause_cafe(proposables, debut_min, fin_max)
-   
-def est_pause(ligne_ref):
-    val = str(ligne_ref["Activite"]).strip()
+
+def est_pause_str(val):
     valeurs = val.split()
     if not valeurs:
         return False
     return val.split()[0].lower() == "pause"
+
+def est_pause(ligne_ref):
+    val = str(ligne_ref["Activite"]).strip()
+    return est_pause_str(val)
 
 def est_pause_cafe(ligne_ref):
     if not est_pause(ligne_ref):
@@ -899,7 +983,7 @@ def sauvegarder_excel():
 def ajouter_activite(date_ref, proposables, choix_activite):
 
     type_activite = dict((p[1], p[3]) for p in proposables)[choix_activite]
-    if st.button("Ajouter au planning"):
+    if st.button("Ajouter au planning", key="Ajouter au planning par créneau"):
         if type_activite == "ActiviteExistante":
             # Pour les spectacles, on planifie la date et l'heure
             index = dict((p[1], p[2]) for p in proposables)[choix_activite]
@@ -942,25 +1026,137 @@ def formatter_cellule_int(d):
         return int(d)
     return d
     
-# Callback de st.file_uploader pour charger le fichier Excel
-def file_uploader_callback():
-    fichier = st.session_state.get("file_uploader")
-    if fichier is not None:
-        try:
-            st.session_state.df = pd.read_excel(fichier)
-            st.session_state.wb = load_workbook(fichier)
-            st.session_state.liens_spectacles = get_liens_spectacles()
-        except Exception as e:
-            st.error(f"Erreur lors du chargement du fichier : {e}")
-            st.stop()
-    else:
-        st.session_state.clear()
+# Revoi les jours possibles pour planifier une activité donnée par son idx
+def get_jours_possibles(df, planifies, idx_activite):
+    lignes_possibles = []
 
-def main():
-    # Affichage du titre
-    afficher_titre()
+    # Récupérer la durée de l'activité à insérer
+    ligne_a_inserer = df.loc[idx_activite]
+    debut = ligne_a_inserer["Debut_dt"]
+    fin = ligne_a_inserer["Debut_dt"] + ligne_a_inserer["Duree_dt"]
 
-    afficher_aide()
+    if planifies is not None:
+        for jour in range(st.session_state.periode_a_planifier_debut.day, st.session_state.periode_a_planifier_fin.day + 1):
+            activites_planifies_du_jour = planifies[planifies["Date"] == jour].sort_values("Debut_dt")
+
+            if not activites_planifies_du_jour.empty:
+                # Créneau entre minuit et première activité du jour
+                premiere_activite_du_jour = activites_planifies_du_jour.iloc[0]
+                borne_inf = datetime.datetime.combine(BASE_DATE, datetime.time.min)  # 00h00
+                borne_sup = premiere_activite_du_jour["Debut_dt"]
+                if debut > borne_inf + MARGE and fin < borne_sup - MARGE:
+                    lignes_possibles.append(jour)
+                    continue  # on prend le premier créneau dispo du jour
+
+                # Ensuite, créneaux entre chaque activité planifiée
+                for _, ligne in activites_planifies_du_jour.iterrows():
+                    bornes = get_creneau_bounds_apres(activites_planifies_du_jour, ligne)
+                    if bornes is not None:
+                        borne_inf, borne_sup = bornes
+                        if debut > borne_inf + MARGE and fin < borne_sup - MARGE:
+                            lignes_possibles.append(jour)
+                            break  # jour validé, on passe au suivant
+            else: # jour libre
+                lignes_possibles.append(jour)
+
+    return lignes_possibles
+
+# Planifie une activité choisie en fonction des jours possibles
+def planifier_activite_par_choix_activite(df, planifies):
+    st.markdown("##### Planification d'une nouvelle activité")
+
+    # Filtrer les activités non planifiées
+    df_non_planifiees = df[df["Date"].isna() & df["Activite"].notna() & df["Debut"].notna() & df["Fin"].notna()]
+
+    # Liste d'options formatées
+    options_activites = []
+    for idx, row in df_non_planifiees.iterrows():
+        if get_jours_possibles(df, planifies, idx):
+            label = f"[{row["Debut"]} - {row["Fin"]}] - {str(row["Activite"]).strip()}"
+            options_activites.append((label, idx))
+
+    # Afficher la selectbox des activités
+    activite_selection = st.selectbox("Choix de l'activité à planifier :", options_activites, format_func=lambda x: x[0])
+    if activite_selection:
+        idx_choisi = activite_selection[1]
+
+        # Déterminer les jours disponibles 
+        jours_possibles = get_jours_possibles(df, planifies, idx_choisi)
+        jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
+
+        jour_selection = st.selectbox("Choix du jour possible en fonction de la période sélectionnée :", jours_label)
+
+        # Bouton pour confirmer
+        if jour_selection:
+            if st.button("Ajouter au planning", key="Ajouter au planning par choix activité"):
+                jour_choisi = int(jour_selection.split()[-1])
+
+                # On peut maintenant modifier le df
+                df.at[idx_choisi, "Date"] = jour_choisi
+                st.rerun()
+
+# Planifie une activité en fonction des créneaux possibles
+def planifier_activite_par_choix_creneau(df, planifies):
+    if not planifies.empty:
+        st.markdown("##### Planification des créneaux disponibles")
+
+        # Affectation du flag de traitement des pauses
+        traiter_pauses = st.checkbox("Tenir compte des pauses (déjeuner, dîner, café)", value=False)  
+
+        # Création des créneaux avant/après pour chaque spectacle planifié
+        creneaux = get_creneaux(df, planifies, traiter_pauses)
+
+        if creneaux:
+            # Choix d'un créneau à planifier
+            choix_creneau = st.selectbox("Choix du créneau à planifier", [c[0] for c in creneaux])
+            type_creneau, idx = dict(creneaux)[choix_creneau]
+
+            ligne_ref = planifies.loc[idx]
+            date_ref = ligne_ref["Date"]
+
+            # Choix d'une activité à planifier dans le creneau choisi
+            if type_creneau == "Avant":
+                proposables = get_activites_planifiables_avant(df, planifies, ligne_ref, traiter_pauses)
+
+            elif type_creneau == "Après":
+                proposables = get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses)
+
+            if proposables:
+                choix_activite = st.selectbox("Choix de l'activité à planifier dans le créneau sélectionné", [p[1] for p in proposables])
+                col1, col2 = st.columns(2)
+                with col1:
+                    ajouter_activite(date_ref, proposables, choix_activite)
+                with col2:
+                    sauvegarder_excel()
+            else:
+                st.info("Aucune activité compatible avec ce créneau.")
+                sauvegarder_excel()
+        else:
+            st.info("Aucun créneau disponible.")
+            sauvegarder_excel()
+
+#
+def gerer_activites_supprimables(df, planifies):
+    supprimables = get_activites_supprimables(df, planifies)
+    if supprimables:
+        supprimer_activite(planifies, supprimables)
+
+def chargement_fichier():
+    # Callback de st.file_uploader pour charger le fichier Excel
+    def file_uploader_callback():
+        fichier = st.session_state.get("file_uploader")
+        if fichier is not None:
+            try:
+                st.session_state.df = pd.read_excel(fichier)
+                st.session_state.wb = load_workbook(fichier)
+                st.session_state.liens_spectacles = get_liens_spectacles()
+                st.session_state["erreur_chargement"] = False
+                st.session_state.nouveau_fichier = True
+            except Exception as e:
+                st.error(f"Erreur lors du chargement du fichier : {e}")
+                st.session_state["erreur_chargement"] = True
+        else:
+            st.session_state.clear()
 
     # Chargement du fichier Excel contenant les spectacles à planifier
     uploaded_file = st.file_uploader(
@@ -968,7 +1164,17 @@ def main():
         type=["xlsx"], 
         key="file_uploader",
         on_change=file_uploader_callback)
-    
+
+def main():
+    # Affichage du titre
+    afficher_titre()
+
+    # Affiche de l'aide
+    afficher_aide()
+
+    # chargement du fichier Excel
+    chargement_fichier()
+
     # Si le fichier est chargé dans st.session_state.df et valide, on le traite
     if "df" in st.session_state:
 
@@ -979,57 +1185,27 @@ def main():
         df = st.session_state.df
 
         if not "fichier_invalide" in st.session_state:
+
             # Vérification de cohérence des informations du df
             verifier_coherence(df) 
 
-            # Affectation du flag de traitement des pauses
-            traiter_pauses = st.checkbox("Tenir compte des pauses (déjeuner, dîner, café)", value=False)  
+            # Choix de la période à planifier
+            choix_periode_a_planifier(df)
+
+            # Récupération des activités planifiées
+            planifies = get_activites_planifiees(df)
 
             # Affichage des activités planifiées
-            st.markdown("##### Activités planifiées")
-            planifies = get_activites_planifiees(df)
             afficher_activites_planifiees(planifies)
 
             # Gestion de la liste des activités planifiées
-            supprimables = get_activites_supprimables(df, planifies)
-            if supprimables:
-                supprimer_activite(planifies, supprimables)
+            gerer_activites_supprimables(df, planifies)
 
-            # Planification de nouvelles activités
-            st.markdown("##### Planification de nouvelles activités")
-            if not planifies.empty:
-                # Création des créneaux avant/après pour chaque spectacle planifié
-                creneaux = get_creneaux(df, planifies, traiter_pauses)
+            # Planification d'une nouvelle activité
+            planifier_activite_par_choix_activite(df, planifies)
 
-                if creneaux:
-                    # Choix d'un créneau à planifier
-                    choix_creneau = st.selectbox("Choix du créneau à planifier", [c[0] for c in creneaux])
-                    type_creneau, idx = dict(creneaux)[choix_creneau]
-
-                    ligne_ref = planifies.loc[idx]
-                    date_ref = ligne_ref["Date"]
-
-                    # Choix d'une activité à planifier dans le creneau choisi
-                    if type_creneau == "Avant":
-                        proposables = get_activites_planifiables_avant(df, planifies, ligne_ref, traiter_pauses)
-
-                    elif type_creneau == "Après":
-                        proposables = get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses)
-
-                    if proposables:
-                        choix_activite = st.selectbox("Choix de l'activité à planifier dans le créneau sélectionné", [p[1] for p in proposables])
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            ajouter_activite(date_ref, proposables, choix_activite)
-                        with col2:
-                            sauvegarder_excel()
-                    else:
-                        st.info("Aucune activité compatible avec ce créneau.")
-                        sauvegarder_excel()
-                else:
-                    st.info("Aucun créneau disponible.")
-                    sauvegarder_excel()
-            
+            # Planification d'une nouvelle activité par créneau
+            planifier_activite_par_choix_creneau(df, planifies)            
 
 if __name__ == "__main__":
     main()
