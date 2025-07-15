@@ -22,7 +22,7 @@ def lignes_vides(df, col):
 
 # retourne le titre d'une activité
 def get_descripteur_activite(date, row):
-    titre = f"{date} - {row['Heure'].strip()} - {row['Activite']}"
+    titre = f"{date} - [{row['Debut'].strip()} - {row['Fin'].strip()}] - {row['Activite']}"
     if not (pd.isna(row["Lieu"]) or str(row["Lieu"]).strip() == ""):
         titre = titre + f"( {row['Lieu']}) - P{formatter_cellule_int(row['Priorite'])}"
     return titre
@@ -82,7 +82,8 @@ def afficher_aide():
         <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir les colonnes suivantes:</p>
         <ul style="margin-top: 0em; margin-bottom: 2em">
         <li>Date : Date de l'activité (entier)</li>
-        <li>Heure : Heure de début de l'activité (format HHhMM)</li>
+        <li>Début : Heure de début de l'activité (format HHhMM)</li>
+        <li>Fin : Heure de fin de l'activité (format HHhMM)</li>
         <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
         <li>Activité : Nom de l'activité (nom de spectacle, pause, visite, ...)</li>
         <li>Lieu : Lieu de l'activité</li>
@@ -197,12 +198,23 @@ def nettoyer_donnees(df):
 
         return None
     
+    def recalculer_fin(row):
+        h = row.get("Debut_dt")
+        d = row.get("Duree_dt")
+        fin_actuelle = row.get("Fin")
+
+        if isinstance(d, pd.Timedelta) and not pd.isna(h):
+            total = h + d
+            return f"{total.hour:02d}h{total.minute:02d}"
+        else:
+            return fin_actuelle if pd.notna(fin_actuelle) else ""
+
     try:
         # Nettoyage noms de colonnes : suppression espaces et normalisation accents
         df.columns = df.columns.str.strip().str.replace("\u202f", " ").str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8")
 
-        colonnes_attendues = ["Reserve", "Priorite", "Date", "Heure", "Duree", "Lieu", "Relache"]
-        colonnes_attendues_avec_accents = ["Réservé", "Priorité", "Date", "Heure", "Durée", "Lieu", "Activité", "Relâche"]
+        colonnes_attendues = ["Reserve", "Priorite", "Date", "Debut", "Fin", "Duree", "Lieu", "Relache"]
+        colonnes_attendues_avec_accents = ["Réservé", "Priorité", "Date", "Début", "Fin", "Durée", "Lieu", "Activité", "Relâche"]
 
         if not all(col in df.columns for col in colonnes_attendues) and ("Activite" in df.columns or "Spectacle" in df.columns):
             st.error("Le fichier ne contient pas toutes les colonnes attendues: " + ", ".join(colonnes_attendues_avec_accents))
@@ -219,15 +231,18 @@ def nettoyer_donnees(df):
             # Suppression des lignes presque vides i.e. ne contenant que des NaN ou des ""
             df = df[~df.apply(lambda row: all(pd.isna(x) or str(x).strip() == "" for x in row), axis=1)].reset_index(drop=True)
 
-            # Nettoyage Heure : "10h00" -> datetime.time
-            df["Heure"] = df["Heure"].apply(heure_str)
-            df["Heure_dt"] = df["Heure"].apply(parse_heure)
+            # Nettoyage Heure et ajout de la colonne Heure_dt "10h00" -> datetime.time
+            df["Debut"] = df["Debut"].apply(heure_str)
+            df["Debut_dt"] = df["Debut"].apply(parse_heure)
 
-            # Nettoyage Duree : "1h00" -> timedelta
+            # Nettoyage Duree et ajout de la colonne Duree_dt "1h00" -> timedelta
             df["Duree"] = df["Duree"].apply(duree_str)
             df["Duree_dt"] = df["Duree"].apply(parse_duree)
 
-            # Convertit explicitement certaines colonnes pour éviter les erreurs de conversion pandas
+            # Recalcul de la colonne fin = Heure_dt + Duree_dt si Duree_dt non NaN
+            df["Fin"] = df.apply(recalculer_fin, axis=1)
+
+           # Convertit explicitement certaines colonnes pour éviter les erreurs de conversion pandas
             df["Reserve"] = df["Reserve"].astype("object").fillna("").astype(str)
             df["Relache"] = df["Relache"].astype("object").fillna("").astype(str)
             pd.set_option('future.no_silent_downcasting', True)
@@ -279,29 +294,29 @@ def verifier_coherence(df):
                 date_str = str(int(float(row["Date"]))) if pd.notna(row["Date"]) else "Vide"
             except (ValueError, TypeError):
                 date_str = "Vide"
-            heure_str = str(row["Heure"]).strip() if pd.notna(row["Heure"]) else "Vide"
+            heure_str = str(row["Debut"]).strip() if pd.notna(row["Debut"]) else "Vide"
             duree_str = str(row["Duree"]).strip() if pd.notna(row["Duree"]) else "Vide"
             bloc.append(f"{date_str} - {heure_str} - {row['Activite']} ({duree_str})")
         erreurs.append("\n".join(bloc))
         
     # 2. ⛔ Chevauchements
     chevauchements = []
-    df_sorted = df.sort_values(by=["Date", "Heure_dt"])
+    df_sorted = df.sort_values(by=["Date", "Debut_dt"])
     for i in range(1, len(df_sorted)):
         r1 = df_sorted.iloc[i - 1]
         r2 = df_sorted.iloc[i]
         if r1.isna().all() or r2.isna().all():
             continue
         if r1["Date"] == r2["Date"]:
-            fin1 = r1["Heure_dt"] + r1["Duree_dt"]
-            debut2 = r2["Heure_dt"]
+            fin1 = r1["Debut_dt"] + r1["Duree_dt"]
+            debut2 = r2["Debut_dt"]
             if debut2 < fin1:
                 chevauchements.append((r1, r2))
     if chevauchements:
         bloc = ["🔴 Chevauchements:"]
         for r1, r2 in chevauchements:
             bloc.append(
-                f"{r1['Activite']} ({r1['Heure']} / {r1['Duree']}) chevauche {r2['Activite']} ({r2['Heure']} / {r2['Duree']}) le {r1['Date']}"
+                f"{r1['Activite']} ({r1['Debut']} / {r1['Duree']}) chevauche {r2['Activite']} ({r2['Debut']} / {r2['Duree']}) le {r1['Date']}"
             )
         erreurs.append("\n".join(bloc))
 
@@ -309,7 +324,7 @@ def verifier_coherence(df):
     bloc_format = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
             continue
         if row.isna().all():
             continue
@@ -320,8 +335,8 @@ def verifier_coherence(df):
 
         # Ne tester Heure/Duree que si Spectacle ou Autres est renseigné
         if str(row["Activite"]).strip() != "":
-            if not re.match(r"^\d{1,2}h\d{2}$", str(row["Heure"]).strip()):
-                bloc_format.append(f"Heure invalide à la ligne {idx + 2} : {row['Heure']}")
+            if not re.match(r"^\d{1,2}h\d{2}$", str(row["Debut"]).strip()):
+                bloc_format.append(f"Heure invalide à la ligne {idx + 2} : {row['Debut']}")
             if not re.match(r"^\d{1,2}h\d{2}$", str(row["Duree"]).strip()):
                 bloc_format.append(f"Durée invalide à la ligne {idx + 2} : {row['Duree']}")
 
@@ -329,7 +344,7 @@ def verifier_coherence(df):
     bloc_relache = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
             continue
         if row.isna().all():
             continue
@@ -350,13 +365,13 @@ def verifier_coherence(df):
     bloc_heure_vide = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
             continue
         if row.isna().all():
             continue
 
         if str(row["Activite"]).strip() != "":
-            if pd.isna(row["Heure"]) or str(row["Heure"]).strip() == "":
+            if pd.isna(row["Debut"]) or str(row["Debut"]).strip() == "":
                 bloc_heure_vide.append(f"Heure vide à la ligne {idx + 2}")
     if bloc_heure_vide:
         erreurs.append("⚠️ Heures non renseignées:\n" + "\n".join(bloc_heure_vide))
@@ -365,13 +380,13 @@ def verifier_coherence(df):
     bloc_heure_invalide = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
             continue
         if row.isna().all():
             continue
 
         if str(row["Activite"]).strip() != "":
-            h = row["Heure"]
+            h = row["Debut"]
             if pd.notna(h) and str(h).strip() != "":
                 h_str = str(h).strip().lower()
                 is_time_like = isinstance(h, (datetime.datetime, datetime.time))
@@ -385,7 +400,7 @@ def verifier_coherence(df):
     bloc_duree_nulle = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
             continue
         if row.isna().all():
             continue
@@ -403,7 +418,7 @@ def verifier_coherence(df):
     bloc_duree_invalide = []
     for idx, row in df.iterrows():
         # ignorer si rien n'est planifié
-        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Heure", "Duree"]):
+        if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
             continue
         if row.isna().all():
             continue
@@ -436,11 +451,13 @@ def verifier_coherence(df):
 
 # Renvoie le dataframe des activités planifiées
 def get_activites_planifiees(df):
-    return df[df["Date"].notna()].sort_values(by=["Date", "Heure_dt"])
+    return df[df["Date"].notna()].sort_values(by=["Date", "Debut_dt"])
 
 # Affiche les activités planifiées dans un tableau
 def afficher_activites_planifiees(planifies):
-    df_affichage = planifies[["Date", "Heure", "Duree", "Activite", "Lieu", "Priorite", "Reserve"]].rename(columns={
+    df_affichage = planifies[["Date", "Debut", "Fin", "Activite", "Lieu", "Priorite", "Reserve"]].rename(columns={
+        "Debut": "Début",
+        "Fin": "Fin",
         "Reserve": "Réservé",
         "Priorite": "Priorité",
         "Duree": "Durée",
@@ -449,6 +466,56 @@ def afficher_activites_planifiees(planifies):
     })
 
     st.dataframe(df_affichage.fillna(""), hide_index=True,)
+
+# from st_aggrid import AgGrid, GridOptionsBuilder
+
+# # Extrait le jour du mois (ex: 21 depuis 20250721)
+# def extraire_jour(date_val):
+#     try:
+#         return int(str(int(float(date_val)))[-2:])  # garde les deux derniers chiffres
+#     except:
+#         return None
+
+# # Couleurs pastel claires pour jours 1 à 31
+# couleurs_jours = {
+#     1: "#fce5cd",   2: "#fff2cc",   3: "#d9ead3",   4: "#cfe2f3",   5: "#ead1dc",
+#     6: "#f4cccc",   7: "#fff2cc",   8: "#d0e0e3",   9: "#f9cb9c",  10: "#d9d2e9",
+#    11: "#c9daf8",  12: "#d0e0e3",  13: "#f6b26b",  14: "#ffe599",  15: "#b6d7a8",
+#    16: "#a2c4c9",  17: "#b4a7d6",  18: "#a4c2f4",  19: "#d5a6bd",  20: "#e6b8af",
+#    21: "#fce5cd",  22: "#fff2cc",  23: "#d9ead3",  24: "#cfe2f3",  25: "#ead1dc",
+#    26: "#f4cccc",  27: "#d9d2e9",  28: "#b6d7a8",  29: "#d5a6bd",  30: "#f6b26b",
+#    31: "#d0e0e3"
+# }
+
+# # Ajoute une colonne temporaire pour le style
+# df_display = df.copy()
+# df_display["__jour"] = df_display["Date"].apply(extraire_jour)
+
+# # Construction des options AgGrid
+# gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns="__jour"))
+
+# # Ajout du style de fond selon le jour
+# gb.configure_grid_options(getRowStyle={
+#     "function": f"""
+#     params => {{
+#         const jour = params.data.__jour;
+#         const couleurs = {couleurs_jours};
+#         if (jour && couleurs[jour]) {{
+#             return {{ background: couleurs[jour] }};
+#         }}
+#         return {{}};
+#     }}
+#     """
+# })
+
+# # Affichage interactif dans Streamlit
+# AgGrid(
+#     df_display,
+#     gridOptions=gb.build(),
+#     enable_enterprise_modules=False,
+#     fit_columns_on_grid_load=True,
+#     height=500
+# )
 
 # Vérifie si une date de référence est compatible avec la valeur de la colonne Relache qui donne les jours de relache pour un spectacle donné
 def est_hors_relache(relache_val, date_val):
@@ -503,7 +570,7 @@ def supprimer_activite(planifies, supprimables):
         if st.button("Supprimer"):
             st.session_state.df.at[idx, "Date"] = None
             if est_pause(ligne_ref):
-                st.session_state.df.at[idx, "Heure"] = None
+                st.session_state.df.at[idx, "Debut"] = None
                 st.session_state.df.at[idx, "Duree"] = None
             st.rerun()
 
@@ -524,7 +591,7 @@ def get_creneaux(df, planifies, traiter_pauses):
     for _, row in planifies.iterrows():
 
         # Heure de début d'activité
-        heure_debut = row["Heure_dt"]
+        heure_debut = row["Debut_dt"]
         # Heure de fin d'activité
         heure_fin = heure_debut + row["Duree_dt"] if pd.notnull(heure_debut) and pd.notnull(row["Duree_dt"]) else None
 
@@ -549,18 +616,18 @@ def get_creneaux(df, planifies, traiter_pauses):
 # Renvoie les bornes du créneau existant avant une activité donnée par son descripteur ligne_ref
 def get_creneau_bounds_avant(planifies, ligne_ref):
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Heure_dt"]
+    debut_ref = ligne_ref["Debut_dt"]
     duree_ref = ligne_ref["Duree_dt"]
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
 
     # Chercher l'activité planifiée précédente sur le même jour
     planifies_jour_ref = planifies[planifies["Date"] == date_ref]
-    planifies_jour_ref = planifies_jour_ref.sort_values(by="Heure_dt")
-    prev = planifies_jour_ref[planifies_jour_ref["Heure_dt"] < debut_ref].tail(1)
+    planifies_jour_ref = planifies_jour_ref.sort_values(by="Debut_dt")
+    prev = planifies_jour_ref[planifies_jour_ref["Debut_dt"] < debut_ref].tail(1)
 
     # Calculer l'heure de début minimum du créneau
     if not prev.empty:
-        prev_fin = datetime.datetime.combine(BASE_DATE, prev["Heure_dt"].iloc[0].time()) + prev["Duree_dt"].iloc[0]
+        prev_fin = datetime.datetime.combine(BASE_DATE, prev["Debut_dt"].iloc[0].time()) + prev["Duree_dt"].iloc[0]
         debut_min = prev_fin
     else:
         debut_min = datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
@@ -573,7 +640,7 @@ def get_creneau_bounds_avant(planifies, ligne_ref):
 # Renvoie les bornes du créneau existant après une activité donnée par son descripteur ligne_ref
 def get_creneau_bounds_apres(planifies, ligne_ref):
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Heure_dt"]
+    debut_ref = ligne_ref["Debut_dt"]
     duree_ref = ligne_ref["Duree_dt"]
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
 
@@ -583,12 +650,12 @@ def get_creneau_bounds_apres(planifies, ligne_ref):
 
     # Chercher l'activité planifiée suivante sur le même jour de référence
     planifies_jour_ref = planifies[planifies["Date"] == date_ref]
-    planifies_jour_ref = planifies_jour_ref.sort_values(by="Heure_dt")
-    next = planifies_jour_ref[planifies_jour_ref["Heure_dt"] + planifies_jour_ref["Duree_dt"] > fin_ref].head(1)
+    planifies_jour_ref = planifies_jour_ref.sort_values(by="Debut_dt")
+    next = planifies_jour_ref[planifies_jour_ref["Debut_dt"] + planifies_jour_ref["Duree_dt"] > fin_ref].head(1)
 
     # Calculer l'heure de fin max du créneau
     if not next.empty:
-        fin_max = datetime.datetime.combine(BASE_DATE, next["Heure_dt"].iloc[0].time())
+        fin_max = datetime.datetime.combine(BASE_DATE, next["Debut_dt"].iloc[0].time())
     else:
         fin_max = datetime.datetime.combine(BASE_DATE, datetime.time(23, 59))
 
@@ -600,7 +667,7 @@ def get_creneau_bounds_apres(planifies, ligne_ref):
 # Renvoie la liste des activités planifiables avant une activité donnée par son descripteur ligne_ref
 def get_activites_planifiables_avant(df, planifies, ligne_ref, traiter_pauses=True):
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Heure_dt"]
+    debut_ref = ligne_ref["Debut_dt"]
     duree_ref = ligne_ref["Duree_dt"]
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None
 
@@ -611,9 +678,9 @@ def get_activites_planifiables_avant(df, planifies, ligne_ref, traiter_pauses=Tr
         return proposables  # Pas d'activités planifiables avant si le créneau est invalide
 
     for _, row in df[df["Date"].isna()].iterrows():
-        if pd.isna(row["Heure_dt"]) or pd.isna(row["Duree_dt"]):
+        if pd.isna(row["Debut_dt"]) or pd.isna(row["Duree_dt"]):
             continue
-        h_debut = datetime.datetime.combine(BASE_DATE, row["Heure_dt"].time())
+        h_debut = datetime.datetime.combine(BASE_DATE, row["Debut_dt"].time())
         h_fin = h_debut + row["Duree_dt"]
         # Le spectacle doit commencer après debut_min et finir avant fin_max
         if h_debut >= debut_min + MARGE and h_fin <= fin_max - MARGE and est_hors_relache(row["Relache"], date_ref):
@@ -628,7 +695,7 @@ def get_activites_planifiables_avant(df, planifies, ligne_ref, traiter_pauses=Tr
 # Renvoie la liste des activités planifiables après une activité donnée par son descripteur ligne_ref
 def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=True):
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Heure_dt"]
+    debut_ref = ligne_ref["Debut_dt"]
     duree_ref = ligne_ref["Duree_dt"]
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None   
 
@@ -642,9 +709,9 @@ def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=Tr
         return proposables  # Pas d'activités planifiables après si le jour a changé
 
     for _, row in df[df["Date"].isna()].iterrows():
-        if pd.isna(row["Heure_dt"]) or pd.isna(row["Duree_dt"]):
+        if pd.isna(row["Debut_dt"]) or pd.isna(row["Duree_dt"]):
             continue
-        h_debut = datetime.datetime.combine(BASE_DATE, row["Heure_dt"].time())
+        h_debut = datetime.datetime.combine(BASE_DATE, row["Debut_dt"].time())
         h_fin = h_debut + row["Duree_dt"]
         # Le spectacle doit commencer après debut_min et finir avant fin_max
         if h_debut >= debut_min + MARGE and h_fin <= fin_max - MARGE and est_hors_relache(row["Relache"], date_ref):
@@ -711,7 +778,7 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
 
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Heure_dt"]
+    debut_ref = ligne_ref["Debut_dt"]
     duree_ref = ligne_ref["Duree_dt"]
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
 
@@ -777,9 +844,9 @@ def sauvegarder_excel():
 
         # Réindexer proprement pour éviter les trous
         df_sorted = st.session_state.df.copy()
-        df_sorted = df_sorted.sort_values(by=["Date", "Heure_dt"])
+        df_sorted = df_sorted.sort_values(by=["Date", "Debut_dt"])
         df_sorted = df_sorted.reset_index(drop=True)
-        df_sorted = df_sorted.drop(columns=["Heure_dt", "Duree_dt"], errors='ignore')
+        df_sorted = df_sorted.drop(columns=["Debut_dt", "Duree_dt"], errors='ignore')
 
         # Réécriture sans saut de ligne
         for i, (_, row) in enumerate(df_sorted.iterrows()):
@@ -841,21 +908,21 @@ def ajouter_activite(date_ref, proposables, choix_activite):
             # Pour les pauses, on ne planifie pas d'heure spécifique
             index = len(st.session_state.df)  # Ajouter à la fin du DataFrame
             st.session_state.df.at[index, "Date"] = date_ref
-            st.session_state.df.at[index, "Heure"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
+            st.session_state.df.at[index, "Debut"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             st.session_state.df.at[index, "Duree"] = formatter_timedelta(DUREE_REPAS)
             st.session_state.df.at[index, "Activite"] = "Pause déjeuner"
         elif type_activite == "dîner":
             # Pour les pauses, on ne planifie pas d'heure spécifique
             index = len(st.session_state.df)  # Ajouter à la fin du DataFrame
             st.session_state.df.at[index, "Date"] = date_ref
-            st.session_state.df.at[index, "Heure"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
+            st.session_state.df.at[index, "Debut"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             st.session_state.df.at[index, "Duree"] = formatter_timedelta(DUREE_REPAS)
             st.session_state.df.at[index, "Activite"] = "Pause dîner"
         elif type_activite == "café":
             # Pour les pauses, on ne planifie pas d'heure spécifique
             index = len(st.session_state.df)  # Ajouter à la fin du DataFrame
             st.session_state.df.at[index, "Date"] = date_ref
-            st.session_state.df.at[index, "Heure"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
+            st.session_state.df.at[index, "Debut"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             st.session_state.df.at[index, "Duree"] = formatter_timedelta(DUREE_CAFE)
             st.session_state.df.at[index, "Activite"] = "Pause café"
         st.rerun()
