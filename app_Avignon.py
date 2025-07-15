@@ -49,11 +49,13 @@ def afficher_aide():
         <div style='font-size: 14px;'>
         <p style="margin-bottom: 0.2em">Cette application offre les fonctionnalités suivantes:</p>
         <ul style="margin-top: 0em; margin-bottom: 2em">
+        <li>Choix de la période à planifier</li>
         <li>Chargement d'un fichier Excel contenant les spectacles à planifier</li>
         <li>Affichage des activités planifiées (i.e. celles dont le champ Date est renseigné)</li>
+        <li>Recherche d'un spectacle dans le programme du Off par click sur une activité planifiée</li>
         <li>Suppression d'une activité planifiée (si non réservée)</li>
-        <li>Sélection d'un créneau avant ou après une activité planifiée</li>
-        <li>Sélection d'une activité à planifier dans le créneau sélectionné</li>
+        <li>Planification d'une nouvelle activité par choix d'un jour possible</li>
+        <li>Planification d'une nouvelle activité par choix d'un créneau disponible</li>
         <li>Sauvegarde du ficher Excel modifié</li>
         <li>Prise en compte optionnelle des pauses (déjeuner, dîner, café)</li>
         </ul>
