@@ -1086,7 +1086,7 @@ def planifier_activite_par_choix_activite(df, planifies):
         jours_possibles = get_jours_possibles(df, planifies, idx_choisi)
         jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
 
-        jour_selection = st.selectbox("Choix du jour possible en fonction de la période sélectionnée :", jours_label)
+        jour_selection = st.selectbox("Choix du jour :", jours_label)
 
         # Bouton pour confirmer
         if jour_selection:
