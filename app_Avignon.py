@@ -52,12 +52,12 @@ def afficher_aide():
         <li>Choix de la période à planifier</li>
         <li>Chargement d'un fichier Excel contenant les spectacles à planifier</li>
         <li>Affichage des activités planifiées (i.e. celles dont le champ Date est renseigné)</li>
-        <li>Recherche d'un spectacle dans le programme du Off par click sur une activité planifiée</li>
-        <li>Suppression d'une activité planifiée (si non réservée)</li>
-        <li>Planification d'une nouvelle activité par choix d'un jour possible</li>
-        <li>Planification d'une nouvelle activité par choix d'un créneau disponible</li>
-        <li>Sauvegarde du ficher Excel modifié</li>
+        <li>Affichage des activités non planifiées (i.e. celles dont le champ Date n'est pas renseigné)</li>
+        <li>Gestion de la planification des activités en respectant les règles ci-dessous</li>
+        <li>Affectation d'une activité à un créneau disponible</li>
         <li>Prise en compte optionnelle des pauses (déjeuner, dîner, café)</li>
+        <li>Recherche d'un spectacle dans le programme du Off par click sur une activité</li>
+        <li>Sauvegarde du ficher Excel modifié</li>
         </ul>
         
         <p style="margin-bottom: 0.2em">Conditions adoptées pour la planification des activités:</p>
@@ -513,10 +513,38 @@ def verifier_coherence(df):
 def get_activites_planifiees(df):
     return df[df["Date"].notna()].sort_values(by=["Date", "Debut_dt"])
 
+# Renvoie le dataframe des activités non planifiées
+def get_activites_non_planifiees(df):
+    return df[df["Date"].isna() & df["Activite"].notna() & df["Debut"].notna() & df["Fin"].notna()]
+
+# Affiche le bouton de recharche sur le net
+def affiche_bouton_recherche_sur_le_net(nom_activite):                   
+    # Initialiser le dictionnaire si nécessaire
+    if "liens_spectacles" not in st.session_state:
+        st.session_state["liens_spectacles"] = {}
+
+    liens = st.session_state["liens_spectacles"]
+
+    # Vérifier si un lien existe déjà
+    if nom_activite in liens:
+        url = liens[nom_activite]
+    else:
+        # Construire l'URL de recherche
+        url = f"https://www.festivaloffavignon.com/resultats-recherche?recherche={nom_activite.replace(' ', '+')}"
+        liens[nom_activite] = url  # L'enregistrer dans la session
+
+    st.link_button("🔍 Rechercher sur le net", url)
+    # st.markdown(f"[🔍 Rechercher sur le net]({url})", unsafe_allow_html=True)
+
+# Indique si une activité donnée par son descripteur dans le df est réservée
+def est_reserve(ligne_df):
+    return str(ligne_df["Reserve"]).strip().lower() == "oui"
+
 # Affiche les activités planifiées dans un tableau
-def afficher_activites_planifiees(planifies):
+def afficher_activites_planifiees(df):
     st.markdown("##### Activités planifiées")
 
+    planifies = get_activites_planifiees(df)
     df_affichage = planifies[["Date", "Debut", "Fin", "Activite", "Lieu", "Priorite", "Reserve"]].rename(columns={
         "Debut": "Début",
         "Fin": "Fin",
@@ -527,13 +555,12 @@ def afficher_activites_planifiees(planifies):
         "Activite": "Activité",
     })
 
-    # st.dataframe(df_affichage.fillna(""), hide_index=True,)
-
     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
 
-    # Ajout d'une colonne temporaire pour le jour
+    # Ajout d'une colonne temporaire pour le jour et l'index du df d'entrée
     df_display = df_affichage.copy()
     df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
+    df_display["__index"] = df_display.index
 
     # Palette de couleurs
     couleurs_jours = {
@@ -559,7 +586,7 @@ def afficher_activites_planifiees(planifies):
     """)
 
     # Configuration
-    gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__jour"]))
+    gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__jour", "__index"]))
     gb.configure_default_column(resizable=True)
     gb.configure_grid_options(getRowStyle=js_code)
     gb.configure_grid_options(onFirstDataRendered=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
@@ -579,26 +606,89 @@ def afficher_activites_planifiees(planifies):
 
     if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
         row = selected_rows.iloc[0]
-        spectacle_nom = str(row["Activité"]).strip() 
-        if spectacle_nom:
-            if not est_pause_str(spectacle_nom):
-                # Initialiser le dictionnaire si nécessaire
-                if "liens_spectacles" not in st.session_state:
-                    st.session_state["liens_spectacles"] = {}
+        index_df = row["__index"]
+        nom_activite = str(row["Activité"]).strip() 
+        if nom_activite:
+            st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
 
-                liens = st.session_state["liens_spectacles"]
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                if not est_pause_str(nom_activite):
+                    affiche_bouton_recherche_sur_le_net(nom_activite)
+            with col2:
+                if not est_reserve(st.session_state.df.loc[index_df]):
+                    if st.button("🗑️ Supprimer activité"):
+                        supprimer_activite(index_df)
+                        st.rerun()
 
-                # Vérifier si un lien existe déjà
-                if spectacle_nom in liens:
-                    url = liens[spectacle_nom]
-                else:
-                    # Construire l'URL de recherche
-                    url = f"https://www.festivaloffavignon.com/resultats-recherche?recherche={spectacle_nom.replace(' ', '+')}"
-                    liens[spectacle_nom] = url  # L'enregistrer dans la session
+# Affiche les activités non planifiées dans un tableau
+def afficher_activites_non_planifiees(df):
+    st.markdown("##### Activités non planifiées")
 
-                # st.markdown(f"🎯 Activité sélectionnée : **{spectacle_nom}**")
-                # st.link_button("🔍 Rechercher sur le net", url)
-                st.markdown(f"[🔍 Rechercher sur le net]({url})", unsafe_allow_html=True)
+    non_planifies = get_activites_non_planifiees(df)
+    df_affichage = non_planifies[["Date", "Debut", "Fin", "Activite", "Lieu", "Priorite", "Relache"]].rename(columns={
+        "Debut": "Début",
+        "Fin": "Fin",
+        "Reserve": "Réservé",
+        "Priorite": "Priorité",
+        "Duree": "Durée",
+        "Relache": "Relâche",
+        "Activite": "Activité",
+    })
+
+    from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
+
+    # Ajout d'une colonne temporaire pour l'index du df d'entrée
+    df_display = df_affichage.copy()
+    df_display["__index"] = df_display.index
+
+    # Configuration
+    gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__index"]))
+    gb.configure_default_column(resizable=True)
+    gb.configure_grid_options(onFirstDataRendered=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
+    gb.configure_selection(selection_mode="single", use_checkbox=False)
+
+    # Affichage
+    response = AgGrid(
+        df_display,
+        gridOptions=gb.build(),
+        allow_unsafe_jscode=True,
+        height=500,
+        update_mode=GridUpdateMode.SELECTION_CHANGED
+    )
+
+    # 🟡 Traitement du clic
+    selected_rows = response["selected_rows"]
+
+    if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
+        row = selected_rows.iloc[0]
+        index_df = row["__index"]
+        nom_activite = str(row["Activité"]).strip() 
+        if nom_activite:
+            st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if not est_pause_str(nom_activite):
+                    affiche_bouton_recherche_sur_le_net(nom_activite)
+            with col2:
+                col11, col12 = st.columns([2,1])
+                with col12:
+                    # Déterminer les jours disponibles 
+                    jours_possibles = get_jours_possibles(df, get_activites_planifiees(df), index_df)
+                    if jours_possibles:
+                        jours_label = [f"Le {int(jour):02d}" for jour in jours_possibles]
+                        jour_selection = st.selectbox("Choix jour", jours_label, label_visibility = "collapsed")
+                with col11:
+                    # Bouton pour confirmer
+                    if jours_possibles:
+                        if st.button("🗓️ Ajouter au planning", key="Ajouter au planning par choix activité"):
+                            jour_choisi = int(jour_selection.split()[-1])
+
+                            # On peut maintenant modifier le df
+                            df.at[index_df, "Date"] = jour_choisi
+                            st.rerun()
+
 
 # Vérifie si une date de référence est compatible avec la valeur de la colonne Relache qui donne les jours de relache pour un spectacle donné
 def est_hors_relache(relache_val, date_val):
@@ -632,30 +722,32 @@ def est_hors_relache(relache_val, date_val):
 
     return True
 
-# Renvoie la liste des activités planifiées
-def get_activites_supprimables(df, planifies):
-    activites_planifies = []
-    for _, row in planifies[planifies["Reserve"].astype(str).str.strip().str.lower() != "oui"].iterrows():
+# Gère la suppression d'activités planifiées
+def gerer_suppression_activite(df, planifies):
+    activites_supprimables = []
+    for _, row in planifies[planifies.apply(est_reserve, axis=1)].iterrows():
         desc = get_descripteur_activite(str(int(row["Date"])) if pd.notnull(row["Date"]) else "", row)
-        activites_planifies.append((desc, row.name))
-    return activites_planifies
+        activites_supprimables.append((desc, row.name))
+    if activites_supprimables:
+        with st.expander("Supprimer une activité planifiée", expanded=False):
+            choix_activite = st.selectbox("⚠️ Seules les activités non réservées sont proposées", [p[0] for p in activites_supprimables])
+            # Récupération de l'index de l'activité choisie
+            idx = dict((p[0], p[1]) for p in activites_supprimables)[choix_activite]
+            # Suppression de l'activité choisie
+            if st.button("Supprimer"):
+                st.session_state.df.at[idx, "Date"] = None
+                ligne_ref = st.session_state.df.loc[idx]
+                if est_pause(ligne_ref):
+                    st.session_state.df.at[idx, "Debut"] = None
+                    st.session_state.df.at[idx, "Duree"] = None
+                st.rerun()
 
-# Supprime une activité planifiée
-def supprimer_activite(planifies, supprimables):
-
-    with st.expander("Supprimer une activité planifiée", expanded=False):
-
-        choix_activite = st.selectbox("⚠️ Seules les activités non réservées sont proposées", [p[0] for p in supprimables])
-        # Récupération de l'index de l'activité choisie
-        idx = dict((p[0], p[1]) for p in supprimables)[choix_activite]
-        ligne_ref = planifies.loc[idx]
-        # Suppression de l'activité choisie
-        if st.button("Supprimer"):
-            st.session_state.df.at[idx, "Date"] = None
-            if est_pause(ligne_ref):
-                st.session_state.df.at[idx, "Debut"] = None
-                st.session_state.df.at[idx, "Duree"] = None
-            st.rerun()
+# Suppression d'une activité
+def supprimer_activite(idx):
+    if est_pause(st.session_state.df.loc[idx]):
+        st.session_state.df.loc[idx] = pd.NA
+    else:
+        st.session_state.df.at[idx, "Date"] = None
 
 # Création de la liste des créneaux avant/après pour chaque activité planifiée
 def get_creneaux(df, planifies, traiter_pauses):
@@ -985,7 +1077,7 @@ def sauvegarder_excel():
 def ajouter_activite(date_ref, proposables, choix_activite):
 
     type_activite = dict((p[1], p[3]) for p in proposables)[choix_activite]
-    if st.button("Ajouter au planning", key="Ajouter au planning par créneau"):
+    if st.button("🗓️ Ajouter au planning", key="Ajouter au planning par créneau"):
         if type_activite == "ActiviteExistante":
             # Pour les spectacles, on planifie la date et l'heure
             index = dict((p[1], p[2]) for p in proposables)[choix_activite]
@@ -1028,17 +1120,21 @@ def formatter_cellule_int(d):
         return int(d)
     return d
     
-# Revoi les jours possibles pour planifier une activité donnée par son idx
+# Renvoi les jours possibles pour planifier une activité donnée par son idx
 def get_jours_possibles(df, planifies, idx_activite):
     lignes_possibles = []
 
-    # Récupérer la durée de l'activité à insérer
-    ligne_a_inserer = df.loc[idx_activite]
-    debut = ligne_a_inserer["Debut_dt"]
-    fin = ligne_a_inserer["Debut_dt"] + ligne_a_inserer["Duree_dt"]
+    # Récupérer la durée de l'activité à considérer
+    ligne_a_considerer = df.loc[idx_activite]
+    debut = ligne_a_considerer["Debut_dt"]
+    fin = ligne_a_considerer["Debut_dt"] + ligne_a_considerer["Duree_dt"]
 
     if planifies is not None:
         for jour in range(st.session_state.periode_a_planifier_debut.day, st.session_state.periode_a_planifier_fin.day + 1):
+            
+            if not est_hors_relache(ligne_a_considerer["Relache"], jour):
+                continue
+
             activites_planifies_du_jour = planifies[planifies["Date"] == jour].sort_values("Debut_dt")
 
             if not activites_planifies_du_jour.empty:
@@ -1064,23 +1160,24 @@ def get_jours_possibles(df, planifies, idx_activite):
     return lignes_possibles
 
 # Planifie une activité choisie en fonction des jours possibles
-def planifier_activite_par_choix_activite(df, planifies):
+def planifier_activite_par_choix_activite(df):
     st.markdown("##### Planification d'une nouvelle activité")
 
     # Filtrer les activités non planifiées
-    df_non_planifiees = df[df["Date"].isna() & df["Activite"].notna() & df["Debut"].notna() & df["Fin"].notna()]
+    planifies = get_activites_planifiees(df)
+    non_planifiees = get_activites_non_planifiees(df)
 
     # Liste d'options formatées
     options_activites = []
-    for idx, row in df_non_planifiees.iterrows():
+    for idx, row in non_planifiees.iterrows():
         if get_jours_possibles(df, planifies, idx):
             label = f"[{row["Debut"]} - {row["Fin"]}] - {str(row["Activite"]).strip()}"
             options_activites.append((label, idx))
 
     # Afficher la selectbox des activités
-    activite_selection = st.selectbox("Choix de l'activité à planifier :", options_activites, format_func=lambda x: x[0])
-    if activite_selection:
-        idx_choisi = activite_selection[1]
+    activite_selectionee = st.selectbox("Choix de l'activité à planifier :", options_activites, format_func=lambda x: x[0])
+    if activite_selectionee:
+        idx_choisi = activite_selectionee[1]
 
         # Déterminer les jours disponibles 
         jours_possibles = get_jours_possibles(df, planifies, idx_choisi)
@@ -1090,7 +1187,7 @@ def planifier_activite_par_choix_activite(df, planifies):
 
         # Bouton pour confirmer
         if jour_selection:
-            if st.button("Ajouter au planning", key="Ajouter au planning par choix activité"):
+            if st.button("🗓️ Ajouter au planning", key="Ajouter au planning par choix activité dans selectbox"):
                 jour_choisi = int(jour_selection.split()[-1])
 
                 # On peut maintenant modifier le df
@@ -1098,7 +1195,8 @@ def planifier_activite_par_choix_activite(df, planifies):
                 st.rerun()
 
 # Planifie une activité en fonction des créneaux possibles
-def planifier_activite_par_choix_creneau(df, planifies):
+def planifier_activite_par_choix_creneau(df):
+    planifies = get_activites_planifiees(df)
     if not planifies.empty:
         st.markdown("##### Planification des créneaux disponibles")
 
@@ -1136,12 +1234,6 @@ def planifier_activite_par_choix_creneau(df, planifies):
         else:
             st.info("Aucun créneau disponible.")
             sauvegarder_excel()
-
-#
-def gerer_activites_supprimables(df, planifies):
-    supprimables = get_activites_supprimables(df, planifies)
-    if supprimables:
-        supprimer_activite(planifies, supprimables)
 
 def chargement_fichier():
     # Callback de st.file_uploader pour charger le fichier Excel
@@ -1194,20 +1286,17 @@ def main():
             # Choix de la période à planifier
             choix_periode_a_planifier(df)
 
-            # Récupération des activités planifiées
-            planifies = get_activites_planifiees(df)
-
             # Affichage des activités planifiées
-            afficher_activites_planifiees(planifies)
+            afficher_activites_planifiees(df)
 
-            # Gestion de la liste des activités planifiées
-            gerer_activites_supprimables(df, planifies)
+            # Affichage des activités non planifiées
+            afficher_activites_non_planifiees(df)
 
-            # Planification d'une nouvelle activité
-            planifier_activite_par_choix_activite(df, planifies)
+            # # Planification d'une nouvelle activité
+            # planifier_activite_par_choix_activite(df)
 
             # Planification d'une nouvelle activité par créneau
-            planifier_activite_par_choix_creneau(df, planifies)            
+            planifier_activite_par_choix_creneau(df)            
 
 if __name__ == "__main__":
     main()
