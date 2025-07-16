@@ -14,13 +14,11 @@ Cette application Streamlit vous permet de gérer votre planning de spectacles A
   * Formats invalides (heure, durée, date)
   * Activités prévues un jour de relâche
   * Durées nulles ou incohérentes
-* 📅 **Afficher les activités planifiées** (i.e. celles dont la colonne `Date` est renseignée)
-* 🔎 **Rechercher un spectacle sur le net** (par click sur une activité planifiée)
-* ❌ **Supprimer une activité planifiée** (si non réservée)
-* 🗓️ **Ajouter une activité planifiée** en lui assignant un jour
-* ⏰ **Sélectionner un créneau libre** avant ou après une activité planifiée
-* 🔄 **Assigner une activité non planifiée** à un créneau disponible
+* 📅 **Afficher les activités** 
+* 🗓️ **Gérer la planification des activités**
+* 🗓️ **Gérer les créneaux disponibles entre activités**
 * 🔖 **Sauvegarder le fichier Excel modifié**
+* 🔎 **Rechercher un spectacle sur le net** (par click sur une activité)
 * ☕ **Prendre en compte les pauses** : déjeuner, dîner, café (via la colonne `Autres`)
 
 ---
