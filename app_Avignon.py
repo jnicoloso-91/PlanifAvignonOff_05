@@ -276,6 +276,9 @@ def nettoyer_donnees(df):
             st.error("Le fichier ne contient pas toutes les colonnes attendues: " + ", ".join(colonnes_attendues_avec_accents))
             st.session_state["fichier_invalide"] = True
         else:
+
+            # Types 
+
             # Suppression du flag "fichier_invalide" s'il existe
             if "fichier_invalide" in st.session_state:
                 del st.session_state["fichier_invalide"] 
@@ -298,12 +301,22 @@ def nettoyer_donnees(df):
             # Recalcul de la colonne fin = Heure_dt + Duree_dt si Duree_dt non NaN
             df["Fin"] = df.apply(recalculer_fin, axis=1)
 
-           # Convertit explicitement certaines colonnes pour éviter les erreurs de conversion pandas
-            df["Reserve"] = df["Reserve"].astype("object").fillna("").astype(str)
+            # Force les types corrects après lecture pour éviter les erreurs de conversion pandas
+            colonnes_cibles = {
+                "Debut": "string",
+                "Fin": "string",
+                "Duree": "string",
+                "Activite": "string",
+                "Lieu": "string"
+            }
+            for col, dtype in colonnes_cibles.items():
+                df[col] = df[col].astype(dtype) 
+
+            # Convertit explicitement certaines colonnes pour éviter les erreurs de conversion pandas
             df["Relache"] = df["Relache"].astype("object").fillna("").astype(str)
-            pd.set_option('future.no_silent_downcasting', True)
             df["Priorite"] = pd.to_numeric(df["Priorite"], errors="coerce").astype("Int64")
-            df["Priorite"] = df["Priorite"].astype("object").fillna("").astype(str)
+            # df["Priorite"] = df["Priorite"].astype("object").fillna("").astype(str)
+            # pd.set_option('future.no_silent_downcasting', True)
             
     except Exception as e:
         st.error(f"Erreur lors du décodage du fichier : {e}")
@@ -569,6 +582,15 @@ def get_lignes_modifiees(df1, df2):
                     lignes_modifiees.add((i, idx))
     return lignes_modifiees
 
+def get_selected_iloc(df, row_dict):
+    if "__index" not in row_dict:
+        return None
+    try:
+        index_val = row_dict["__index"]
+        return df.index.get_loc(index_val)
+    except (KeyError, ValueError):
+        return None
+    
 # Affiche les activités planifiées dans un tableau
 def afficher_activites_planifiees(df):
     st.markdown("##### Activités planifiées")
@@ -623,6 +645,7 @@ def afficher_activites_planifiees(df):
     gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__jour", "__index"]))
     gb.configure_default_column(resizable=True)
 
+    # Colonnes editables
     editable_cols = {col: True for col in df_display.columns if col != "__index"}
     editable_cols["Date"] = False  
     editable_cols["Début"] = False  
@@ -631,6 +654,7 @@ def afficher_activites_planifiees(df):
     for col, editable in editable_cols.items():
         gb.configure_column(col, editable=editable)
 
+    # Colorisation
     gb.configure_grid_options(getRowStyle=JsCode(f"""
     function(params) {{
         const jour = params.data.__jour;
@@ -642,8 +666,33 @@ def afficher_activites_planifiees(df):
     }}
     """))
 
+    # Retaillage largeur colonnes
     gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
+
+    # Configuration de la sélection
+
+    # Version 1
+    #  pre_selected_row = 0  # par défaut
+    # if "activites_non_planifiee_selected_row" in st.session_state:
+    #     pre_selected_row = min(st.session_state["activites_non_planifiee_selected_row"], len(df_display) - 1)
+    # gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
+
+   # Version 2
+    # new_iloc = 0  # par défaut
+    # if "activites_planifies_selected_row" in st.session_state:
+    #     # pre_selected_row = min(st.session_state["activites_planifies_selected_row"], len(df_display) - 1)
+    #     old_iloc= st.session_state["activites_planifies_selected_row"]
+    #     if old_iloc < len(df_display):
+    #         new_iloc = old_iloc
+    #     else:
+    #         new_iloc = max(0, len(df_display) - 1)
+    # if len(df_display) > 0:
+    #     ligne_preselection = df_display.iloc[new_iloc].apply(str).to_dict()
+    #     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[ligne_preselection])   
+    # else:     
+    #     gb.configure_selection(selection_mode="single", use_checkbox=False)
     gb.configure_selection(selection_mode="single", use_checkbox=False)
+
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
 
@@ -675,6 +724,16 @@ def afficher_activites_planifiees(df):
     if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
         row = selected_rows.iloc[0]
         index_df = row["__index"]
+
+        # Enregistrement de la sélection courante
+        # # Version 1
+        # iloc_selected = get_selected_iloc(df, selected_rows)
+        # if iloc_selected is not None:
+        #     st.session_state.activites_planifiee_selected_row = iloc_selected
+
+        # # Version 2
+        # st.session_state.activites_planifies_selected_row = df_display[df_display.eq(row).all(axis=1)].index[0]
+
         nom_activite = str(row["Activité"]).strip() 
         if nom_activite:
             st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
@@ -734,14 +793,19 @@ def afficher_activites_non_planifiees(df):
     gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__index"]))
     gb.configure_default_column(resizable=True)
 
+    # Colonnes editables
     editable_cols = {col: True for col in df_display.columns if col != "__index"}
     editable_cols["Date"] = False  
     editable_cols["Fin"] = False  
     for col, editable in editable_cols.items():
         gb.configure_column(col, editable=editable)
 
+    # Retaillage largeur colonnes
     gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
+
+    # Configuration de la sélection
     gb.configure_selection(selection_mode="single", use_checkbox=False)
+
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
 
@@ -808,6 +872,7 @@ def afficher_activites_non_planifiees(df):
                             st.session_state.historique_redo.clear()
                             forcer_reaffichage_activites_non_planifiees()
                             st.rerun()
+    ajouter_activite()
 
 # Vérifie qu'une valeur contient bien NaN ou "" ou quelque chose du type "1", "1,10", "1, 10", "1, pair", "12, impair"
 def est_relache_valide(val):
@@ -1477,21 +1542,72 @@ def charger_fichier():
         key="file_uploader",
         on_change=file_uploader_callback)
 
-import streamlit as st
-import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
-
 # Initialise les listes d'undo redo
 def initialiser_undo_redo(verify=True):
     if "historique_undo" not in st.session_state or "historique_redo" not in st.session_state or not verify:
         st.session_state.historique_undo = deque(maxlen=MAX_HISTORIQUE)
         st.session_state.historique_redo = deque(maxlen=MAX_HISTORIQUE)
 
+import base64
+def image_to_base64(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
+    
+def essai_boutons_html():
+    # Images
+    undo_icon = image_to_base64("undo_actif.png")
+    undo_disabled_icon = image_to_base64("undo_inactif.png")
+    redo_icon = image_to_base64("undo_actif.png")
+    redo_disabled_icon = image_to_base64("undo_inactif.png")
+
+    # États
+    undo_enabled = True
+    redo_enabled = False
+
+    # Lire le paramètre ?btn=undo ou ?btn=redo
+    params = st.query_params
+    clicked_btn = params.get("btn", None)
+
+    # Action déclenchée
+    if clicked_btn == "undo":
+        st.success("Undo cliqué ✅")
+        st.session_state.historique_redo.append(st.session_state.df.copy())
+        # st.session_state.df = st.session_state.historique_undo.pop()
+        # forcer_reaffichage_activites_planifiees()
+        # forcer_reaffichage_activites_non_planifiees()
+        st.rerun()
+
+    elif clicked_btn == "redo":
+        st.success("Redo cliqué ✅")
+        st.session_state.historique_undo.append(st.session_state.df.copy())
+        # st.session_state.df = st.session_state.historique_redo.pop()
+        # forcer_reaffichage_activites_planifiees()
+        # forcer_reaffichage_activites_non_planifiees()
+        st.rerun()
+
+    # Affichage des boutons côte à côte (même taille, même style)
+    html = f"""
+    <div style="display: flex; gap: 1em; align-items: center;">
+    <a href="?btn=undo">
+        <button style="background:none;border:none;padding:0;cursor:{'pointer' if undo_enabled else 'default'};" {'disabled' if not undo_enabled else ''}>
+        <img src="data:image/png;base64,{undo_icon if undo_enabled else undo_disabled_icon}" width="32">
+        </button>
+    </a>
+    <a href="?btn=redo">
+        <button style="background:none;border:none;padding:0;cursor:{'pointer' if redo_enabled else 'default'};" {'disabled' if not redo_enabled else ''}>
+        <img src="data:image/png;base64,{redo_icon if redo_enabled else redo_disabled_icon}" width="32">
+        </button>
+    </a>
+    </div>
+    """
+
+    st.markdown(html, unsafe_allow_html=True)
+        
 # Gestion undo redo sauvegarde
 def gerer_undo_redo_sauvegarde():
     col1, col2, col3 = st.columns([0.5, 0.5, 4])
     with col1:
-        if st.button("↩️" if st.session_state.historique_undo else "↩︎", 
+        if st.button("↩️", 
               disabled=not st.session_state.historique_undo, 
               key="undo_btn") and st.session_state.historique_undo:
             st.session_state.historique_redo.append(st.session_state.df.copy())
@@ -1500,7 +1616,7 @@ def gerer_undo_redo_sauvegarde():
             forcer_reaffichage_activites_non_planifiees()
             st.rerun()
     with col2:
-        if st.button("↪️" if st.session_state.historique_redo else "↪︎", 
+        if st.button("↪️", 
               disabled=not st.session_state.historique_redo, 
               key="redo_btn") and st.session_state.historique_redo:
             st.session_state.historique_undo.append(st.session_state.df.copy())
@@ -1511,6 +1627,43 @@ def gerer_undo_redo_sauvegarde():
     with col3:
         sauvegarder_fichier()
 
+def ajouter_activite():
+    import numpy as np
+
+    # Initialiser le DataFrame dans session_state si absent
+    if "compteur_activite" not in st.session_state:
+        st.session_state.compteur_activite = 1
+
+    # Bouton Ajouter
+    if st.button("➕ Ajouter une activité"):
+
+        # nouvelle_ligne = pd.DataFrame([{
+        #     "Debut": "09h00",
+        #     "Duree": "1h00",
+        #     "Activite": f"Activite {st.session_state.compteur_activite}",
+        #     # toutes les autres colonnes à pd.NA :
+        #     **{col: pd.NA for col in st.session_state.df.columns
+        #     if col not in ["Debut", "Duree", "Activite"]}
+        # }])
+        # st.session_state.historique_undo.append(st.session_state.df.copy())
+        
+        # st.session_state.df = pd.concat(
+        #     [st.session_state.df, nouvelle_ligne],
+        #     ignore_index=True
+        # )
+        # st.session_state.historique_redo.clear()
+
+        st.session_state.historique_undo.append(st.session_state.df.copy())
+        new_idx = len(st.session_state.df)
+        # st.session_state.df.loc[new_idx] = pd.NA  # pas de dtype cassé ici
+        st.session_state.df.at[new_idx, "Debut"] = "09h00"
+        st.session_state.df.at[new_idx, "Duree"] = "1h00"
+        st.session_state.df.at[new_idx, "Activite"] = f"Activite {st.session_state.compteur_activite}"
+        st.session_state.historique_redo.clear()
+
+        st.session_state.compteur_activite += 1
+        st.rerun()
+    
 def main():
     # Affichage du titre
     afficher_titre()
@@ -1551,7 +1704,7 @@ def main():
             afficher_activites_non_planifiees(df)
 
             # Affiche le formulaire d'ajout d'activité
-            ajouter_activite_non_planifiee(df)
+            # ajouter_activite_non_planifiee(df)
 
             # Planification d'une nouvelle activité par créneau
             planifier_activite_par_choix_creneau(df)            
