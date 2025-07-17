@@ -269,8 +269,8 @@ def nettoyer_donnees(df):
         # Nettoyage noms de colonnes : suppression espaces et normalisation accents
         df.columns = df.columns.str.strip().str.replace("\u202f", " ").str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8")
 
-        colonnes_attendues = ["Reserve", "Priorite", "Date", "Debut", "Fin", "Duree", "Lieu", "Relache"]
-        colonnes_attendues_avec_accents = ["Réservé", "Priorité", "Date", "Début", "Fin", "Durée", "Lieu", "Activité", "Relâche"]
+        colonnes_attendues = ["Date", "Debut", "Fin", "Duree", "Activite", "Lieu", "Relache", "Reserve", "Priorite", "Commentaire"]
+        colonnes_attendues_avec_accents = ["Date", "Début", "Fin", "Durée", "Activité", "Lieu", "Relâche", "Réservé", "Priorité", "Commentaire"]
 
         if not all(col in df.columns for col in colonnes_attendues) and ("Activite" in df.columns or "Spectacle" in df.columns):
             st.error("Le fichier ne contient pas toutes les colonnes attendues: " + ", ".join(colonnes_attendues_avec_accents))
@@ -546,6 +546,29 @@ def affiche_bouton_recherche_sur_le_net(nom_activite):
 def est_reserve(ligne_df):
     return str(ligne_df["Reserve"]).strip().lower() == "oui"
 
+# Renvoie les lignes modifées entre df1 et df2, l'index de df2 est supposé se trouver dans la colonne __index de df1
+def get_lignes_modifiees(df1, df2):
+    lignes_modifiees = set()
+    for i, row in df1.iterrows():
+        idx = row["__index"]
+        for col in df1.drop(columns=["__index"]).columns:
+            if idx in df2.index:
+                val_avant = df2.at[idx, col]
+                val_apres = row[col]
+                if pd.isna(val_avant) and pd.isna(val_apres):
+                    continue
+                if val_avant != val_apres:
+                    if col == "Début":
+                        if not est_format_heure(val_apres):
+                            st.error("Format invalide (attendu : 10h00)")
+                            df1.at[i, col] = val_avant
+                    if col == "Durée":
+                        if not est_format_duree(val_apres):
+                            st.error("Format invalide (attendu : 10h00)")
+                            df1.at[i, col] = val_avant
+                    lignes_modifiees.add((i, idx))
+    return lignes_modifiees
+
 # Affiche les activités planifiées dans un tableau
 def afficher_activites_planifiees(df):
     st.markdown("##### Activités planifiées")
@@ -554,13 +577,22 @@ def afficher_activites_planifiees(df):
         "Debut": "Début",
         "Duree": "Durée",
         "Reserve": "Réservé",
-        "Priorite": "Priorité",
+        "Priorite": "Prio",
         "Relache": "Relâche",
         "Activite": "Activité",
     }
 
+    renommage_colonnes_inverse = {
+        "Début": "Debut",
+        "Durée": "Duree",
+        "Réservé": "Reserve",
+        "Priorité": "Prio",
+        "Relâche": "Relache",
+        "Activité": "Activite",
+    }
+
     planifies = get_activites_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
-    df_affichage = planifies[["Date", "Debut", "Fin", "Activite", "Lieu", "Priorite", "Reserve"]].rename(columns=renommage_colonnes)
+    df_affichage = planifies[["Date", "Debut", "Fin", "Duree", "Activite", "Lieu", "Reserve", "Relache", "Priorite", "Commentaire"]].rename(columns=renommage_colonnes)
 
     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
 
@@ -570,8 +602,11 @@ def afficher_activites_planifiees(df):
     df_display["__index"] = df_display.index
 
     # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
-    if "aggrid_activite_non_planifies_reset_counter" not in st.session_state:
+    if "aggrid_activite_planifies_reset_counter" not in st.session_state:
         st.session_state.aggrid_activite_planifies_reset_counter = 0
+
+    # Enregistrement dans st.session_state d'une copy du df à afficher
+    st.session_state.df_display_planifies_initial = df_display.copy()
 
     # Palette de couleurs
     couleurs_jours = {
@@ -584,8 +619,19 @@ def afficher_activites_planifiees(df):
     31: "#d0e0e3"
     }
 
-    # Transformation en JS (objet JSON -> string JS)
-    js_code = JsCode(f"""
+    # Configuration
+    gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__jour", "__index"]))
+    gb.configure_default_column(resizable=True)
+
+    editable_cols = {col: True for col in df_display.columns if col != "__index"}
+    editable_cols["Date"] = False  
+    editable_cols["Début"] = False  
+    editable_cols["Fin"] = False  
+    editable_cols["Durée"] = False  
+    for col, editable in editable_cols.items():
+        gb.configure_column(col, editable=editable)
+
+    gb.configure_grid_options(getRowStyle=JsCode(f"""
     function(params) {{
         const jour = params.data.__jour;
         const couleurs = {couleurs_jours};
@@ -594,13 +640,9 @@ def afficher_activites_planifiees(df):
         }}
         return null;
     }}
-    """)
+    """))
 
-    # Configuration
-    gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__jour", "__index"]))
-    gb.configure_default_column(resizable=True)
-    gb.configure_grid_options(getRowStyle=js_code)
-    gb.configure_grid_options(onFirstDataRendered=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
+    gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
     gb.configure_selection(selection_mode="single", use_checkbox=False)
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
@@ -611,9 +653,21 @@ def afficher_activites_planifiees(df):
         gridOptions=grid_options,
         allow_unsafe_jscode=True,
         height=500,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
         key=f"Activités planifiées {st.session_state.aggrid_activite_planifies_reset_counter}",  # clé stable mais changeante après suppression de ligne pour forcer le reaffichage
     )
+
+    # Reaffichage si une cellule a été modifiée
+    df_modifie = pd.DataFrame(response["data"])
+    lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_planifies_initial)
+    if lignes_modifiees:
+        st.session_state.historique_undo.append(st.session_state.df.copy())
+        for i, idx in lignes_modifiees:
+            for col in df_modifie.drop(columns=["__index"]).columns:
+                st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
+        st.session_state.aggrid_activite_non_planifies_reset_counter += 1
+        st.session_state.historique_redo.clear()
+        st.rerun()
 
     # 🟡 Traitement du clic
     selected_rows = response["selected_rows"]
@@ -642,13 +696,11 @@ def afficher_activites_planifiees(df):
 def afficher_activites_non_planifiees(df):
     st.markdown("##### Activités non planifiées")
 
-    non_planifies = get_activites_non_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
-
     renommage_colonnes = {
         "Debut": "Début",
         "Duree": "Durée",
         "Reserve": "Réservé",
-        "Priorite": "Priorité",
+        "Priorite": "Prio",
         "Relache": "Relâche",
         "Activite": "Activité",
     }
@@ -657,12 +709,13 @@ def afficher_activites_non_planifiees(df):
         "Début": "Debut",
         "Durée": "Duree",
         "Réservé": "Reserve",
-        "Priorité": "Priorite",
+        "Priorité": "Prio",
         "Relâche": "Relache",
         "Activité": "Activite",
     }
 
-    df_affichage = non_planifies[["Debut", "Fin", "Duree", "Activite", "Lieu", "Priorite", "Relache"]].rename(columns=renommage_colonnes)
+    non_planifies = get_activites_non_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
+    df_affichage = non_planifies[["Date", "Debut", "Fin", "Duree", "Activite", "Lieu", "Reserve", "Relache", "Priorite", "Commentaire"]].rename(columns=renommage_colonnes)
 
     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
 
@@ -670,34 +723,33 @@ def afficher_activites_non_planifiees(df):
     df_display = df_affichage.copy()
     df_display["__index"] = df_display.index
 
+    # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
+    if "aggrid_activite_non_planifies_reset_counter" not in st.session_state:
+        st.session_state.aggrid_activite_non_planifies_reset_counter = 0
+    
     # Enregistrement dans st.session_state d'une copy du df à afficher
     st.session_state.df_display_non_planifies_initial = df_display.copy()
 
     # Configuration
     gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__index"]))
-    # gb.configure_default_column(editable=True)  # 🔧 rendre toutes les colonnes éditables
+    gb.configure_default_column(resizable=True)
+
     editable_cols = {col: True for col in df_display.columns if col != "__index"}
+    editable_cols["Date"] = False  
     editable_cols["Fin"] = False  
     for col, editable in editable_cols.items():
         gb.configure_column(col, editable=editable)
-    gb.configure_column("Activité", width=200)
-    gb.configure_default_column(resizable=True)
-    # gb.configure_grid_options(onFirstDataRendered=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
+
+    gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
     gb.configure_selection(selection_mode="single", use_checkbox=False)
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
-    # grid_options["suppressSizeToFit"] = True
-
-    # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
-    if "aggrid_activite_non_planifies_reset_counter" not in st.session_state:
-        st.session_state.aggrid_activite_non_planifies_reset_counter = 0
 
     # Affichage
     response = AgGrid(
         df_display,
         gridOptions=grid_options,
         allow_unsafe_jscode=True,
-        fit_columns_on_grid_load=True,
         height=500,
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
         key=f"Activités non planifiées {st.session_state.aggrid_activite_non_planifies_reset_counter}",  # clé stable mais changeante après suppression de ligne ou modification de cellule pour forcer le reaffichage
@@ -705,31 +757,14 @@ def afficher_activites_non_planifiees(df):
 
     # Reaffichage si une cellule a été modifiée
     df_modifie = pd.DataFrame(response["data"])
-    lignes_modifiees = set()
-    for i, row in df_modifie.iterrows():
-        idx = row["__index"]
-        for col in df_modifie.drop(columns=["__index"]).columns:
-            if idx in st.session_state.df_display_non_planifies_initial.index:
-                val_avant = st.session_state.df_display_non_planifies_initial.at[idx, col]
-                val_apres = row[col]
-                if pd.isna(val_avant) and pd.isna(val_apres):
-                    continue
-                if val_avant != val_apres:
-                    if col == "Début":
-                        if not est_format_heure(val_apres):
-                            st.error("Format invalide (attendu : 10h00)")
-                            df_modifie.at[i, col] = val_avant
-                    if col == "Durée":
-                        if not est_format_duree(val_apres):
-                            st.error("Format invalide (attendu : 10h00)")
-                            df_modifie.at[i, col] = val_avant
-                    lignes_modifiees.add((i, idx))
-
+    lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_non_planifies_initial)
     if lignes_modifiees:
+        st.session_state.historique_undo.append(st.session_state.df.copy())
         for i, idx in lignes_modifiees:
             for col in df_modifie.drop(columns=["__index"]).columns:
                 st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
         st.session_state.aggrid_activite_non_planifies_reset_counter += 1
+        st.session_state.historique_redo.clear()
         st.rerun()
 
     # 🟡 Traitement du clic
