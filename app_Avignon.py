@@ -602,11 +602,13 @@ def afficher_activites_planifiees(df):
     gb.configure_grid_options(getRowStyle=js_code)
     gb.configure_grid_options(onFirstDataRendered=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
     gb.configure_selection(selection_mode="single", use_checkbox=False)
+    grid_options = gb.build()
+    grid_options["suppressMovableColumns"] = True
 
     # Affichage
     response = AgGrid(
         df_display,
-        gridOptions=gb.build(),
+        gridOptions=grid_options,
         allow_unsafe_jscode=True,
         height=500,
         update_mode=GridUpdateMode.SELECTION_CHANGED,
@@ -683,6 +685,7 @@ def afficher_activites_non_planifiees(df):
     # gb.configure_grid_options(onFirstDataRendered=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
     gb.configure_selection(selection_mode="single", use_checkbox=False)
     grid_options = gb.build()
+    grid_options["suppressMovableColumns"] = True
     # grid_options["suppressSizeToFit"] = True
 
     # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
@@ -1439,14 +1442,14 @@ def initialiser_undo_redo():
 def gerer_undo_redo_sauvegarde():
     col1, col2, col3 = st.columns([0.5, 0.5, 4])
     with col1:
-        if st.button("↩️", 
+        if st.button("↩️" if st.session_state.historique_undo else "↩︎", 
               disabled=not st.session_state.historique_undo, 
               key="undo_btn") and st.session_state.historique_undo:
             st.session_state.historique_redo.append(st.session_state.df.copy())
             st.session_state.df = st.session_state.historique_undo.pop()
             st.rerun()
     with col2:
-        if st.button("↪️", 
+        if st.button("↪️" if st.session_state.historique_redo else "↪︎", 
               disabled=not st.session_state.historique_redo, 
               key="redo_btn") and st.session_state.historique_redo:
             st.session_state.historique_undo.append(st.session_state.df.copy())
