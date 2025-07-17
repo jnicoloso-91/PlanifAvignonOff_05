@@ -691,6 +691,7 @@ def afficher_activites_planifiees(df):
     #     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[ligne_preselection])   
     # else:     
     #     gb.configure_selection(selection_mode="single", use_checkbox=False)
+
     gb.configure_selection(selection_mode="single", use_checkbox=False)
 
     grid_options = gb.build()
@@ -701,7 +702,7 @@ def afficher_activites_planifiees(df):
         df_display,
         gridOptions=grid_options,
         allow_unsafe_jscode=True,
-        height=500,
+        height=250,
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
         key=f"Activités planifiées {st.session_state.aggrid_activite_planifies_reset_counter}",  # clé stable mais changeante après suppression de ligne pour forcer le reaffichage
     )
@@ -725,7 +726,8 @@ def afficher_activites_planifiees(df):
         row = selected_rows.iloc[0]
         index_df = row["__index"]
 
-        # Enregistrement de la sélection courante
+        # Enregistrement de la sélection courante pour gestion de la sélection
+
         # # Version 1
         # iloc_selected = get_selected_iloc(df, selected_rows)
         # if iloc_selected is not None:
@@ -814,7 +816,7 @@ def afficher_activites_non_planifiees(df):
         df_display,
         gridOptions=grid_options,
         allow_unsafe_jscode=True,
-        height=500,
+        height=250,
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
         key=f"Activités non planifiées {st.session_state.aggrid_activite_non_planifies_reset_counter}",  # clé stable mais changeante après suppression de ligne ou modification de cellule pour forcer le reaffichage
     )
