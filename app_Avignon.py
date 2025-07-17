@@ -665,8 +665,8 @@ def afficher_activites_planifiees(df):
         for i, idx in lignes_modifiees:
             for col in df_modifie.drop(columns=["__index"]).columns:
                 st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
-        st.session_state.aggrid_activite_non_planifies_reset_counter += 1
         st.session_state.historique_redo.clear()
+        # forcer_reaffichage_activites_planifiees() pas necéssaire dans ce cas car les modifs sur une cellule n'ont pas d'impact sur le reste de l'aggrid
         st.rerun()
 
     # 🟡 Traitement du clic
@@ -689,7 +689,7 @@ def afficher_activites_planifiees(df):
                         st.session_state.historique_undo.append(st.session_state.df.copy())
                         supprimer_activite_planifiee(index_df)
                         st.session_state.historique_redo.clear()
-                        st.session_state.aggrid_activite_planifies_reset_counter += 1
+                        forcer_reaffichage_activites_planifiees()
                         st.rerun()
 
 # Affiche les activités non planifiées dans un tableau
@@ -763,8 +763,8 @@ def afficher_activites_non_planifiees(df):
         for i, idx in lignes_modifiees:
             for col in df_modifie.drop(columns=["__index"]).columns:
                 st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
-        st.session_state.aggrid_activite_non_planifies_reset_counter += 1
         st.session_state.historique_redo.clear()
+        forcer_reaffichage_activites_non_planifiees()
         st.rerun()
 
     # 🟡 Traitement du clic
@@ -786,7 +786,7 @@ def afficher_activites_non_planifiees(df):
                     st.session_state.historique_undo.append(st.session_state.df.copy())
                     supprimer_activite(index_df)
                     st.session_state.historique_redo.clear()
-                    st.session_state.aggrid_activite_non_planifies_reset_counter += 1
+                    forcer_reaffichage_activites_non_planifiees()
                     st.rerun()
             with col3:
                 col11, col12 = st.columns([0.5,4])
@@ -806,7 +806,7 @@ def afficher_activites_non_planifiees(df):
                             st.session_state.historique_undo.append(st.session_state.df.copy())
                             df.at[index_df, "Date"] = jour_choisi
                             st.session_state.historique_redo.clear()
-                            st.session_state.aggrid_activite_non_planifies_reset_counter += 1
+                            forcer_reaffichage_activites_non_planifiees()
                             st.rerun()
 
 # Vérifie qu'une valeur contient bien NaN ou "" ou quelque chose du type "1", "1,10", "1, 10", "1, pair", "12, impair"
@@ -1439,6 +1439,17 @@ def planifier_activite_par_choix_creneau(df):
                 choix_activite = st.selectbox("Choix de l'activité à planifier dans le créneau sélectionné", [p[1] for p in proposables])
                 ajouter_activite_planifiee(date_ref, proposables, choix_activite)
 
+# Force le reaffichage de l'agrid des activités planifiées
+def forcer_reaffichage_activites_planifiees():
+    if "aggrid_activite_planifies_reset_counter" in st.session_state:
+        st.session_state.aggrid_activite_planifies_reset_counter +=1 
+
+# Force le reaffichage de l'agrid des activités non planifiées
+def forcer_reaffichage_activites_non_planifiees():
+    if "aggrid_activite_non_planifies_reset_counter" in st.session_state:
+        st.session_state.aggrid_activite_non_planifies_reset_counter += 1 
+
+# Charge le fichier Excel contenant les spectacles à planifier
 def charger_fichier():
     # Callback de st.file_uploader pour charger le fichier Excel
     def file_uploader_callback():
@@ -1450,6 +1461,9 @@ def charger_fichier():
                 st.session_state.liens_spectacles = get_liens_spectacles()
                 st.session_state["erreur_chargement"] = False
                 st.session_state.nouveau_fichier = True
+                initialiser_undo_redo(verify=False)
+                forcer_reaffichage_activites_planifiees()
+                forcer_reaffichage_activites_non_planifiees()
             except Exception as e:
                 st.error(f"Erreur lors du chargement du fichier : {e}")
                 st.session_state["erreur_chargement"] = True
@@ -1467,9 +1481,9 @@ import streamlit as st
 import pandas as pd
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
-# Initialisation undo redo
-def initialiser_undo_redo():
-    if "historique_undo" not in st.session_state:
+# Initialise les listes d'undo redo
+def initialiser_undo_redo(verify=True):
+    if "historique_undo" not in st.session_state or "historique_redo" not in st.session_state or not verify:
         st.session_state.historique_undo = deque(maxlen=MAX_HISTORIQUE)
         st.session_state.historique_redo = deque(maxlen=MAX_HISTORIQUE)
 
@@ -1482,6 +1496,8 @@ def gerer_undo_redo_sauvegarde():
               key="undo_btn") and st.session_state.historique_undo:
             st.session_state.historique_redo.append(st.session_state.df.copy())
             st.session_state.df = st.session_state.historique_undo.pop()
+            forcer_reaffichage_activites_planifiees()
+            forcer_reaffichage_activites_non_planifiees()
             st.rerun()
     with col2:
         if st.button("↪️" if st.session_state.historique_redo else "↪︎", 
@@ -1489,6 +1505,8 @@ def gerer_undo_redo_sauvegarde():
               key="redo_btn") and st.session_state.historique_redo:
             st.session_state.historique_undo.append(st.session_state.df.copy())
             st.session_state.df = st.session_state.historique_redo.pop()
+            forcer_reaffichage_activites_planifiees()
+            forcer_reaffichage_activites_non_planifiees()
             st.rerun()
     with col3:
         sauvegarder_fichier()
