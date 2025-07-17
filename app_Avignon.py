@@ -539,7 +539,7 @@ def affiche_bouton_recherche_sur_le_net(nom_activite):
         url = f"https://www.festivaloffavignon.com/resultats-recherche?recherche={nom_activite.replace(' ', '+')}"
         liens[nom_activite] = url  # L'enregistrer dans la session
 
-    st.link_button("🔍 Rechercher sur le net", url)
+    st.link_button("🔍", url)
     # st.markdown(f"[🔍 Rechercher sur le net]({url})", unsafe_allow_html=True)
 
 # Indique si une activité donnée par son descripteur dans le df est réservée
@@ -623,13 +623,13 @@ def afficher_activites_planifiees(df):
         if nom_activite:
             st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
 
-            col1, col2 = st.columns([1, 2])
+            col1, col2, _ = st.columns([0.5, 0.5, 4])
             with col1:
                 if not est_pause_str(nom_activite):
                     affiche_bouton_recherche_sur_le_net(nom_activite)
             with col2:
                 if not est_reserve(st.session_state.df.loc[index_df]):
-                    if st.button("🗑️ Supprimer", key="Supprimer des activités planifiées"):
+                    if st.button("🗑️", key="SupprimerActivitePlanifiee"):
                         st.session_state.historique_undo.append(st.session_state.df.copy())
                         supprimer_activite_planifiee(index_df)
                         st.session_state.historique_redo.clear()
@@ -739,19 +739,19 @@ def afficher_activites_non_planifiees(df):
         if nom_activite:
             st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
 
-            col1, col2, col3 = st.columns([1,0.7,1])
+            col1, col2, col3 = st.columns([0.5,0.5,4])
             with col1:
                 if not est_pause_str(nom_activite):
                     affiche_bouton_recherche_sur_le_net(nom_activite)
             with col2:
-                if st.button("🗑️ Supprimer", key="Supprimer des activités non planifiées"):
+                if st.button("🗑️", key="SupprimerActiviteNonPlanifiee"):
                     st.session_state.historique_undo.append(st.session_state.df.copy())
                     supprimer_activite(index_df)
                     st.session_state.historique_redo.clear()
                     st.session_state.aggrid_activite_non_planifies_reset_counter += 1
                     st.rerun()
             with col3:
-                col11, col12 = st.columns([1,1])
+                col11, col12 = st.columns([0.5,4])
                 with col12:
                     # Déterminer les jours disponibles 
                     jours_possibles = get_jours_possibles(df, get_activites_planifiees(df), index_df)
@@ -761,7 +761,7 @@ def afficher_activites_non_planifiees(df):
                 with col11:
                     # Bouton pour confirmer
                     if jours_possibles:
-                        if st.button("🗓️ Planifier", key="Ajouter aux activités planifiées"):
+                        if st.button("🗓️", key="AjouterAuxActivitésPlanifiees"):
                             jour_choisi = int(jour_selection.split()[-1])
 
                             # On peut maintenant modifier le df
@@ -821,26 +821,6 @@ def est_hors_relache(relache_val, date_val):
         pass  # ignorer s'il ne s'agit pas d'une liste de jours
 
     return True
-
-# Gère la suppression d'activités planifiées
-def gerer_suppression_activite(df, planifies):
-    activites_supprimables = []
-    for _, row in planifies[planifies.apply(est_reserve, axis=1)].iterrows():
-        desc = get_descripteur_activite(str(int(row["Date"])) if pd.notnull(row["Date"]) else "", row)
-        activites_supprimables.append((desc, row.name))
-    if activites_supprimables:
-        with st.expander("Supprimer une activité planifiée", expanded=False):
-            choix_activite = st.selectbox("⚠️ Seules les activités non réservées sont proposées", [p[0] for p in activites_supprimables])
-            # Récupération de l'index de l'activité choisie
-            idx = dict((p[0], p[1]) for p in activites_supprimables)[choix_activite]
-            # Suppression de l'activité choisie
-            if st.button("Supprimer"):
-                st.session_state.df.at[idx, "Date"] = None
-                ligne_ref = st.session_state.df.loc[idx]
-                if est_pause(ligne_ref):
-                    st.session_state.df.at[idx, "Debut"] = None
-                    st.session_state.df.at[idx, "Duree"] = None
-                st.rerun()
 
 # Suppression d'une activité
 def supprimer_activite(idx):
@@ -1170,7 +1150,7 @@ def sauvegarder_fichier():
 
         # Bouton de téléchargement
         return st.download_button(
-            label="💾 Sauvegarder",
+            label="💾",
             data=buffer,
             file_name=nom_fichier,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1267,7 +1247,7 @@ def ajouter_activite_non_planifiee(df):
 def ajouter_activite_planifiee(date_ref, proposables, choix_activite):
 
     type_activite = dict((p[1], p[3]) for p in proposables)[choix_activite]
-    if st.button("🗓️ Ajouter au planning", key="Ajouter au planning par créneau"):
+    if st.button("🗓️", key="AjouterAuPlanningParCréneau"):
         st.session_state.historique_undo.append(st.session_state.df.copy())
         if type_activite == "ActiviteExistante":
             # Pour les spectacles, on planifie la date et l'heure
@@ -1383,7 +1363,7 @@ def planifier_activite_par_choix_activite(df):
 
         # Bouton pour confirmer
         if jour_selection:
-            if st.button("🗓️ Ajouter au planning", key="Ajouter au planning par choix activité dans selectbox"):
+            if st.button("🗓️", key="AjouterAuPlanningParChoixActivite"):
                 jour_choisi = int(jour_selection.split()[-1])
 
                 # On peut maintenant modifier le df
@@ -1419,7 +1399,6 @@ def planifier_activite_par_choix_creneau(df):
 
             if proposables:
                 choix_activite = st.selectbox("Choix de l'activité à planifier dans le créneau sélectionné", [p[1] for p in proposables])
-                col1, col2, col3 = st.columns(3)
                 ajouter_activite_planifiee(date_ref, proposables, choix_activite)
 
 def charger_fichier():
@@ -1458,16 +1437,16 @@ def initialiser_undo_redo():
 
 # Gestion undo redo sauvegarde
 def gerer_undo_redo_sauvegarde():
-    col1, col2, col3 = st.columns([1, 1, 4])
+    col1, col2, col3 = st.columns([0.5, 0.5, 4])
     with col1:
-        if st.button("↩️ Défaire", 
+        if st.button("↩️", 
               disabled=not st.session_state.historique_undo, 
               key="undo_btn") and st.session_state.historique_undo:
             st.session_state.historique_redo.append(st.session_state.df.copy())
             st.session_state.df = st.session_state.historique_undo.pop()
             st.rerun()
     with col2:
-        if st.button("↪️ Refaire", 
+        if st.button("↪️", 
               disabled=not st.session_state.historique_redo, 
               key="redo_btn") and st.session_state.historique_redo:
             st.session_state.historique_undo.append(st.session_state.df.copy())
