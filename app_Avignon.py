@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font
 import requests
 from bs4 import BeautifulSoup
+from collections import deque
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -17,6 +18,7 @@ PAUSE_DIN_DEBUT_MIN = datetime.time(19, 0)
 PAUSE_DIN_DEBUT_MAX = datetime.time(21, 0)
 DUREE_REPAS = datetime.timedelta(hours=1)
 DUREE_CAFE = datetime.timedelta(minutes=30)
+MAX_HISTORIQUE = 20
 
 # retourne le titre d'une activité
 def get_descripteur_activite(date, row):
@@ -628,7 +630,9 @@ def afficher_activites_planifiees(df):
             with col2:
                 if not est_reserve(st.session_state.df.loc[index_df]):
                     if st.button("🗑️ Supprimer", key="Supprimer des activités planifiées"):
+                        st.session_state.historique_undo.append(st.session_state.df.copy())
                         supprimer_activite_planifiee(index_df)
+                        st.session_state.historique_redo.clear()
                         st.session_state.aggrid_activite_planifies_reset_counter += 1
                         st.rerun()
 
@@ -741,7 +745,9 @@ def afficher_activites_non_planifiees(df):
                     affiche_bouton_recherche_sur_le_net(nom_activite)
             with col2:
                 if st.button("🗑️ Supprimer", key="Supprimer des activités non planifiées"):
+                    st.session_state.historique_undo.append(st.session_state.df.copy())
                     supprimer_activite(index_df)
+                    st.session_state.historique_redo.clear()
                     st.session_state.aggrid_activite_non_planifies_reset_counter += 1
                     st.rerun()
             with col3:
@@ -759,7 +765,9 @@ def afficher_activites_non_planifiees(df):
                             jour_choisi = int(jour_selection.split()[-1])
 
                             # On peut maintenant modifier le df
+                            st.session_state.historique_undo.append(st.session_state.df.copy())
                             df.at[index_df, "Date"] = jour_choisi
+                            st.session_state.historique_redo.clear()
                             st.session_state.aggrid_activite_non_planifies_reset_counter += 1
                             st.rerun()
 
@@ -1095,7 +1103,7 @@ def est_pause_cafe(ligne_ref):
         return False
     return val.split()[0].lower() == "pause" and val.split()[1].lower() == "café"
 
-def sauvegarder_excel():
+def sauvegarder_fichier():
     if "df" in st.session_state:
 
         # Récupération de la worksheet à traiter
@@ -1162,7 +1170,7 @@ def sauvegarder_excel():
 
         # Bouton de téléchargement
         return st.download_button(
-            label="Sauvegarder Excel",
+            label="💾 Sauvegarder",
             data=buffer,
             file_name=nom_fichier,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1176,8 +1184,8 @@ def est_format_heure(val):
 def est_format_duree(val):
     return re.fullmatch(r"\d{1,2}h[0-5]\d", val.strip()) is not None if val else False
 
-# Affiche le formulaire d'ajout d'activité
-def afficher_formulaire_ajout_activite(df):
+# Ajoute une activité non planifée
+def ajouter_activite_non_planifiee(df):
     with st.expander("Ajout d'une nouvelle activité non planifiée"):
         with st.form("ajout_activite"):
             # Ligne 1 : Début - Fin
@@ -1248,7 +1256,9 @@ def afficher_formulaire_ajout_activite(df):
                     "Reserve": reserve,
                 }
                 ligne_df = pd.DataFrame([nouvelle_ligne])
+                st.session_state.historique_undo.append(st.session_state.df.copy())
                 st.session_state.df = pd.concat([df, ligne_df], ignore_index=True)
+                st.session_state.historique_redo.clear()
                 st.success("🎉 Activité ajoutée !")
                 st.rerun()
         
@@ -1258,6 +1268,7 @@ def ajouter_activite_planifiee(date_ref, proposables, choix_activite):
 
     type_activite = dict((p[1], p[3]) for p in proposables)[choix_activite]
     if st.button("🗓️ Ajouter au planning", key="Ajouter au planning par créneau"):
+        st.session_state.historique_undo.append(st.session_state.df.copy())
         if type_activite == "ActiviteExistante":
             # Pour les spectacles, on planifie la date et l'heure
             index = dict((p[1], p[2]) for p in proposables)[choix_activite]
@@ -1283,6 +1294,7 @@ def ajouter_activite_planifiee(date_ref, proposables, choix_activite):
             st.session_state.df.at[index, "Debut"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             st.session_state.df.at[index, "Duree"] = formatter_timedelta(DUREE_CAFE)
             st.session_state.df.at[index, "Activite"] = "Pause café"
+        st.session_state.historique_redo.clear()
         st.rerun()
 
 # Formatte un objet timedelta en une chaîne de caractères "XhYY"
@@ -1408,18 +1420,9 @@ def planifier_activite_par_choix_creneau(df):
             if proposables:
                 choix_activite = st.selectbox("Choix de l'activité à planifier dans le créneau sélectionné", [p[1] for p in proposables])
                 col1, col2, col3 = st.columns(3)
-                with col1:
-                    ajouter_activite_planifiee(date_ref, proposables, choix_activite)
-                with col2:
-                    sauvegarder_excel()
-            else:
-                st.info("Aucune activité compatible avec ce créneau.")
-                sauvegarder_excel()
-        else:
-            st.info("Aucun créneau disponible.")
-            sauvegarder_excel()
+                ajouter_activite_planifiee(date_ref, proposables, choix_activite)
 
-def chargement_fichier():
+def charger_fichier():
     # Callback de st.file_uploader pour charger le fichier Excel
     def file_uploader_callback():
         fichier = st.session_state.get("file_uploader")
@@ -1443,6 +1446,36 @@ def chargement_fichier():
         key="file_uploader",
         on_change=file_uploader_callback)
 
+import streamlit as st
+import pandas as pd
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+
+# Initialisation undo redo
+def initialiser_undo_redo():
+    if "historique_undo" not in st.session_state:
+        st.session_state.historique_undo = deque(maxlen=MAX_HISTORIQUE)
+        st.session_state.historique_redo = deque(maxlen=MAX_HISTORIQUE)
+
+# Gestion undo redo sauvegarde
+def gerer_undo_redo_sauvegarde():
+    col1, col2, col3 = st.columns([1, 1, 4])
+    with col1:
+        if st.button("↩️ Défaire", 
+              disabled=not st.session_state.historique_undo, 
+              key="undo_btn") and st.session_state.historique_undo:
+            st.session_state.historique_redo.append(st.session_state.df.copy())
+            st.session_state.df = st.session_state.historique_undo.pop()
+            st.rerun()
+    with col2:
+        if st.button("↪️ Refaire", 
+              disabled=not st.session_state.historique_redo, 
+              key="redo_btn") and st.session_state.historique_redo:
+            st.session_state.historique_undo.append(st.session_state.df.copy())
+            st.session_state.df = st.session_state.historique_redo.pop()
+            st.rerun()
+    with col3:
+        sauvegarder_fichier()
+
 def main():
     # Affichage du titre
     afficher_titre()
@@ -1451,7 +1484,10 @@ def main():
     afficher_aide()
 
     # chargement du fichier Excel
-    chargement_fichier()
+    charger_fichier()
+
+    # Initialisation undo redo
+    initialiser_undo_redo()
 
     # Si le fichier est chargé dans st.session_state.df et valide, on le traite
     if "df" in st.session_state:
@@ -1470,6 +1506,9 @@ def main():
             # Choix de la période à planifier
             choix_periode_a_planifier(df)
 
+            # Gestion undo redo sauvegarde
+            gerer_undo_redo_sauvegarde()
+
             # Affichage des activités planifiées
             afficher_activites_planifiees(df)
 
@@ -1477,7 +1516,7 @@ def main():
             afficher_activites_non_planifiees(df)
 
             # Affiche le formulaire d'ajout d'activité
-            afficher_formulaire_ajout_activite(df)
+            ajouter_activite_non_planifiee(df)
 
             # Planification d'une nouvelle activité par créneau
             planifier_activite_par_choix_creneau(df)            
