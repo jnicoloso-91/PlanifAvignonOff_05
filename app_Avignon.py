@@ -567,6 +567,10 @@ def afficher_activites_planifiees(df):
     df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
     df_display["__index"] = df_display.index
 
+    # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
+    if "aggrid_activite_non_planifies_reset_counter" not in st.session_state:
+        st.session_state.aggrid_activite_planifies_reset_counter = 0
+
     # Palette de couleurs
     couleurs_jours = {
         1: "#fce5cd",   2: "#fff2cc",   3: "#d9ead3",   4: "#cfe2f3",   5: "#ead1dc",
@@ -604,7 +608,7 @@ def afficher_activites_planifiees(df):
         allow_unsafe_jscode=True,
         height=500,
         update_mode=GridUpdateMode.SELECTION_CHANGED,
-        key="Activités planifiées"
+        key=f"Activités planifiées {st.session_state.aggrid_activite_planifies_reset_counter}",  # clé stable mais changeante après suppression de ligne pour forcer le reaffichage
     )
 
     # 🟡 Traitement du clic
@@ -625,6 +629,7 @@ def afficher_activites_planifiees(df):
                 if not est_reserve(st.session_state.df.loc[index_df]):
                     if st.button("🗑️ Supprimer", key="Supprimer des activités planifiées"):
                         supprimer_activite_planifiee(index_df)
+                        st.session_state.aggrid_activite_planifies_reset_counter += 1
                         st.rerun()
 
 # Affiche les activités non planifiées dans un tableau
@@ -669,23 +674,26 @@ def afficher_activites_non_planifiees(df):
     editable_cols["Fin"] = False  
     for col, editable in editable_cols.items():
         gb.configure_column(col, editable=editable)
+    gb.configure_column("Activité", width=200)
     gb.configure_default_column(resizable=True)
-    gb.configure_grid_options(onFirstDataRendered=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
+    # gb.configure_grid_options(onFirstDataRendered=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
     gb.configure_selection(selection_mode="single", use_checkbox=False)
+    grid_options = gb.build()
+    # grid_options["suppressSizeToFit"] = True
 
     # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
-    if "aggrid_reset_counter" not in st.session_state:
-        st.session_state.aggrid_reset_counter = 0
+    if "aggrid_activite_non_planifies_reset_counter" not in st.session_state:
+        st.session_state.aggrid_activite_non_planifies_reset_counter = 0
 
     # Affichage
     response = AgGrid(
         df_display,
-        gridOptions=gb.build(),
+        gridOptions=grid_options,
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=True,
         height=500,
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
-        key=f"Activités non planifiées {st.session_state.aggrid_reset_counter}",  # clé stable mais changeante après suppression de ligne ou modification de cellule pour forcer le reaffichage
+        key=f"Activités non planifiées {st.session_state.aggrid_activite_non_planifies_reset_counter}",  # clé stable mais changeante après suppression de ligne ou modification de cellule pour forcer le reaffichage
     )
 
     # Reaffichage si une cellule a été modifiée
@@ -714,7 +722,7 @@ def afficher_activites_non_planifiees(df):
         for i, idx in lignes_modifiees:
             for col in df_modifie.drop(columns=["__index"]).columns:
                 st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
-        st.session_state.aggrid_reset_counter += 1
+        st.session_state.aggrid_activite_non_planifies_reset_counter += 1
         st.rerun()
 
     # 🟡 Traitement du clic
@@ -734,7 +742,7 @@ def afficher_activites_non_planifiees(df):
             with col2:
                 if st.button("🗑️ Supprimer", key="Supprimer des activités non planifiées"):
                     supprimer_activite(index_df)
-                    st.session_state.aggrid_reset_counter += 1
+                    st.session_state.aggrid_activite_non_planifies_reset_counter += 1
                     st.rerun()
             with col3:
                 col11, col12 = st.columns([1,1])
@@ -752,7 +760,7 @@ def afficher_activites_non_planifiees(df):
 
                             # On peut maintenant modifier le df
                             df.at[index_df, "Date"] = jour_choisi
-                            st.session_state.aggrid_reset_counter += 1
+                            st.session_state.aggrid_activite_non_planifies_reset_counter += 1
                             st.rerun()
 
 # Vérifie qu'une valeur contient bien NaN ou "" ou quelque chose du type "1", "1,10", "1, 10", "1, pair", "12, impair"
