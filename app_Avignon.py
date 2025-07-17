@@ -1552,7 +1552,8 @@ import base64
 def image_to_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
-    
+
+# Essai essai boutons html à creuser (permettrait d'avoir des boutons horizontaux avec grisés ur mobile)
 def essai_boutons_html():
     # Images
     undo_icon = image_to_base64("undo_actif.png")
@@ -1635,23 +1636,7 @@ def ajouter_activite():
         st.session_state.compteur_activite = 1
 
     # Bouton Ajouter
-    if st.button("➕ Ajouter une activité"):
-
-        # nouvelle_ligne = pd.DataFrame([{
-        #     "Debut": "09h00",
-        #     "Duree": "1h00",
-        #     "Activite": f"Activite {st.session_state.compteur_activite}",
-        #     # toutes les autres colonnes à pd.NA :
-        #     **{col: pd.NA for col in st.session_state.df.columns
-        #     if col not in ["Debut", "Duree", "Activite"]}
-        # }])
-        # st.session_state.historique_undo.append(st.session_state.df.copy())
-        
-        # st.session_state.df = pd.concat(
-        #     [st.session_state.df, nouvelle_ligne],
-        #     ignore_index=True
-        # )
-        # st.session_state.historique_redo.clear()
+    if st.button("➕"):
 
         st.session_state.historique_undo.append(st.session_state.df.copy())
         new_idx = len(st.session_state.df)
