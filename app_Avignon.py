@@ -594,7 +594,7 @@ def get_selected_iloc(df, row_dict):
 # Affiche les activités planifiées dans un tableau
 def afficher_activites_planifiees(df):
     st.markdown("##### Activités planifiées")
-    with st.expander("Activités planifiées"):
+    with st.expander("Activités planifiées", expanded=True):
 
         renommage_colonnes = {
             "Debut": "Début",
