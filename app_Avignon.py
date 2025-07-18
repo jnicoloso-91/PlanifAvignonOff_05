@@ -670,29 +670,10 @@ def afficher_activites_planifiees(df):
     gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
 
     # Configuration de la sélection
-
-    # Version 1
-    #  pre_selected_row = 0  # par défaut
-    # if "activites_non_planifiee_selected_row" in st.session_state:
-    #     pre_selected_row = min(st.session_state["activites_non_planifiee_selected_row"], len(df_display) - 1)
-    # gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
-
-   # Version 2
-    # new_iloc = 0  # par défaut
-    # if "activites_planifies_selected_row" in st.session_state:
-    #     # pre_selected_row = min(st.session_state["activites_planifies_selected_row"], len(df_display) - 1)
-    #     old_iloc= st.session_state["activites_planifies_selected_row"]
-    #     if old_iloc < len(df_display):
-    #         new_iloc = old_iloc
-    #     else:
-    #         new_iloc = max(0, len(df_display) - 1)
-    # if len(df_display) > 0:
-    #     ligne_preselection = df_display.iloc[new_iloc].apply(str).to_dict()
-    #     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[ligne_preselection])   
-    # else:     
-    #     gb.configure_selection(selection_mode="single", use_checkbox=False)
-
-    gb.configure_selection(selection_mode="single", use_checkbox=False)
+    pre_selected_row = 0  # par défaut
+    if "activites_planifiee_selected_row" in st.session_state:
+        pre_selected_row = min(st.session_state["activites_planifiee_selected_row"], len(df_display) - 1)
+    gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
@@ -708,33 +689,37 @@ def afficher_activites_planifiees(df):
     )
 
     # Reaffichage si une cellule a été modifiée
-    df_modifie = pd.DataFrame(response["data"])
-    lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_planifies_initial)
-    if lignes_modifiees:
-        st.session_state.historique_undo.append(st.session_state.df.copy())
-        for i, idx in lignes_modifiees:
-            for col in df_modifie.drop(columns=["__index"]).columns:
-                st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
-        st.session_state.historique_redo.clear()
-        # forcer_reaffichage_activites_planifiees() pas necéssaire dans ce cas car les modifs sur une cellule n'ont pas d'impact sur le reste de l'aggrid
-        st.rerun()
+    if not mode_mobile():
+        df_modifie = pd.DataFrame(response["data"])
+        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_planifies_initial)
+        if lignes_modifiees:
+            st.session_state.historique_undo.append(st.session_state.df.copy())
+            for i, idx in lignes_modifiees:
+                for col in df_modifie.drop(columns=["__index"]).columns:
+                    st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
+            st.session_state.historique_redo.clear()
+            # forcer_reaffichage_activites_planifiees() pas necéssaire dans ce cas car les modifs sur une cellule n'ont pas d'impact sur le reste de l'aggrid
+            st.rerun()
 
     # 🟡 Traitement du clic
     selected_rows = response["selected_rows"]
 
+    selected_rows = response["selected_rows"]
+
     if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
-        row = selected_rows.iloc[0]
+        row = selected_rows.iloc[0] 
+    elif isinstance(selected_rows, list) and len(selected_rows) > 0:
+        row = selected_rows[0]
+    else: 
+        row = df_display.iloc[pre_selected_row]
+
+    if row is not None:
         index_df = row["__index"]
 
         # Enregistrement de la sélection courante pour gestion de la sélection
-
-        # # Version 1
-        # iloc_selected = get_selected_iloc(df, selected_rows)
-        # if iloc_selected is not None:
-        #     st.session_state.activites_planifiee_selected_row = iloc_selected
-
-        # # Version 2
-        # st.session_state.activites_planifies_selected_row = df_display[df_display.eq(row).all(axis=1)].index[0]
+        iloc_selected = get_selected_iloc(df, row)
+        if iloc_selected is not None:
+            st.session_state.activites_planifiee_selected_row = iloc_selected
 
         nom_activite = str(row["Activité"]).strip() 
         if nom_activite:
@@ -752,6 +737,161 @@ def afficher_activites_planifiees(df):
                         st.session_state.historique_redo.clear()
                         forcer_reaffichage_activites_planifiees()
                         st.rerun()
+
+            # Formulaire d'édition pour mobile
+            if mode_mobile():
+                with st.expander("Editeur"):
+                    colonnes_editables = [col for col in df_display.columns if col not in ["__jour", "__index", "Date", "Début", "Fin", "Durée"]]
+                    colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables)
+                    valeur_actuelle = row[colonne]
+                    with st.form("edit_cell_form_1", clear_on_submit=True):
+                        nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_actuelle)
+                        submitted = st.form_submit_button("✅ Valider")
+
+                        if submitted:
+                            erreur = None
+                            # Vérification selon le nom de la colonne
+                            if colonne == "Début" and not est_format_heure(nouvelle_valeur):
+                                erreur = "⛔ Format attendu : HHhMM (ex : 10h00)"
+                            elif colonne == "Durée" and not est_format_duree(nouvelle_valeur):
+                                erreur = "⛔ Format attendu : HhMM (ex : 1h00 ou 0h30)"
+                            elif colonne == "Relache" and not est_relache_valide(nouvelle_valeur):
+                                erreur = "⛔ Format attendu : 1, 10, pair, impair)"
+                            elif colonne == "Réservé" and not est_reserve_valide(nouvelle_valeur):
+                                erreur = "⛔ Format attendu : Oui, Non)"
+
+                            if erreur:
+                                st.error(erreur)
+                            elif nouvelle_valeur != valeur_actuelle:
+                                st.session_state.historique_undo.append(st.session_state.df.copy())
+                                df.at[index_df, renommage_colonnes_inverse[colonne]] = nouvelle_valeur
+                                st.session_state.historique_redo.clear()
+                                forcer_reaffichage_activites_non_planifiees()
+                                st.rerun()
+
+
+# # Affiche les activités non planifiées dans un tableau
+# def afficher_activites_non_planifiees(df):
+#     st.markdown("##### Activités non planifiées")
+
+#     renommage_colonnes = {
+#         "Debut": "Début",
+#         "Duree": "Durée",
+#         "Reserve": "Réservé",
+#         "Priorite": "Prio",
+#         "Relache": "Relâche",
+#         "Activite": "Activité",
+#     }
+
+#     renommage_colonnes_inverse = {
+#         "Début": "Debut",
+#         "Durée": "Duree",
+#         "Réservé": "Reserve",
+#         "Priorité": "Prio",
+#         "Relâche": "Relache",
+#         "Activité": "Activite",
+#     }
+
+#     non_planifies = get_activites_non_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
+#     df_affichage = non_planifies[["Date", "Debut", "Fin", "Duree", "Activite", "Lieu", "Reserve", "Relache", "Priorite", "Commentaire"]].rename(columns=renommage_colonnes)
+
+#     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
+
+#     # Ajout d'une colonne temporaire pour l'index du df d'entrée
+#     df_display = df_affichage.copy()
+#     df_display["__index"] = df_display.index
+
+#     # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
+#     if "aggrid_activite_non_planifies_reset_counter" not in st.session_state:
+#         st.session_state.aggrid_activite_non_planifies_reset_counter = 0
+    
+#     # Enregistrement dans st.session_state d'une copy du df à afficher
+#     st.session_state.df_display_non_planifies_initial = df_display.copy()
+
+#     # Configuration
+#     gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__index"]))
+#     gb.configure_default_column(resizable=True)
+
+#     # Colonnes editables
+#     editable_cols = {col: True for col in df_display.columns if col != "__index"}
+#     editable_cols["Date"] = False  
+#     editable_cols["Fin"] = False  
+#     for col, editable in editable_cols.items():
+#         gb.configure_column(col, editable=editable)
+
+#     # Retaillage largeur colonnes
+#     gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
+
+#     # Configuration de la sélection
+#     gb.configure_selection(selection_mode="single", use_checkbox=False)
+
+#     grid_options = gb.build()
+#     grid_options["suppressMovableColumns"] = True
+
+#     # Affichage
+#     response = AgGrid(
+#         df_display,
+#         gridOptions=grid_options,
+#         allow_unsafe_jscode=True,
+#         height=250,
+#         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
+#         key=f"Activités non planifiées {st.session_state.aggrid_activite_non_planifies_reset_counter}",  # clé stable mais changeante après suppression de ligne ou modification de cellule pour forcer le reaffichage
+#     )
+
+#     # Reaffichage si une cellule a été modifiée
+#     df_modifie = pd.DataFrame(response["data"])
+#     lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_non_planifies_initial)
+#     if lignes_modifiees:
+#         st.session_state.historique_undo.append(st.session_state.df.copy())
+#         for i, idx in lignes_modifiees:
+#             for col in df_modifie.drop(columns=["__index"]).columns:
+#                 st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
+#         st.session_state.historique_redo.clear()
+#         forcer_reaffichage_activites_non_planifiees()
+#         st.rerun()
+
+#     # 🟡 Traitement du clic
+#     selected_rows = response["selected_rows"]
+
+#     if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
+#         row = selected_rows.iloc[0]
+#         index_df = row["__index"]
+#         nom_activite = str(row["Activité"]).strip() 
+#         if nom_activite:
+#             st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
+
+#             col1, col2, col3 = st.columns([0.5,0.5,4])
+#             with col1:
+#                 if not est_pause_str(nom_activite):
+#                     affiche_bouton_recherche_sur_le_net(nom_activite)
+#             with col2:
+#                 if st.button("🗑️", key="SupprimerActiviteNonPlanifiee"):
+#                     st.session_state.historique_undo.append(st.session_state.df.copy())
+#                     supprimer_activite(index_df)
+#                     st.session_state.historique_redo.clear()
+#                     forcer_reaffichage_activites_non_planifiees()
+#                     st.rerun()
+#             with col3:
+#                 col11, col12 = st.columns([0.5,4])
+#                 with col12:
+#                     # Déterminer les jours disponibles 
+#                     jours_possibles = get_jours_possibles(df, get_activites_planifiees(df), index_df)
+#                     if jours_possibles:
+#                         jours_label = [f"Le {int(jour):02d}" for jour in jours_possibles]
+#                         jour_selection = st.selectbox("Choix jour", jours_label, label_visibility = "collapsed")
+#                 with col11:
+#                     # Bouton pour confirmer
+#                     if jours_possibles:
+#                         if st.button("🗓️", key="AjouterAuxActivitésPlanifiees"):
+#                             jour_choisi = int(jour_selection.split()[-1])
+
+#                             # On peut maintenant modifier le df
+#                             st.session_state.historique_undo.append(st.session_state.df.copy())
+#                             df.at[index_df, "Date"] = jour_choisi
+#                             st.session_state.historique_redo.clear()
+#                             forcer_reaffichage_activites_non_planifiees()
+#                             st.rerun()
+#     ajouter_activite()
 
 # Affiche les activités non planifiées dans un tableau
 def afficher_activites_non_planifiees(df):
@@ -796,17 +936,23 @@ def afficher_activites_non_planifiees(df):
     gb.configure_default_column(resizable=True)
 
     # Colonnes editables
-    editable_cols = {col: True for col in df_display.columns if col != "__index"}
-    editable_cols["Date"] = False  
-    editable_cols["Fin"] = False  
-    for col, editable in editable_cols.items():
-        gb.configure_column(col, editable=editable)
+    if mode_mobile():
+        gb.configure_default_column(editable=False)
+    else:
+        editable_cols = {col: True for col in df_display.columns if col != "__index"}
+        editable_cols["Date"] = False  
+        editable_cols["Fin"] = False  
+        for col, editable in editable_cols.items():
+            gb.configure_column(col, editable=editable)
 
     # Retaillage largeur colonnes
     gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
 
     # Configuration de la sélection
-    gb.configure_selection(selection_mode="single", use_checkbox=False)
+    pre_selected_row = 0  # par défaut
+    if "activites_non_planifiee_selected_row" in st.session_state:
+        pre_selected_row = min(st.session_state["activites_non_planifiee_selected_row"], len(df_display) - 1)
+    gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
@@ -822,27 +968,41 @@ def afficher_activites_non_planifiees(df):
     )
 
     # Reaffichage si une cellule a été modifiée
-    df_modifie = pd.DataFrame(response["data"])
-    lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_non_planifies_initial)
-    if lignes_modifiees:
-        st.session_state.historique_undo.append(st.session_state.df.copy())
-        for i, idx in lignes_modifiees:
-            for col in df_modifie.drop(columns=["__index"]).columns:
-                st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
-        st.session_state.historique_redo.clear()
-        forcer_reaffichage_activites_non_planifiees()
-        st.rerun()
+    if not mode_mobile():
+        df_modifie = pd.DataFrame(response["data"])
+        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_non_planifies_initial)
+        if lignes_modifiees:
+            st.session_state.historique_undo.append(st.session_state.df.copy())
+            for i, idx in lignes_modifiees:
+                for col in df_modifie.drop(columns=["__index"]).columns:
+                    st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
+            st.session_state.historique_redo.clear()
+            forcer_reaffichage_activites_non_planifiees()
+            st.rerun()
 
     # 🟡 Traitement du clic
     selected_rows = response["selected_rows"]
 
     if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
-        row = selected_rows.iloc[0]
+        row = selected_rows.iloc[0] 
+    elif isinstance(selected_rows, list) and len(selected_rows) > 0:
+        row = selected_rows[0]
+    else: 
+        row = df_display.iloc[pre_selected_row]
+
+    if row is not None:
         index_df = row["__index"]
+        
+        # Enregistrement de la sélection courante pour gestion de la sélection
+        iloc_selected = get_selected_iloc(df, row)
+        if iloc_selected is not None:
+            st.session_state.activites_non_planifiee_selected_row = iloc_selected
+
         nom_activite = str(row["Activité"]).strip() 
         if nom_activite:
             st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
 
+            # Bouton Chercher, Supprimer, Ajouter au planning 
             col1, col2, col3 = st.columns([0.5,0.5,4])
             with col1:
                 if not est_pause_str(nom_activite):
@@ -874,7 +1034,43 @@ def afficher_activites_non_planifiees(df):
                             st.session_state.historique_redo.clear()
                             forcer_reaffichage_activites_non_planifiees()
                             st.rerun()
+
+            # Formulaire d'édition pour mobile
+            if mode_mobile():
+                with st.expander("Editeur"):
+                    colonnes_editables = [col for col in df_display.columns if col not in ["__index", "Date", "Fin"]]
+                    colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables)
+                    valeur_actuelle = row[colonne]
+                    with st.form("edit_cell_form_2", clear_on_submit=True):
+                        nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_actuelle)
+                        submitted = st.form_submit_button("✅ Valider")
+
+                        if submitted:
+                            erreur = None
+                            # Vérification selon le nom de la colonne
+                            if colonne == "Début" and not est_format_heure(nouvelle_valeur):
+                                erreur = "⛔ Format attendu : HHhMM (ex : 10h00)"
+                            elif colonne == "Durée" and not est_format_duree(nouvelle_valeur):
+                                erreur = "⛔ Format attendu : HhMM (ex : 1h00 ou 0h30)"
+                            elif colonne == "Relache" and not est_relache_valide(nouvelle_valeur):
+                                erreur = "⛔ Format attendu : 1, 10, pair, impair)"
+                            elif colonne == "Réservé" and not est_reserve_valide(nouvelle_valeur):
+                                erreur = "⛔ Format attendu : Oui, Non)"
+
+                            if erreur:
+                                st.error(erreur)
+                            elif nouvelle_valeur != valeur_actuelle:
+                                st.session_state.historique_undo.append(st.session_state.df.copy())
+                                df.at[index_df, renommage_colonnes_inverse[colonne]] = nouvelle_valeur
+                                st.session_state.historique_redo.clear()
+                                forcer_reaffichage_activites_non_planifiees()
+                                st.rerun()
+
     ajouter_activite()
+
+# Vérifie qu'une valeur est bien Oui Non
+def est_reserve_valide(val):
+    return str(val).strip().lower() in ["oui", "non"]
 
 # Vérifie qu'une valeur contient bien NaN ou "" ou quelque chose du type "1", "1,10", "1, 10", "1, pair", "12, impair"
 def est_relache_valide(val):
@@ -1650,7 +1846,19 @@ def ajouter_activite():
 
         st.session_state.compteur_activite += 1
         st.rerun()
-    
+
+# Renvoie True si l'appli tourne sur mobile  
+def mode_mobile():    
+    from streamlit_js_eval import streamlit_js_eval, get_geolocation
+    if "mode_mobile" not in st.session_state:
+        _mode_mobile = False
+        user_agent = streamlit_js_eval(js_expressions="navigator.userAgent", key="ua")
+        if user_agent:
+            if "Mobile" in user_agent or "Android" in user_agent or "iPhone" in user_agent:
+                _mode_mobile = True
+        st.session_state.mode_mobile = _mode_mobile
+    return st.session_state.mode_mobile
+
 def main():
     # Affichage du titre
     afficher_titre()
