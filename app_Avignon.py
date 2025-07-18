@@ -1699,22 +1699,6 @@ def undo_redo_redo():
         forcer_reaffichage_activites_non_planifiees()
         st.rerun()
 
-# Gestion undo redo sauvegarde
-def undo_redo_show_buttons():
-    col1, col2, col3 = st.columns([0.5, 0.5, 4])
-    with col1:
-        if st.button("↩️", 
-              disabled=not st.session_state.historique_undo, 
-              key="undo_btn") and st.session_state.historique_undo:
-            undo_redo_undo()
-    with col2:
-        if st.button("↪️", 
-              disabled=not st.session_state.historique_redo, 
-              key="redo_btn") and st.session_state.historique_redo:
-            undo_redo_redo()
-    with col3:
-        sauvegarder_fichier()
-
 import base64
 def image_to_base64(path):
     with open(path, "rb") as f:
@@ -1796,13 +1780,31 @@ def mode_mobile():
     return True # st.session_state.mode_mobile
 
 # Affichage des choix généraux
-def afficher_choix_generaux(df):
-    with st.expander("Choix généraux"):
+def afficher_infos_generales(df):
+    with st.expander("Informations générales"):
         # Vérification de cohérence des informations du df
         verifier_coherence(df) 
 
         # Choix de la période à planifier
         choix_periode_a_planifier(df)
+
+# Affichage des contrôles principaux
+def afficher_controles_principaux(df):
+    with st.expander("Contrôles principaux"):
+        col1, col2, col3 = st.columns([0.5, 0.5, 4])
+        with col1:
+            if st.button("↩️", 
+                disabled=not st.session_state.historique_undo, 
+                key="undo_btn") and st.session_state.historique_undo:
+                undo_redo_undo()
+        with col2:
+            if st.button("↪️", 
+                disabled=not st.session_state.historique_redo, 
+                key="redo_btn") and st.session_state.historique_redo:
+                undo_redo_redo()
+        with col3:
+            sauvegarder_fichier()
+
 
 def main():
     # Affichage du titre
@@ -1829,10 +1831,10 @@ def main():
         if not "fichier_invalide" in st.session_state:
 
             # Affichage des choix généraux
-            afficher_choix_generaux(df)
+            afficher_infos_generales(df)
 
-            # Gestion undo redo sauvegarde
-            undo_redo_show_buttons()
+            # Affichage des contrôles principaux
+            afficher_controles_principaux(df)
 
             # Affichage des activités planifiées
             afficher_activites_planifiees(df)
