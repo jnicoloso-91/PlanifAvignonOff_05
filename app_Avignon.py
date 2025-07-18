@@ -646,7 +646,7 @@ def afficher_activites_planifiees(df):
     gb.configure_default_column(resizable=True)
 
     # Colonnes editables
-    editable_cols = {col: True for col in df_display.columns if col != "__index"}
+    editable_cols = {col: True for col in df_display.columns if col != "__jour" and col != "__index"}
     editable_cols["Date"] = False  
     editable_cols["Début"] = False  
     editable_cols["Fin"] = False  
