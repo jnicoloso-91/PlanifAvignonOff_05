@@ -790,7 +790,7 @@ def afficher_activites_planifiees(df):
 # Affiche les activités non planifiées dans un tableau
 def afficher_activites_non_planifiees(df):
     st.markdown("##### Activités non planifiées")
-    with st.expander("Activités non planifiées"):
+    with st.expander("Activités non planifiées", expanded=True):
 
         renommage_colonnes = {
             "Debut": "Début",
@@ -1582,7 +1582,7 @@ def planifier_activite_par_choix_creneau(df):
     planifies = get_activites_planifiees(df)
     if not planifies.empty:
         st.markdown("##### Planification des créneaux disponibles")
-        with st.expander("Planification des créneaux disponibles"):
+        with st.expander("Planification des créneaux disponibles", expanded=True):
 
             # Affectation du flag de traitement des pauses
             traiter_pauses = st.checkbox("Tenir compte des pauses (déjeuner, dîner, café)", value=False)  
