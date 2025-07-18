@@ -290,7 +290,7 @@ def nettoyer_donnees(df):
             # Suppression des lignes presque vides i.e. ne contenant que des NaN ou des ""
             df = df[~df.apply(lambda row: all(pd.isna(x) or str(x).strip() == "" for x in row), axis=1)].reset_index(drop=True)
 
-            # Nettoyage Heure et ajout de la colonne Heure_dt "10h00" -> datetime.time
+            # Nettoyage Heure et ajout de la colonne Debut_dt "10h00" -> datetime.time
             df["Debut"] = df["Debut"].apply(heure_str)
             df["Debut_dt"] = df["Debut"].apply(parse_heure)
 
@@ -298,7 +298,7 @@ def nettoyer_donnees(df):
             df["Duree"] = df["Duree"].apply(duree_str)
             df["Duree_dt"] = df["Duree"].apply(parse_duree)
 
-            # Recalcul de la colonne fin = Heure_dt + Duree_dt si Duree_dt non NaN
+            # Recalcul de la colonne fin = Debut_dt + Duree_dt si Duree_dt non NaN
             df["Fin"] = df.apply(recalculer_fin, axis=1)
 
             # Force les types corrects après lecture pour éviter les erreurs de conversion pandas
@@ -613,15 +613,15 @@ def afficher_activites_planifiees(df):
         "Activité": "Activite",
     }
 
-    planifies = get_activites_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
-    df_affichage = planifies[["Date", "Debut", "Fin", "Duree", "Activite", "Lieu", "Reserve", "Relache", "Priorite", "Commentaire"]].rename(columns=renommage_colonnes)
-
     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
 
-    # Ajout d'une colonne temporaire pour le jour et l'index du df d'entrée
-    df_display = df_affichage.copy()
+    # Constitution du df à afficher
+    planifies = get_activites_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
+    df_display = planifies.rename(columns=renommage_colonnes)
     df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
     df_display["__index"] = df_display.index
+    df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
+
 
     # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
     if "aggrid_activite_planifies_reset_counter" not in st.session_state:
@@ -643,10 +643,13 @@ def afficher_activites_planifiees(df):
 
     # Configuration
     gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__jour", "__index"]))
-    gb.configure_default_column(resizable=True)
+
+    # squage des colonnes de travail
+    gb.configure_column("__index", hide=True)
+    gb.configure_column("__jour", hide=True)
 
     # Colonnes editables
-    editable_cols = {col: True for col in df_display.columns if col != "__index"}
+    editable_cols = {col: True for col in df_display.columns if col != "__index" and col != "__jour"}
     editable_cols["Date"] = False  
     editable_cols["Début"] = False  
     editable_cols["Fin"] = False  
@@ -667,6 +670,7 @@ def afficher_activites_planifiees(df):
     """))
 
     # Retaillage largeur colonnes
+    gb.configure_default_column(resizable=True)
     gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
 
     # Configuration de la sélection
@@ -810,14 +814,13 @@ def afficher_activites_non_planifiees(df):
         "Activité": "Activite",
     }
 
-    non_planifies = get_activites_non_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
-    df_affichage = non_planifies[["Date", "Debut", "Fin", "Duree", "Activite", "Lieu", "Reserve", "Relache", "Priorite", "Commentaire"]].rename(columns=renommage_colonnes)
-
     from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
 
-    # Ajout d'une colonne temporaire pour l'index du df d'entrée
-    df_display = df_affichage.copy()
+    # Constitution du df à afficher
+    non_planifies = get_activites_non_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
+    df_display = non_planifies.rename(columns=renommage_colonnes)
     df_display["__index"] = df_display.index
+    df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
 
     # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
     if "aggrid_activite_non_planifies_reset_counter" not in st.session_state:
@@ -828,7 +831,9 @@ def afficher_activites_non_planifiees(df):
 
     # Configuration
     gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__index"]))
-    gb.configure_default_column(resizable=True)
+
+    # Masquage des colonnes de travail
+    gb.configure_column("__index", hide=True)
 
     # Colonnes editables
     editable_cols = {col: True for col in df_display.columns if col != "__index"}
@@ -838,6 +843,7 @@ def afficher_activites_non_planifiees(df):
         gb.configure_column(col, editable=editable)
 
     # Retaillage largeur colonnes
+    gb.configure_default_column(resizable=True)
     gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
 
     # Configuration de la sélection
@@ -1798,9 +1804,6 @@ def afficher_choix_generaux(df):
         # Choix de la période à planifier
         choix_periode_a_planifier(df)
 
-        # Gestion undo redo sauvegarde
-        undo_redo_show_buttons()
-
 def main():
     # Affichage du titre
     afficher_titre()
@@ -1827,6 +1830,9 @@ def main():
 
             # Affichage des choix généraux
             afficher_choix_generaux(df)
+
+            # Gestion undo redo sauvegarde
+            undo_redo_show_buttons()
 
             # Affichage des activités planifiées
             afficher_activites_planifiees(df)
