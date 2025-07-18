@@ -3,3 +3,4 @@ pandas
 openpyxl
 streamlit-aggrid
 beautifulsoup4
+streamlit-js-eval
