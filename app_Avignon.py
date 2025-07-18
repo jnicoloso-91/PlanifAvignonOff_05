@@ -689,17 +689,16 @@ def afficher_activites_planifiees(df):
     )
 
     # Reaffichage si une cellule a été modifiée
-    if not mode_mobile():
-        df_modifie = pd.DataFrame(response["data"])
-        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_planifies_initial)
-        if lignes_modifiees:
-            st.session_state.historique_undo.append(st.session_state.df.copy())
-            for i, idx in lignes_modifiees:
-                for col in df_modifie.drop(columns=["__index"]).columns:
-                    st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
-            st.session_state.historique_redo.clear()
-            # forcer_reaffichage_activites_planifiees() pas necéssaire dans ce cas car les modifs sur une cellule n'ont pas d'impact sur le reste de l'aggrid
-            st.rerun()
+    df_modifie = pd.DataFrame(response["data"])
+    lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_planifies_initial)
+    if lignes_modifiees:
+        st.session_state.historique_undo.append(st.session_state.df.copy())
+        for i, idx in lignes_modifiees:
+            for col in df_modifie.drop(columns=["__index"]).columns:
+                st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
+        st.session_state.historique_redo.clear()
+        # forcer_reaffichage_activites_planifiees() pas necéssaire dans ce cas car les modifs sur une cellule n'ont pas d'impact sur le reste de l'aggrid
+        st.rerun()
 
     # 🟡 Traitement du clic
     selected_rows = response["selected_rows"]
@@ -936,14 +935,11 @@ def afficher_activites_non_planifiees(df):
     gb.configure_default_column(resizable=True)
 
     # Colonnes editables
-    if mode_mobile():
-        gb.configure_default_column(editable=False)
-    else:
-        editable_cols = {col: True for col in df_display.columns if col != "__index"}
-        editable_cols["Date"] = False  
-        editable_cols["Fin"] = False  
-        for col, editable in editable_cols.items():
-            gb.configure_column(col, editable=editable)
+    editable_cols = {col: True for col in df_display.columns if col != "__index"}
+    editable_cols["Date"] = False  
+    editable_cols["Fin"] = False  
+    for col, editable in editable_cols.items():
+        gb.configure_column(col, editable=editable)
 
     # Retaillage largeur colonnes
     gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
@@ -968,17 +964,16 @@ def afficher_activites_non_planifiees(df):
     )
 
     # Reaffichage si une cellule a été modifiée
-    if not mode_mobile():
-        df_modifie = pd.DataFrame(response["data"])
-        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_non_planifies_initial)
-        if lignes_modifiees:
-            st.session_state.historique_undo.append(st.session_state.df.copy())
-            for i, idx in lignes_modifiees:
-                for col in df_modifie.drop(columns=["__index"]).columns:
-                    st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
-            st.session_state.historique_redo.clear()
-            forcer_reaffichage_activites_non_planifiees()
-            st.rerun()
+    df_modifie = pd.DataFrame(response["data"])
+    lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_non_planifies_initial)
+    if lignes_modifiees:
+        st.session_state.historique_undo.append(st.session_state.df.copy())
+        for i, idx in lignes_modifiees:
+            for col in df_modifie.drop(columns=["__index"]).columns:
+                st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
+        st.session_state.historique_redo.clear()
+        forcer_reaffichage_activites_non_planifiees()
+        st.rerun()
 
     # 🟡 Traitement du clic
     selected_rows = response["selected_rows"]
@@ -1853,11 +1848,11 @@ def mode_mobile():
     if "mode_mobile" not in st.session_state:
         _mode_mobile = False
         user_agent = streamlit_js_eval(js_expressions="navigator.userAgent", key="ua")
-        if user_agent:
+        if user_agent: # Renvoie toujours None...
             if "Mobile" in user_agent or "Android" in user_agent or "iPhone" in user_agent:
                 _mode_mobile = True
         st.session_state.mode_mobile = _mode_mobile
-    return st.session_state.mode_mobile
+    return True # st.session_state.mode_mobile
 
 def main():
     # Affichage du titre
