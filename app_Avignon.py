@@ -582,12 +582,21 @@ def get_lignes_modifiees(df1, df2):
                     lignes_modifiees.add((i, idx))
     return lignes_modifiees
 
-def get_selected_iloc(df, row_dict):
+def get_iloc_from_row(df, row_dict):
     if "__index" not in row_dict:
         return None
     try:
         index_val = row_dict["__index"]
         return df.index.get_loc(index_val)
+    except (KeyError, ValueError):
+        return None
+    
+def get_idx_from_row(df, row_dict):
+    if "__index" not in row_dict:
+        return None
+    try:
+        index_val = row_dict["__index"]
+        return index_val
     except (KeyError, ValueError):
         return None
     
@@ -676,7 +685,10 @@ def afficher_activites_planifiees(df):
     # Configuration de la sélection
     pre_selected_row = 0  # par défaut
     if "activites_planifiee_selected_row" in st.session_state:
-        pre_selected_row = min(st.session_state["activites_planifiee_selected_row"], len(df_display) - 1)
+        valeur_index = st.session_state["activites_planifiee_selected_row"]
+        matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
+        if not matches.empty:
+            pre_selected_row = df_display.index.get_loc(matches.index[0])
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
 
     grid_options = gb.build()
@@ -708,8 +720,6 @@ def afficher_activites_planifiees(df):
         # 🟡 Traitement du clic
         selected_rows = response["selected_rows"]
 
-        selected_rows = response["selected_rows"]
-
         if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
             row = selected_rows.iloc[0] 
         elif isinstance(selected_rows, list) and len(selected_rows) > 0:
@@ -721,9 +731,7 @@ def afficher_activites_planifiees(df):
             index_df = row["__index"]
 
             # Enregistrement de la sélection courante pour gestion de la sélection
-            iloc_selected = get_selected_iloc(df, row)
-            if iloc_selected is not None:
-                st.session_state.activites_planifiee_selected_row = iloc_selected
+            st.session_state.activites_planifiee_selected_row = index_df
 
             nom_activite = str(row["Activité"]).strip() 
             if nom_activite:
@@ -849,7 +857,10 @@ def afficher_activites_non_planifiees(df):
     # Configuration de la sélection
     pre_selected_row = 0  # par défaut
     if "activites_non_planifiee_selected_row" in st.session_state:
-        pre_selected_row = min(st.session_state["activites_non_planifiee_selected_row"], len(df_display) - 1)
+        valeur_index = st.session_state["activites_non_planifiee_selected_row"]
+        matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
+        if not matches.empty:
+            pre_selected_row = df_display.index.get_loc(matches.index[0])
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
 
     grid_options = gb.build()
@@ -892,9 +903,7 @@ def afficher_activites_non_planifiees(df):
             index_df = row["__index"]
             
             # Enregistrement de la sélection courante pour gestion de la sélection
-            iloc_selected = get_selected_iloc(df, row)
-            if iloc_selected is not None:
-                st.session_state.activites_non_planifiee_selected_row = iloc_selected
+            st.session_state.activites_non_planifiee_selected_row = index_df
 
             nom_activite = str(row["Activité"]).strip() 
             if nom_activite:
@@ -983,6 +992,59 @@ def afficher_activites_non_planifiees(df):
                                     st.rerun()
 
         ajouter_activite()
+
+# # Affichage de l'éditeur d'activité
+# def affichage_editeur_activite():
+#     st.markdown("##### Editeur d'ativité")
+#     with st.expander("Editeur "):
+#         with st.expander("Editeur"):
+#             colonnes_editables = [col for col in df_display.columns if col not in ["__jour", "__index", "Date", "Début", "Fin", "Durée"]]
+            
+#             # Ajout de l'hyperlien s'il existe
+#             if st.session_state.liens_spectacles is not None:
+#                 liens_spectacles = st.session_state.liens_spectacles
+#                 lien = liens_spectacles.get(row["Activité"])
+#                 if lien:
+#                     colonnes_editables.append("Lien de recherche")
+
+#             if "selectbox_editeur_activites_planifiees_selection" not in st.session_state:
+#                 st.session_state.selectbox_editeur_activites_planifiees_selection = 0
+#             valeur_initiale = st.session_state.selectbox_editeur_activites_planifiees_selection
+#             if valeur_initiale not in colonnes_editables:
+#                 valeur_initiale = colonnes_editables[0]
+#             colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables, index=colonnes_editables.index(valeur_initiale), key="selectbox_editeur_activites_planifiees")
+#             st.session_state.selectbox_editeur_activites_planifiees_selection = colonne
+#             if colonne != "Lien de recherche":
+#                 valeur_actuelle = row[colonne]
+#             else:
+#                 valeur_actuelle = lien
+#             nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_actuelle) 
+#             submitted = st.button("✅ Valider", key="validation_editeur_activites_planifiees")
+
+#             if submitted:
+#                 erreur = None
+#                 # Vérification selon le nom de la colonne
+#                 if colonne == "Début" and not est_format_heure(nouvelle_valeur):
+#                     erreur = "⛔ Format attendu : HHhMM (ex : 10h00)"
+#                 elif colonne == "Durée" and not est_format_duree(nouvelle_valeur):
+#                     erreur = "⛔ Format attendu : HhMM (ex : 1h00 ou 0h30)"
+#                 elif colonne == "Relache" and not est_relache_valide(nouvelle_valeur):
+#                     erreur = "⛔ Format attendu : 1, 10, pair, impair)"
+#                 elif colonne == "Réservé" and not est_reserve_valide(nouvelle_valeur):
+#                     erreur = "⛔ Format attendu : Oui, Non)"
+
+#                 if erreur:
+#                     st.error(erreur)
+#                 elif nouvelle_valeur != valeur_actuelle:
+#                     if colonne != "Lien de recherche":
+#                         undo_redo_save()
+#                         df.at[index_df, renommage_colonnes_inverse[colonne]] = nouvelle_valeur
+#                         forcer_reaffichage_activites_planifiees()
+#                         st.rerun()
+#                     else:
+#                         undo_redo_save()
+#                         liens_spectacles[row["Activité"]] = nouvelle_valeur
+#                         st.rerun()
 
 # Vérifie qu'une valeur est bien Oui Non
 def est_reserve_valide(val):
@@ -1750,9 +1812,17 @@ def essai_boutons_html():
 def ajouter_activite():
     import numpy as np
 
+    def get_nom_nouvelle_activite(df):
+        st.session_state.compteur_activite += 1
+        noms_existants = df["Activite"].dropna().astype(str).str.strip().tolist()
+        while True:
+            nom_candidat = f"Activité {st.session_state.compteur_activite}"
+            if nom_candidat not in noms_existants:
+                return nom_candidat
+            
     # Initialiser le DataFrame dans session_state si absent
     if "compteur_activite" not in st.session_state:
-        st.session_state.compteur_activite = 1
+        st.session_state.compteur_activite = 0
 
     # Bouton Ajouter
     if st.button("➕"):
@@ -1762,9 +1832,8 @@ def ajouter_activite():
         # st.session_state.df.loc[new_idx] = pd.NA  # pas de dtype cassé ici
         st.session_state.df.at[new_idx, "Debut"] = "09h00"
         st.session_state.df.at[new_idx, "Duree"] = "1h00"
-        st.session_state.df.at[new_idx, "Activite"] = f"Activite {st.session_state.compteur_activite}"
+        st.session_state.df.at[new_idx, "Activite"] = get_nom_nouvelle_activite(st.session_state.df)
 
-        st.session_state.compteur_activite += 1
         st.rerun()
 
 # Renvoie True si l'appli tourne sur mobile  
