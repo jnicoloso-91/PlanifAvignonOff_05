@@ -773,7 +773,7 @@ def afficher_activites_planifiees(df):
                             valeur_actuelle = row[colonne]
                         else:
                             valeur_actuelle = lien
-                        nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_actuelle) 
+                        nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_actuelle if pd.notna(valeur_actuelle) else "") 
                         submitted = st.button("✅ Valider", key="validation_editeur_activites_planifiees")
 
                         if submitted:
