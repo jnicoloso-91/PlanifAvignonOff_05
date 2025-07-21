@@ -8,6 +8,7 @@ from openpyxl.styles import Font
 import requests
 from bs4 import BeautifulSoup
 from collections import deque
+import pandas.api.types as ptypes
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -617,7 +618,7 @@ def afficher_activites_planifiees(df):
         "Début": "Debut",
         "Durée": "Duree",
         "Réservé": "Reserve",
-        "Priorité": "Prio",
+        "Prio": "Priorite",
         "Relâche": "Relache",
         "Activité": "Activite",
     }
@@ -771,31 +772,40 @@ def afficher_activites_planifiees(df):
                         st.session_state.selectbox_editeur_activites_planifiees_selection = colonne
                         if colonne != "Lien de recherche":
                             valeur_actuelle = row[colonne]
+                            if pd.isna(valeur_actuelle):
+                                valeur_actuelle = ""
                         else:
                             valeur_actuelle = lien
-                        if not pd.notna(valeur_actuelle):
-                            valeur_actuelle = ""
                         nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_actuelle) 
                         submitted = st.button("✅ Valider", key="validation_editeur_activites_planifiees")
 
                         if submitted:
                             erreur = None
+                            colonne_df = renommage_colonnes_inverse[colonne] if colonne in renommage_colonnes_inverse else colonne
                             # Vérification selon le nom de la colonne
                             if colonne == "Début" and not est_format_heure(nouvelle_valeur):
                                 erreur = "⛔ Format attendu : HHhMM (ex : 10h00)"
                             elif colonne == "Durée" and not est_format_duree(nouvelle_valeur):
                                 erreur = "⛔ Format attendu : HhMM (ex : 1h00 ou 0h30)"
-                            elif colonne == "Relache" and not est_relache_valide(nouvelle_valeur):
-                                erreur = "⛔ Format attendu : 1, 10, pair, impair)"
+                            elif colonne == "Relâche" and not est_relache_valide(nouvelle_valeur):
+                                erreur = "⛔ Format attendu : 1, 10, pair, impair"
                             elif colonne == "Réservé" and not est_reserve_valide(nouvelle_valeur):
                                 erreur = "⛔ Format attendu : Oui, Non)"
+                            elif ptypes.is_numeric_dtype(df[colonne_df]):
+                                try:
+                                    if "." not in nouvelle_valeur and "," not in nouvelle_valeur and "e" not in nouvelle_valeur.lower():
+                                        nouvelle_valeur = int(nouvelle_valeur)
+                                    else:
+                                        nouvelle_valeur = float(nouvelle_valeur)
+                                except:
+                                    erreur = "⛔ Format numérique attendu"
 
                             if erreur:
                                 st.error(erreur)
                             elif nouvelle_valeur != valeur_actuelle:
                                 if colonne != "Lien de recherche":
                                     undo_redo_save()
-                                    df.at[index_df, renommage_colonnes_inverse[colonne]] = nouvelle_valeur
+                                    df.at[index_df, colonne_df] = nouvelle_valeur
                                     forcer_reaffichage_activites_planifiees()
                                     st.rerun()
                                 else:
@@ -820,7 +830,7 @@ def afficher_activites_non_planifiees(df):
         "Début": "Debut",
         "Durée": "Duree",
         "Réservé": "Reserve",
-        "Priorité": "Prio",
+        "Prio": "Priorite",
         "Relâche": "Relache",
         "Activité": "Activite",
     }
@@ -965,31 +975,40 @@ def afficher_activites_non_planifiees(df):
                         st.session_state.selectbox_editeur_activites_non_planifiees_selection = colonne
                         if colonne != "Lien de recherche":
                             valeur_actuelle = row[colonne]
+                            if pd.isna(valeur_actuelle):
+                                valeur_actuelle = ""
                         else:
                             valeur_actuelle = lien
-                        if not pd.notna(valeur_actuelle):
-                            valeur_actuelle = ""
                         nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_actuelle)
                         submitted = st.button("✅ Valider", key="validation_editeur_activites_non_planifiees")
 
                         if submitted:
                             erreur = None
+                            colonne_df = renommage_colonnes_inverse[colonne] if colonne in renommage_colonnes_inverse else colonne
                             # Vérification selon le nom de la colonne
                             if colonne == "Début" and not est_format_heure(nouvelle_valeur):
                                 erreur = "⛔ Format attendu : HHhMM (ex : 10h00)"
                             elif colonne == "Durée" and not est_format_duree(nouvelle_valeur):
                                 erreur = "⛔ Format attendu : HhMM (ex : 1h00 ou 0h30)"
-                            elif colonne == "Relache" and not est_relache_valide(nouvelle_valeur):
-                                erreur = "⛔ Format attendu : 1, 10, pair, impair)"
+                            elif colonne == "Relâche" and not est_relache_valide(nouvelle_valeur):
+                                erreur = "⛔ Format attendu : 1, 10, pair, impair"
                             elif colonne == "Réservé" and not est_reserve_valide(nouvelle_valeur):
-                                erreur = "⛔ Format attendu : Oui, Non)"
+                                erreur = "⛔ Format attendu : Oui, Non"
+                            elif ptypes.is_numeric_dtype(df[colonne_df]):
+                                try:
+                                    if "." not in nouvelle_valeur and "," not in nouvelle_valeur and "e" not in nouvelle_valeur.lower():
+                                        nouvelle_valeur = int(nouvelle_valeur)
+                                    else:
+                                        nouvelle_valeur = float(nouvelle_valeur)
+                                except:
+                                    erreur = "⛔ Format numérique attendu"
 
                             if erreur:
                                 st.error(erreur)
                             elif nouvelle_valeur != valeur_actuelle:
                                 if colonne != "Lien de recherche":
                                     undo_redo_save()
-                                    df.at[index_df, renommage_colonnes_inverse[colonne]] = nouvelle_valeur
+                                    df.at[index_df, colonne_df] = nouvelle_valeur
                                     forcer_reaffichage_activites_non_planifiees()
                                     st.rerun()
                                 else:
