@@ -763,13 +763,13 @@ def afficher_activites_planifiees(df):
                             if lien:
                                 colonnes_editables.append("Lien de recherche")
 
-                        if "selectbox_editeur_activites_planifiees_selection" not in st.session_state:
-                            st.session_state.selectbox_editeur_activites_planifiees_selection = 0
-                        valeur_initiale = st.session_state.selectbox_editeur_activites_planifiees_selection
-                        if valeur_initiale not in colonnes_editables:
-                            valeur_initiale = colonnes_editables[0]
-                        colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables, index=colonnes_editables.index(valeur_initiale), key="selectbox_editeur_activites_planifiees")
-                        st.session_state.selectbox_editeur_activites_planifiees_selection = colonne
+                        if "editeur_activites_planifiees_colonne_selection" not in st.session_state:
+                            st.session_state.editeur_activites_planifiees_colonne_selection = 0
+                        colonne_selection_courante = st.session_state.editeur_activites_planifiees_colonne_selection
+                        if colonne_selection_courante not in colonnes_editables:
+                            colonne_selection_courante = colonnes_editables[0]
+                        colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_selection_courante), key="selectbox_editeur_activites_planifiees")
+                        st.session_state.editeur_activites_planifiees_colonne_selection = colonne
                         if colonne != "Lien de recherche":
                             valeur_actuelle = row[colonne]
                             if pd.isna(valeur_actuelle):
@@ -804,10 +804,17 @@ def afficher_activites_planifiees(df):
                                 st.error(erreur)
                             elif nouvelle_valeur != valeur_actuelle:
                                 if colonne != "Lien de recherche":
-                                    undo_redo_save()
-                                    df.at[index_df, colonne_df] = nouvelle_valeur
-                                    forcer_reaffichage_activites_planifiees()
-                                    st.rerun()
+                                    ancienne_valeur = df.at[index_df, colonne_df]
+                                    try:
+                                        df.at[index_df, colonne_df] = nouvelle_valeur
+                                    except Exception as e:
+                                        st.error(f"⛔ {e}")
+                                    else:
+                                        df.at[index_df, colonne_df] = ancienne_valeur
+                                        undo_redo_save()
+                                        df.at[index_df, colonne_df] = nouvelle_valeur
+                                        forcer_reaffichage_activites_planifiees()
+                                        st.rerun()
                                 else:
                                     undo_redo_save()
                                     liens_spectacles[row["Activité"]] = nouvelle_valeur
@@ -966,13 +973,13 @@ def afficher_activites_non_planifiees(df):
                             if lien:
                                 colonnes_editables.append("Lien de recherche")
 
-                        if "selectbox_editeur_activites_non_planifiees_selection" not in st.session_state:
-                            st.session_state.selectbox_editeur_activites_non_planifiees_selection = 0
-                        valeur_initiale = st.session_state.selectbox_editeur_activites_non_planifiees_selection
-                        if valeur_initiale not in colonnes_editables:
-                            valeur_initiale = colonnes_editables[0]
-                        colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables, index=colonnes_editables.index(valeur_initiale), key="selectbox_editeur_activites_non_planifiees")
-                        st.session_state.selectbox_editeur_activites_non_planifiees_selection = colonne
+                        if "editeur_activites_non_planifiees_colonne_selection" not in st.session_state:
+                            st.session_state.editeur_activites_non_planifiees_colonne_selection = 0
+                        colonne_selection_courante = st.session_state.editeur_activites_non_planifiees_colonne_selection
+                        if colonne_selection_courante not in colonnes_editables:
+                            colonne_selection_courante = colonnes_editables[0]
+                        colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_selection_courante), key="selectbox_editeur_activites_non_planifiees")
+                        st.session_state.editeur_activites_non_planifiees_colonne_selection = colonne
                         if colonne != "Lien de recherche":
                             valeur_actuelle = row[colonne]
                             if pd.isna(valeur_actuelle):
@@ -1007,10 +1014,17 @@ def afficher_activites_non_planifiees(df):
                                 st.error(erreur)
                             elif nouvelle_valeur != valeur_actuelle:
                                 if colonne != "Lien de recherche":
-                                    undo_redo_save()
-                                    df.at[index_df, colonne_df] = nouvelle_valeur
-                                    forcer_reaffichage_activites_non_planifiees()
-                                    st.rerun()
+                                    ancienne_valeur = df.at[index_df, colonne_df]
+                                    try:
+                                        df.at[index_df, colonne_df] = nouvelle_valeur
+                                    except Exception as e:
+                                        st.error(f"⛔ {e}")
+                                    else:
+                                        df.at[index_df, colonne_df] = ancienne_valeur
+                                        undo_redo_save()
+                                        df.at[index_df, colonne_df] = nouvelle_valeur
+                                        forcer_reaffichage_activites_non_planifiees()
+                                        st.rerun()
                                 else:
                                     undo_redo_save()
                                     liens_spectacles[row["Activité"]] = nouvelle_valeur
@@ -1031,7 +1045,7 @@ def affichage_editeur_activite(df):
         row = df[df["Activite"].astype(str).str.strip() == activite_selectionnee].iloc[0]
         index_df = row.name  # index réel de la ligne dans df
 
-        colonne = st.selectbox("🔧 Choix de la ligne à éditer", colonnes_editables, index=colonnes_editables.index(valeur_initiale), key="selectbox_editeur_activites_planifiees")
+        colonne = st.selectbox("🔧 Choix de la ligne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees_choix_ligne")
         
         valduree = row["Date"]
         if pd.notna(valduree) and str(valduree).strip() != "":
@@ -1046,13 +1060,13 @@ def affichage_editeur_activite(df):
             if lien:
                 colonnes_editables.append("Lien de recherche")
 
-        if "selectbox_editeur_activites_planifiees_selection" not in st.session_state:
-            st.session_state.selectbox_editeur_activites_planifiees_selection = 0
-        valeur_initiale = st.session_state.selectbox_editeur_activites_planifiees_selection
-        if valeur_initiale not in colonnes_editables:
-            valeur_initiale = colonnes_editables[0]
-        colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables, index=colonnes_editables.index(valeur_initiale), key="selectbox_editeur_activites_planifiees")
-        st.session_state.selectbox_editeur_activites_planifiees_selection = colonne
+        if "editeur_activites_colonne_selection" not in st.session_state:
+            st.session_state.editeur_activites_colonne_selection = 0
+        colonne_selection_courante = st.session_state.editeur_activites_colonne_selection
+        if colonne_selection_courante not in colonnes_editables:
+            colonne_selection_courante = colonnes_editables[0]
+        colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_selection_courante), key="selectbox_editeur_activites_planifiees_choix_colonne")
+        st.session_state.editeur_activites_colonne_selection = colonne
         if colonne != "Lien de recherche":
             valeur_actuelle = row[colonne]
         else:
