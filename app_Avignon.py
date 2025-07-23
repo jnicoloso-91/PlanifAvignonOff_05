@@ -932,10 +932,13 @@ def afficher_activites_non_planifiees(df):
 
     if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
         row = selected_rows.iloc[0] 
+        stinfo += "iloc[0]"
     elif isinstance(selected_rows, list) and len(selected_rows) > 0:
         row = selected_rows[0]
+        stinfo += "[0]"
     else: 
         row = df_display.iloc[pre_selected_row]
+        stinfo += "pre_selected"
 
     if row is not None:
         index_df = row["__index"]
