@@ -652,7 +652,7 @@ def afficher_activites_planifiees(df):
     }
 
     # Configuration
-    gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__jour", "__index"]))
+    gb = GridOptionsBuilder.from_dataframe(df_display)
 
     # squage des colonnes de travail
     gb.configure_column("__index", hide=True)
@@ -691,6 +691,15 @@ def afficher_activites_planifiees(df):
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
+    gb.configure_grid_options(
+        onGridReady=JsCode(f"""
+            function(params) {{
+                params.api.sizeColumnsToFit();
+                params.api.ensureIndexVisible({pre_selected_row}, 'middle');
+                params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
+            }}
+        """)
+    )
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
@@ -858,7 +867,7 @@ def afficher_activites_non_planifiees(df):
     st.session_state.df_display_non_planifies_initial = df_display.copy()
 
     # Configuration
-    gb = GridOptionsBuilder.from_dataframe(df_display.drop(columns=["__index"]))
+    gb = GridOptionsBuilder.from_dataframe(df_display)
 
     # Masquage des colonnes de travail
     gb.configure_column("__index", hide=True)
@@ -881,7 +890,17 @@ def afficher_activites_non_planifiees(df):
         matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
+    print(pre_selected_row)
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
+    gb.configure_grid_options(
+        onGridReady=JsCode(f"""
+            function(params) {{
+                params.api.sizeColumnsToFit();
+                params.api.ensureIndexVisible({pre_selected_row}, 'middle');
+                params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
+            }}
+        """)
+    )
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
