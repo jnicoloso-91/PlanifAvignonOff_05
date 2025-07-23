@@ -939,7 +939,7 @@ def afficher_activites_non_planifiees(df):
 
     if row is not None:
         index_df = row["__index"]
-        stinfo += f" index apres {valeur_index}")
+        stinfo += f" index apres {valeur_index}"
         st.info(stinfo)
         
         # Enregistrement de la sélection courante pour gestion de la sélection
