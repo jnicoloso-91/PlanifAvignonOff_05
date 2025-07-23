@@ -890,7 +890,6 @@ def afficher_activites_non_planifiees(df):
         matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
-    print(pre_selected_row)
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
     gb.configure_grid_options(
         onGridReady=JsCode(f"""
@@ -938,6 +937,7 @@ def afficher_activites_non_planifiees(df):
 
     if row is not None:
         index_df = row["__index"]
+        st.print(f"index avant {valeur_index} indew apres {valeur_index}")
         
         # Enregistrement de la sélection courante pour gestion de la sélection
         st.session_state.activites_non_planifiee_selected_row = index_df
