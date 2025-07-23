@@ -893,15 +893,15 @@ def afficher_activites_non_planifiees(df):
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
-    gb.configure_grid_options(
-        onGridReady=JsCode(f"""
-            function(params) {{
-                params.api.sizeColumnsToFit();
-                params.api.ensureIndexVisible({pre_selected_row}, 'middle');
-                params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
-            }}
-        """)
-    )
+    #gb.configure_grid_options(
+        #onGridReady=JsCode(f"""
+            #function(params) {{
+                #params.api.sizeColumnsToFit();
+                #params.api.ensureIndexVisible({pre_selected_row}, 'middle');
+                #params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
+            #}}
+        #""")
+    #)
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
