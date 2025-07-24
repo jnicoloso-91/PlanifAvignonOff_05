@@ -1936,7 +1936,7 @@ def ajouter_activite():
         st.session_state.df.at[new_idx, "Duree"] = "1h00"
         st.session_state.df.at[new_idx, "Activite"] = get_nom_nouvelle_activite(st.session_state.df)
         st.session_state.activites_non_planifiee_selected_row = new_idx
-
+        st.session_state.aggrid_activite_non_planifies_forcer_reaffichage == True
         st.rerun()
 
 # Renvoie True si l'appli tourne sur mobile  
