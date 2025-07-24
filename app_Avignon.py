@@ -886,14 +886,15 @@ def afficher_activites_non_planifiees(df):
     gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
 
     # Configuration de la sélection
+    stinfo = ""
     pre_selected_row = 0  # par défaut
     if "activites_non_planifiee_selected_row" in st.session_state:
         valeur_index = st.session_state["activites_non_planifiee_selected_row"]
-        print(f"Index avant {valeur_index}")
+        stinfo += f"Index avant {valeur_index}"
         matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
-    print(pre_selected_row)
+    
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
     js_code = JsCode(f"""
         function(params) {{
@@ -936,14 +937,19 @@ def afficher_activites_non_planifiees(df):
     selected_rows = response["selected_rows"]
     if st.session_state.aggrid_activite_non_planifies_forcer_reaffichage == True:
         row = df_display.iloc[pre_selected_row]
+        stinfo += " Forcer"
     else:
         if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
             row = selected_rows.iloc[0] 
+            stinfo += " df"
         elif isinstance(selected_rows, list) and len(selected_rows) > 0:
             row = selected_rows[0]
+            stinfo += " list"
         else: 
             row = df_display.iloc[pre_selected_row]
+            stinfo += " else"
     st.session_state.aggrid_activite_non_planifies_forcer_reaffichage == False
+    st.info(stinfo)
 
    # Reaffichage si une cellule a été modifiée
     df_modifie = pd.DataFrame(response["data"])
