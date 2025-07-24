@@ -949,7 +949,6 @@ def afficher_activites_non_planifiees(df):
             row = df_display.iloc[pre_selected_row]
             stinfo += " else"
     st.session_state.aggrid_activite_non_planifies_forcer_reaffichage == False
-    st.info(stinfo)
 
    # Reaffichage si une cellule a été modifiée
     df_modifie = pd.DataFrame(response["data"])
@@ -965,7 +964,8 @@ def afficher_activites_non_planifiees(df):
     # 🟡 Traitement du clic
     if row is not None:
         index_df = row["__index"]
-        print(f" index apres {index_df}")
+        stinfo += f" index apres {index_df}"
+        st.info(stinfo)
 
         # Enregistrement de la sélection courante pour gestion de la sélection
         st.session_state.activites_non_planifiee_selected_row = index_df
