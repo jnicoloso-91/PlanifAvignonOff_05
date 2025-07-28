@@ -634,9 +634,13 @@ def afficher_activites_planifiees(df):
 
 
     # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
-    if "aggrid_activite_planifies_reset_counter" not in st.session_state:
-        st.session_state.aggrid_activite_planifies_reset_counter = 0
+    if "aggrid_activites_planifiees_reset_counter" not in st.session_state:
+        st.session_state.aggrid_activites_planifiees_reset_counter = 0
 
+    # Initialisation du flag permettant de savoir si l'on est en mode réaffichage complet du df_display
+    if "aggrid_activites_planifiees_forcer_reaffichage" not in st.session_state:
+        st.session_state.aggrid_activites_planifiees_forcer_reaffichage = False
+   
     # Enregistrement dans st.session_state d'une copy du df à afficher
     st.session_state.df_display_planifies_initial = df_display.copy()
 
@@ -685,21 +689,20 @@ def afficher_activites_planifiees(df):
 
     # Configuration de la sélection
     pre_selected_row = 0  # par défaut
-    if "activites_planifiee_selected_row" in st.session_state:
-        valeur_index = st.session_state["activites_planifiee_selected_row"]
+    if "activites_planifiees_selected_row" in st.session_state:
+        valeur_index = st.session_state["activites_planifiees_selected_row"]
         matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
-    gb.configure_grid_options(
-        onGridReady=JsCode(f"""
+    js_code = JsCode(f"""
             function(params) {{
                 params.api.sizeColumnsToFit();
                 params.api.ensureIndexVisible({pre_selected_row}, 'middle');
                 params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
             }}
         """)
-    )
+    gb.configure_grid_options(onGridReady=js_code)
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
@@ -711,8 +714,21 @@ def afficher_activites_planifiees(df):
         allow_unsafe_jscode=True,
         height=250,
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
-        key=f"Activités planifiées {st.session_state.aggrid_activite_planifies_reset_counter}",  # clé stable mais changeante après suppression de ligne pour forcer le reaffichage
+        key=f"Activités planifiées {st.session_state.aggrid_activites_planifiees_reset_counter}",  # clé stable mais changeante après suppression de ligne pour forcer le reaffichage
     )
+
+    # Affectation de la ligne sélectionnée courante
+    selected_rows = response["selected_rows"]
+    if st.session_state.aggrid_activites_planifiees_forcer_reaffichage == True:
+        row = df_display.iloc[pre_selected_row]
+    else:
+        if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
+            row = selected_rows.iloc[0] 
+        elif isinstance(selected_rows, list) and len(selected_rows) > 0:
+            row = selected_rows[0]
+        else: 
+            row = df_display.iloc[pre_selected_row]
+    st.session_state.aggrid_activites_planifiees_forcer_reaffichage = False
 
     # Reaffichage si une cellule a été modifiée
     df_modifie = pd.DataFrame(response["data"])
@@ -726,20 +742,11 @@ def afficher_activites_planifiees(df):
         st.rerun()
 
     # 🟡 Traitement du clic
-    selected_rows = response["selected_rows"]
-
-    if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
-        row = selected_rows.iloc[0] 
-    elif isinstance(selected_rows, list) and len(selected_rows) > 0:
-        row = selected_rows[0]
-    else: 
-        row = df_display.iloc[pre_selected_row]
-
     if row is not None:
         index_df = row["__index"]
 
         # Enregistrement de la sélection courante pour gestion de la sélection
-        st.session_state.activites_planifiee_selected_row = index_df
+        st.session_state.activites_planifiees_selected_row = index_df
 
         nom_activite = str(row["Activité"]).strip() 
 
@@ -756,6 +763,11 @@ def afficher_activites_planifiees(df):
                     if not est_reserve(st.session_state.df.loc[index_df]):
                         if st.button("🗑️", key="SupprimerActivitePlanifiee"):
                             undo_redo_save()
+                            # Mise à jour st.session_state.activites_planifiees_selected_row 
+                            df_display_reset = df_display.reset_index(drop=True)
+                            selected_row_pos = df_display_reset["__index"].eq(index_df).idxmax()
+                            new_selected_row_pos = selected_row_pos + 1 if  selected_row_pos + 1 <= len(df_display) - 1 else max(selected_row_pos - 1, 0)
+                            st.session_state.activites_planifiees_selected_row = df_display_reset.iloc[new_selected_row_pos]["__index"]
                             supprimer_activite_planifiee(index_df)
                             forcer_reaffichage_activites_planifiees()
                             st.rerun()
@@ -860,10 +872,12 @@ def afficher_activites_non_planifiees(df):
     df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
 
     # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
-    if "aggrid_activite_non_planifies_reset_counter" not in st.session_state:
-        st.session_state.aggrid_activite_non_planifies_reset_counter = 0
-    if "aggrid_activite_non_planifies_forcer_reaffichage" not in st.session_state:
-        st.session_state.aggrid_activite_non_planifies_forcer_reaffichage = False
+    if "aggrid_activites_non_planifiees_reset_counter" not in st.session_state:
+        st.session_state.aggrid_activites_non_planifiees_reset_counter = 0
+    
+    # Initialisation du flag permettant de savoir si l'on est en mode réaffichage complet du df_display
+    if "aggrid_activites_non_planifiees_forcer_reaffichage" not in st.session_state:
+        st.session_state.aggrid_activites_non_planifiees_forcer_reaffichage = False
    
     # Enregistrement dans st.session_state d'une copy du df à afficher
     st.session_state.df_display_non_planifies_initial = df_display.copy()
@@ -886,38 +900,20 @@ def afficher_activites_non_planifiees(df):
     gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
 
     # Configuration de la sélection
-    stinfo = ""
     pre_selected_row = 0  # par défaut
-    if "activites_non_planifiee_selected_row" in st.session_state:
-        valeur_index = st.session_state["activites_non_planifiee_selected_row"]
-        stinfo += f"Index avant {valeur_index}"
+    if "activites_non_planifiees_selected_row" in st.session_state:
+        valeur_index = st.session_state["activites_non_planifiees_selected_row"]
         matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
-    
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
     js_code = JsCode(f"""
-        function(params) {{
-            params.api.sizeColumnsToFit();
-            params.api.ensureIndexVisible({pre_selected_row}, 'middle');
-            let row = params.api.getDisplayedRowAtIndex({pre_selected_row});
-            if (row) {{
-                row.setSelected(true);
-                setTimeout(function() {{
-                    params.api.dispatchEvent({{ type: 'selectionChanged' }});
-                }}, 100);
+            function(params) {{
+                params.api.sizeColumnsToFit();
+                params.api.ensureIndexVisible({pre_selected_row}, 'middle');
+                params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
             }}
-        }}
-    """)
-    # gb.configure_grid_options(
-    #     onGridReady=JsCode(f"""
-    #         function(params) {{
-    #             params.api.sizeColumnsToFit();
-    #             params.api.ensureIndexVisible({pre_selected_row}, 'middle');
-    #             params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
-    #         }}
-    #     """)
-    # )
+        """)
     gb.configure_grid_options(onGridReady=js_code)
 
     grid_options = gb.build()
@@ -930,25 +926,21 @@ def afficher_activites_non_planifiees(df):
         allow_unsafe_jscode=True,
         height=250,
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
-        key=f"Activités non planifiées {st.session_state.aggrid_activite_non_planifies_reset_counter}",  # clé stable mais changeante après suppression de ligne ou modification de cellule pour forcer le reaffichage
+        key=f"Activités non planifiées {st.session_state.aggrid_activites_non_planifiees_reset_counter}",  # clé stable mais changeante après suppression de ligne ou modification de cellule pour forcer le reaffichage
     )
 
     # Affectation de la ligne sélectionnée courante
     selected_rows = response["selected_rows"]
-    if st.session_state.aggrid_activite_non_planifies_forcer_reaffichage == True:
+    if st.session_state.aggrid_activites_non_planifiees_forcer_reaffichage == True:
         row = df_display.iloc[pre_selected_row]
-        stinfo += " Forcer"
     else:
         if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
             row = selected_rows.iloc[0] 
-            stinfo += " df"
         elif isinstance(selected_rows, list) and len(selected_rows) > 0:
             row = selected_rows[0]
-            stinfo += " list"
         else: 
             row = df_display.iloc[pre_selected_row]
-            stinfo += " else"
-    st.session_state.aggrid_activite_non_planifies_forcer_reaffichage == False
+    st.session_state.aggrid_activites_non_planifiees_forcer_reaffichage = False
 
    # Reaffichage si une cellule a été modifiée
     df_modifie = pd.DataFrame(response["data"])
@@ -964,11 +956,9 @@ def afficher_activites_non_planifiees(df):
     # 🟡 Traitement du clic
     if row is not None:
         index_df = row["__index"]
-        stinfo += f" index apres {index_df}"
-        st.info(stinfo)
 
         # Enregistrement de la sélection courante pour gestion de la sélection
-        st.session_state.activites_non_planifiee_selected_row = index_df
+        st.session_state.activites_non_planifiees_selected_row = index_df
 
         nom_activite = str(row["Activité"]).strip() 
 
@@ -1781,15 +1771,17 @@ def planifier_activite_par_choix_creneau(df):
 
 # Force le reaffichage de l'agrid des activités planifiées
 def forcer_reaffichage_activites_planifiees():
-    if "aggrid_activite_planifies_reset_counter" in st.session_state:
-        st.session_state.aggrid_activite_planifies_reset_counter +=1 
+    if "aggrid_activites_planifiees_reset_counter" in st.session_state:
+        st.session_state.aggrid_activites_planifiees_reset_counter +=1 
+    if "aggrid_activites_planifiees_forcer_reaffichage" in st.session_state:
+        st.session_state.aggrid_activites_planifiees_forcer_reaffichage = True
 
 # Force le reaffichage de l'agrid des activités non planifiées
 def forcer_reaffichage_activites_non_planifiees():
-    if "aggrid_activite_non_planifies_reset_counter" in st.session_state:
-        st.session_state.aggrid_activite_non_planifies_reset_counter += 1 
-    if "aggrid_activite_non_planifies_forcer_reaffichage" in st.session_state:
-        st.session_state.aggrid_activite_non_planifies_forcer_reaffichage = True
+    if "aggrid_activites_non_planifiees_reset_counter" in st.session_state:
+        st.session_state.aggrid_activites_non_planifiees_reset_counter += 1 
+    if "aggrid_activites_non_planifiees_forcer_reaffichage" in st.session_state:
+        st.session_state.aggrid_activites_non_planifiees_forcer_reaffichage = True
 
 # Charge le fichier Excel contenant les spectacles à planifier
 def charger_fichier():
@@ -1828,7 +1820,9 @@ def undo_redo_init(verify=True):
 def undo_redo_save():
     snapshot = {
         "df": st.session_state.df.copy(deep=True),
-        "liens": st.session_state.liens_spectacles.copy()
+        "liens": st.session_state.liens_spectacles.copy(),
+        "activites_planifiees_selected_row": st.session_state.activites_planifiees_selected_row,
+        "activites_non_planifiees_selected_row": st.session_state.activites_non_planifiees_selected_row
     }
     st.session_state.historique_undo.append(snapshot)
     st.session_state.historique_redo.clear()
@@ -1837,13 +1831,17 @@ def undo_redo_undo():
     if st.session_state.historique_undo:
         current = {
             "df": st.session_state.df.copy(deep=True),
-            "liens": st.session_state.liens_spectacles.copy()
+            "liens": st.session_state.liens_spectacles.copy(),
+            "activites_planifiees_selected_row": st.session_state.activites_planifiees_selected_row,
+            "activites_non_planifiees_selected_row": st.session_state.activites_non_planifiees_selected_row
         }
         st.session_state.historique_redo.append(current)
         
         snapshot = st.session_state.historique_undo.pop()
         st.session_state.df = snapshot["df"]
         st.session_state.liens_spectacles = snapshot["liens"]
+        st.session_state.activites_planifiees_selected_row = snapshot["activites_planifiees_selected_row"]
+        st.session_state.activites_non_planifiees_selected_row = snapshot["activites_non_planifiees_selected_row"]
         forcer_reaffichage_activites_planifiees()
         forcer_reaffichage_activites_non_planifiees()
         st.rerun()
@@ -1852,13 +1850,17 @@ def undo_redo_redo():
     if st.session_state.historique_redo:
         current = {
             "df": st.session_state.df.copy(deep=True),
-            "liens": st.session_state.liens_spectacles.copy()
+            "liens": st.session_state.liens_spectacles.copy(),
+            "activites_planifiees_selected_row": st.session_state.activites_planifiees_selected_row,
+            "activites_non_planifiees_selected_row": st.session_state.activites_non_planifiees_selected_row
         }
         st.session_state.historique_undo.append(current)
         
         snapshot = st.session_state.historique_redo.pop()
         st.session_state.df = snapshot["df"]
         st.session_state.liens_spectacles = snapshot["liens"]
+        st.session_state.activites_planifiees_selected_row = snapshot["activites_planifiees_selected_row"]
+        st.session_state.activites_non_planifiees_selected_row = snapshot["activites_non_planifiees_selected_row"]
         forcer_reaffichage_activites_planifiees()
         forcer_reaffichage_activites_non_planifiees()
         st.rerun()
@@ -1931,12 +1933,11 @@ def ajouter_activite():
 
         undo_redo_save()
         new_idx = len(st.session_state.df)
-        # st.session_state.df.loc[new_idx] = pd.NA  # pas de dtype cassé ici
         st.session_state.df.at[new_idx, "Debut"] = "09h00"
         st.session_state.df.at[new_idx, "Duree"] = "1h00"
         st.session_state.df.at[new_idx, "Activite"] = get_nom_nouvelle_activite(st.session_state.df)
-        st.session_state.activites_non_planifiee_selected_row = new_idx
-        st.session_state.aggrid_activite_non_planifies_forcer_reaffichage == True
+        st.session_state.activites_non_planifiees_selected_row = new_idx
+        forcer_reaffichage_activites_non_planifiees()
         st.rerun()
 
 # Renvoie True si l'appli tourne sur mobile  
