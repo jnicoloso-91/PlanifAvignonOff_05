@@ -3,12 +3,16 @@ import pandas as pd
 import datetime
 import io
 import re
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font
 import requests
 from bs4 import BeautifulSoup
 from collections import deque
 import pandas.api.types as ptypes
+import gspread
+from gspread_dataframe import get_as_dataframe, set_with_dataframe
+from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -20,6 +24,177 @@ PAUSE_DIN_DEBUT_MAX = datetime.time(21, 0)
 DUREE_REPAS = datetime.timedelta(hours=1)
 DUREE_CAFE = datetime.timedelta(minutes=30)
 MAX_HISTORIQUE = 20
+
+GSHEET_NAME = "Persistence_Streamlit"
+SCOPES = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/spreadsheets"
+]
+
+###############
+# API DropBox #
+###############
+
+import dropbox
+from io import BytesIO
+
+# Retourne les credentials pour les API Dropbox
+def get_dropbox_client():
+    access_token = st.secrets["dropbox"]["access_token"]
+    return dropbox.Dropbox(access_token)
+
+# Met en cache sur Dropbox le fichier Excel de l'utilisateur 
+def upload_excel_to_dropbox(file_bytes, filename, dropbox_path="/uploads/"):
+    dbx = get_dropbox_client()
+    full_path = f"{dropbox_path}{filename}"
+
+    try:
+        dbx.files_upload(file_bytes, full_path, mode=dropbox.files.WriteMode("overwrite"))
+        # st.success(f"✅ Fichier '{filename}' uploadé dans Dropbox à {full_path}")
+        return full_path
+    except Exception as e:
+        # st.error(f"❌ Erreur d’upload : {e}")
+        return ""
+
+# Renvoie le fichier Excel de l'utilisateur mis en cache sur le google drive
+def download_excel_from_dropbox(file_path):
+    dbx = get_dropbox_client()
+    try:
+        metadata, res = dbx.files_download(file_path)
+        file_bytes = BytesIO(res.content)
+        return load_workbook(file_bytes)
+    except Exception as e:
+        # st.error(f"❌ Erreur lors du téléchargement depuis Dropbox : {e}")
+        return Workbook()
+
+##############
+# API Google #
+##############
+
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+from io import BytesIO
+
+SHARED_DRIVE_ID = "1vD2ogPJ-obtt7NSER5Gaho5-wXRGHE19"
+
+# Retourne les credentials pour les API Google
+def get_gcp_credentials():
+    return Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=SCOPES
+    )
+
+# Met en cache sur le google drive le fichier Excel de l'utilisateur (mais nécessite un drive partagé payant sur Google Space -> Non utilisé)
+def upload_excel_to_drive(file_bytes, filename, mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"):
+    try:
+        creds = get_gcp_credentials()
+        drive_service = build("drive", "v3", credentials=creds)
+
+        file_metadata = {"name": filename, "parents": [SHARED_DRIVE_ID]}
+        media = MediaIoBaseUpload(BytesIO(file_bytes), mimetype=mime_type, resumable=True)
+        uploaded = drive_service.files().create(body=file_metadata, media_body=media, fields="id", supportsAllDrives=True).execute()
+        return uploaded["id"]
+    except Exception as e:
+        return None
+
+from googleapiclient.http import MediaIoBaseDownload
+
+# Renvoie le fichier Excel de l'utilisateur mis en cache sur le google drive (mais nécessite un drive partagé payant sur Google Space -> Non utilisé)
+def download_excel_from_drive(file_id):
+    try:
+        creds = get_gcp_credentials()
+        service = build('drive', 'v3', credentials=creds)
+        request = service.files().get_media(fileId=file_id)
+        fh = BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        fh.seek(0)
+        return load_workbook(BytesIO(fh.read()))
+    except Exception as e:
+        return Workbook()
+
+# ⚙️ Connexion à Google Sheets en charge de la persistence via st.secrets
+@st.cache_resource
+def connect_gsheet():
+    try:
+        creds = get_gcp_credentials()
+        client = gspread.authorize(creds)
+        return client
+    except Exception as e:
+        return None
+
+# 📥 Charge les infos sauvegardées depuis Google Sheets
+def load_from_gsheet():
+    if "df" not in st.session_state:
+        client = connect_gsheet()
+        if client:
+            sheet = client.open(GSHEET_NAME)
+            worksheet = sheet.get_worksheet(0)
+            df = get_as_dataframe(worksheet, evaluate_formulas=True)
+            df.dropna(how="all")
+            if len(df) > 0:
+
+                worksheet = sheet.get_worksheet(1)
+                rows = worksheet.get_all_values()
+                lnk = {}
+                if len(rows) > 1:
+                    data_rows = rows[1:]
+                    lnk = {row[0]: row[1] for row in data_rows if len(row) >= 2}
+
+                worksheet = sheet.get_worksheet(2)
+                fn  = worksheet.acell("A1").value
+                fp  = worksheet.acell("A2").value
+                wb = download_excel_from_dropbox(fp)
+
+                initialisation_environnement_apres_chargement_fichier(df, wb, fn, lnk)
+
+# 📤 Sauvegarde le DataFrame dans Google Sheets
+def save_df_to_gsheet(df: pd.DataFrame):
+    client = connect_gsheet()
+    if client:
+        sheet = client.open(GSHEET_NAME)
+        worksheet = sheet.get_worksheet(0)
+        worksheet.clear()
+        set_with_dataframe(worksheet, df)
+
+# 📤 Sauvegarde les hyperliens dans Google Sheets
+def save_lnk_to_gsheet(df: pd.DataFrame, lnk):
+    client = connect_gsheet()
+    if client:
+        sheet = client.open(GSHEET_NAME)
+        worksheet = sheet.get_worksheet(1)
+        worksheet.clear()
+        rows = [[k, v] for k, v in lnk.items()]
+        worksheet.update("A1", [["Clé", "Valeur"]] + rows)
+
+# 📤 Sauvegarde les infos à sauvegarder dans Google Sheets
+def save_to_gsheet(df: pd.DataFrame, fichier_excel, lnk):
+    client = connect_gsheet()
+    if client:
+        sheet = client.open(GSHEET_NAME)
+
+        worksheet = sheet.get_worksheet(0)
+        worksheet.clear()
+        set_with_dataframe(worksheet, df)
+
+        worksheet = sheet.get_worksheet(1)
+        worksheet.clear()
+        rows = [[k, v] for k, v in lnk.items()]
+        worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
+
+        worksheet = sheet.get_worksheet(2)
+        worksheet.update_acell("A1", fichier_excel.name)
+        fp = upload_excel_to_dropbox(fichier_excel.getvalue(), fichier_excel.name)
+        worksheet.update_acell("A2", fp)
+        return fp
+    else:
+        return ""
+
+
+###################
+# Fonctions appli #
+###################
 
 # retourne le titre d'une activité
 def get_descripteur_activite(date, row):
@@ -276,6 +451,9 @@ def nettoyer_donnees(df):
         if not all(col in df.columns for col in colonnes_attendues) and ("Activite" in df.columns or "Spectacle" in df.columns):
             st.error("Le fichier ne contient pas toutes les colonnes attendues: " + ", ".join(colonnes_attendues_avec_accents))
             st.session_state["fichier_invalide"] = True
+        elif (len(df) == 0):
+            st.error("Le fichier est vide")
+            st.session_state["fichier_invalide"] = True       
         else:
 
             # Types 
@@ -325,24 +503,26 @@ def nettoyer_donnees(df):
     
     return df
 
-# Renvoie les hyperliens de la colonne Spectacle 
-def get_liens_spectacles():
-    liens_spectacles = {}
-    ws = st.session_state.wb.worksheets[0]
-    for cell in ws[1]:
-        if cell.value and str(cell.value).strip().lower() in ["activité", "spectacle"]:
-            col_excel_index = cell.column
-    for row in ws.iter_rows(min_row=2, min_col=col_excel_index, max_col=col_excel_index):
-        cell = row[0]
-        if cell.hyperlink:
-            liens_spectacles[cell.value] = cell.hyperlink.target
-        else:
-            # Construire l'URL de recherche par défaut
-            if cell.value is not None:
-                url = f"https://www.festivaloffavignon.com/resultats-recherche?recherche={cell.value.replace(' ', '+')}"
-                liens_spectacles[cell.value] = url  # L'enregistrer dans la session
-
-    return liens_spectacles
+# Renvoie les hyperliens de la colonne Activité 
+def get_liens_activites(wb):
+    liens_activites = {}
+    try:
+        ws = wb.worksheets[0]
+        for cell in ws[1]:
+            if cell.value and str(cell.value).strip().lower() in ["activité", "spectacle"]:
+                col_excel_index = cell.column
+        for row in ws.iter_rows(min_row=2, min_col=col_excel_index, max_col=col_excel_index):
+            cell = row[0]
+            if cell.hyperlink:
+                liens_activites[cell.value] = cell.hyperlink.target
+            else:
+                # Construire l'URL de recherche par défaut
+                if cell.value is not None:
+                    url = f"https://www.festivaloffavignon.com/resultats-recherche?recherche={cell.value.replace(' ', '+')}"
+                    liens_activites[cell.value] = url  # L'enregistrer dans la session
+        return liens_activites
+    except:
+        return liens_activites
 
 # Vérifie la cohérence des informations du dataframe et affiche le résultat dans un expander
 def verifier_coherence(df):
@@ -540,10 +720,10 @@ def get_activites_non_planifiees(df):
 # Affiche le bouton de recharche sur le net
 def affiche_bouton_recherche_sur_le_net(nom_activite):                   
     # Initialiser le dictionnaire si nécessaire
-    if "liens_spectacles" not in st.session_state:
-        st.session_state["liens_spectacles"] = {}
+    if "liens_activites" not in st.session_state:
+        st.session_state["liens_activites"] = {}
 
-    liens = st.session_state["liens_spectacles"]
+    liens = st.session_state["liens_activites"]
 
     # Vérifier si un lien existe déjà
     if nom_activite in liens:
@@ -739,6 +919,7 @@ def afficher_activites_planifiees(df):
             for col in df_modifie.drop(columns=["__index"]).columns:
                 st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
         # forcer_reaffichage_activites_planifiees() pas necéssaire dans ce cas car les modifs sur une cellule n'ont pas d'impact sur le reste de l'aggrid
+        save_df_to_gsheet(st.session_state.df)
         st.rerun()
 
     # 🟡 Traitement du clic
@@ -770,6 +951,7 @@ def afficher_activites_planifiees(df):
                             st.session_state.activites_planifiees_selected_row = df_display_reset.iloc[new_selected_row_pos]["__index"]
                             supprimer_activite_planifiee(index_df)
                             forcer_reaffichage_activites_planifiees()
+                            save_df_to_gsheet(st.session_state.df)
                             st.rerun()
 
                 # Formulaire d'édition pour mobile
@@ -777,10 +959,10 @@ def afficher_activites_planifiees(df):
                     with st.expander("Editeur"):
                         colonnes_editables = [col for col in df_display.columns if col not in ["__jour", "__index", "Date", "Début", "Fin", "Durée"]]
                         
-                        # Ajout de l'hyperlien s'il existe
-                        if st.session_state.liens_spectacles is not None:
-                            liens_spectacles = st.session_state.liens_spectacles
-                            lien = liens_spectacles.get(row["Activité"])
+                        # Ajout de l'hyperlien aux informations éditables s'il existe
+                        if st.session_state.liens_activites is not None:
+                            liens_activites = st.session_state.liens_activites
+                            lien = liens_activites.get(row["Activité"])
                             if lien:
                                 colonnes_editables.append("Lien de recherche")
 
@@ -836,10 +1018,12 @@ def afficher_activites_planifiees(df):
                                         undo_redo_save()
                                         df.at[index_df, colonne_df] = nouvelle_valeur
                                         forcer_reaffichage_activites_planifiees()
+                                        save_df_to_gsheet(st.session_state.df)
                                         st.rerun()
                                 else:
                                     undo_redo_save()
-                                    liens_spectacles[row["Activité"]] = nouvelle_valeur
+                                    liens_activites[row["Activité"]] = nouvelle_valeur
+                                    save_lnk_to_gsheet(liens_activites)
                                     st.rerun()
                                 
 # Affiche les activités non planifiées dans un tableau
@@ -952,6 +1136,7 @@ def afficher_activites_non_planifiees(df):
             for col in df_modifie.drop(columns=["__index"]).columns:
                 st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
         forcer_reaffichage_activites_non_planifiees()
+        save_df_to_gsheet(st.session_state.df)
         st.rerun()
 
     # 🟡 Traitement du clic
@@ -978,6 +1163,7 @@ def afficher_activites_non_planifiees(df):
                         undo_redo_save()
                         supprimer_activite(index_df)
                         forcer_reaffichage_activites_non_planifiees()
+                        save_df_to_gsheet(st.session_state.df)
                         st.rerun()
                 with col3:
                     col11, col12 = st.columns([0.5,4])
@@ -997,6 +1183,7 @@ def afficher_activites_non_planifiees(df):
                                 undo_redo_save()
                                 df.at[index_df, "Date"] = jour_choisi
                                 forcer_reaffichage_activites_non_planifiees()
+                                save_df_to_gsheet(st.session_state.df)
                                 st.rerun()
 
                 # Formulaire d'édition pour mobile
@@ -1004,10 +1191,10 @@ def afficher_activites_non_planifiees(df):
                     with st.expander("Editeur"):
                         colonnes_editables = [col for col in df_display.columns if col not in ["__index", "Date", "Fin"]]
                         
-                        # Ajout de l'hyperlien s'il existe
-                        if st.session_state.liens_spectacles is not None:
-                            liens_spectacles = st.session_state.liens_spectacles
-                            lien = liens_spectacles.get(row["Activité"])
+                        # Ajout de l'hyperlien aux infos éditables s'il existe
+                        if st.session_state.liens_activites is not None:
+                            liens_activites = st.session_state.liens_activites
+                            lien = liens_activites.get(row["Activité"])
                             if lien:
                                 colonnes_editables.append("Lien de recherche")
 
@@ -1063,10 +1250,12 @@ def afficher_activites_non_planifiees(df):
                                         undo_redo_save()
                                         df.at[index_df, colonne_df] = nouvelle_valeur
                                         forcer_reaffichage_activites_non_planifiees()
+                                        save_df_to_gsheet(st.session_state.df)
                                         st.rerun()
                                 else:
                                     undo_redo_save()
-                                    liens_spectacles[row["Activité"]] = nouvelle_valeur
+                                    liens_activites[row["Activité"]] = nouvelle_valeur
+                                    save_lnk_to_gsheet(liens_activites)
                                     st.rerun()
 
         ajouter_activite()
@@ -1092,10 +1281,10 @@ def affichage_editeur_activite(df):
         else:
             colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin"]]
         
-        # Ajout de l'hyperlien s'il existe
-        if st.session_state.liens_spectacles is not None:
-            liens_spectacles = st.session_state.liens_spectacles
-            lien = liens_spectacles.get(row["Activite"])
+        # Ajout de l'hyperlien aux infos éditables s'il existe
+        if st.session_state.liens_activites is not None:
+            liens_activites = st.session_state.liens_activites
+            lien = liens_activites.get(row["Activite"])
             if lien:
                 colonnes_editables.append("Lien de recherche")
 
@@ -1133,10 +1322,12 @@ def affichage_editeur_activite(df):
                     undo_redo_save()
                     df.at[index_df, colonne] = nouvelle_valeur
                     forcer_reaffichage_activites_planifiees()
+                    save_df_to_gsheet(st.session_state.df)
                     st.rerun()
                 else:
                     undo_redo_save()
-                    liens_spectacles[row["Activité"]] = nouvelle_valeur
+                    liens_activites[row["Activité"]] = nouvelle_valeur
+                    save_lnk_to_gsheet(liens_activites)
                     st.rerun()
 
 # Vérifie qu'une valeur est bien Oui Non
@@ -1461,7 +1652,7 @@ def sauvegarder_fichier():
         # Récupération de la worksheet à traiter
         wb = st.session_state.wb
         ws = wb.worksheets[0]
-        liens_spectacles = st.session_state.liens_spectacles
+        liens_activites = st.session_state.liens_activites
 
         # Effacer le contenu de la feuille Excel existante
         for row in ws.iter_rows(min_row=2, max_row=ws.max_row, max_col=ws.max_column):
@@ -1471,6 +1662,8 @@ def sauvegarder_fichier():
 
         # Réinjecter les données du df dans la feuille Excel
         from copy import copy
+
+        col_spectacle = None
         for cell in ws[1]:
             if cell.value and str(cell.value).strip().lower() in ["activité", "spectacle"]:
                 col_spectacle = cell.column
@@ -1502,14 +1695,15 @@ def sauvegarder_fichier():
                         cell.value = value
 
                     # Ajout d'hyperlien pour la colonne Spectacle
-                    if col_idx == col_spectacle and liens_spectacles is not None:
-                        lien = liens_spectacles.get(value)
-                        if lien:
-                            cell.hyperlink = lien
-                            cell.font = Font(color="0000EE", underline="single")
-                        else:
-                            cell.hyperlink = None
-                            cell.font = copy(source_font)   
+                    if col_spectacle is not None:
+                        if col_idx == col_spectacle and liens_activites is not None:
+                            lien = liens_activites.get(value)
+                            if lien:
+                                cell.hyperlink = lien
+                                cell.font = Font(color="0000EE", underline="single")
+                            else:
+                                cell.hyperlink = None
+                                cell.font = copy(source_font)   
 
         # Sauvegarde dans un buffer mémoire
         buffer = io.BytesIO()
@@ -1518,7 +1712,7 @@ def sauvegarder_fichier():
         # Revenir au début du buffer pour le téléchargement
         buffer.seek(0)
 
-        nom_fichier = st.session_state.get("file_uploader").name if "file_uploader" in st.session_state else "planification_avignon.xlsx"
+        nom_fichier = st.session_state.fn if "fn" in st.session_state else "planification_avignon.xlsx"
 
         # Bouton de téléchargement
         return st.download_button(
@@ -1611,6 +1805,7 @@ def ajouter_activite_non_planifiee(df):
                 undo_redo_save()
                 st.session_state.df = pd.concat([df, ligne_df], ignore_index=True)
                 st.success("🎉 Activité ajoutée !")
+                save_df_to_gsheet(st.session_state.df)
                 st.rerun()
         
 
@@ -1645,6 +1840,7 @@ def ajouter_activite_planifiee(date_ref, proposables, choix_activite):
             st.session_state.df.at[index, "Debut"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             st.session_state.df.at[index, "Duree"] = formatter_timedelta(DUREE_CAFE)
             st.session_state.df.at[index, "Activite"] = "Pause café"
+        save_df_to_gsheet(st.session_state.df)
         st.rerun()
 
 # Formatte un objet timedelta en une chaîne de caractères "XhYY"
@@ -1786,21 +1982,30 @@ def forcer_reaffichage_activites_non_planifiees():
     if "aggrid_activites_non_planifiees_forcer_reaffichage" in st.session_state:
         st.session_state.aggrid_activites_non_planifiees_forcer_reaffichage = True
 
+# Réinitialisation de l'environnement après chargement fichier
+def initialisation_environnement_apres_chargement_fichier(df, wb, fn, lnk):
+    st.session_state.df = df
+    st.session_state.wb = wb
+    st.session_state.fn = fn
+    st.session_state.liens_activites = lnk
+    st.session_state["erreur_chargement"] = False
+    st.session_state.nouveau_fichier = True
+    undo_redo_init(verify=False)
+    forcer_reaffichage_activites_planifiees()
+    forcer_reaffichage_activites_non_planifiees()
+
 # Charge le fichier Excel contenant les spectacles à planifier
 def charger_fichier():
     # Callback de st.file_uploader pour charger le fichier Excel
     def file_uploader_callback():
-        fichier = st.session_state.get("file_uploader")
-        if fichier is not None:
+        fichier_excel = st.session_state.get("file_uploader")
+        if fichier_excel is not None:
             try:
-                st.session_state.df = pd.read_excel(fichier)
-                st.session_state.wb = load_workbook(fichier)
-                st.session_state.liens_spectacles = get_liens_spectacles()
-                st.session_state["erreur_chargement"] = False
-                st.session_state.nouveau_fichier = True
-                undo_redo_init(verify=False)
-                forcer_reaffichage_activites_planifiees()
-                forcer_reaffichage_activites_non_planifiees()
+                df = pd.read_excel(fichier_excel)
+                wb = load_workbook(fichier_excel)
+                lnk = get_liens_activites(wb)
+                save_to_gsheet(df, fichier_excel, lnk)
+                initialisation_environnement_apres_chargement_fichier(df, wb, fichier_excel.name, lnk)
             except Exception as e:
                 st.error(f"Erreur lors du chargement du fichier : {e}")
                 st.session_state["erreur_chargement"] = True
@@ -1823,7 +2028,7 @@ def undo_redo_init(verify=True):
 def undo_redo_save():
     snapshot = {
         "df": st.session_state.df.copy(deep=True),
-        "liens": st.session_state.liens_spectacles.copy(),
+        "liens": st.session_state.liens_activites.copy(),
         "activites_planifiees_selected_row": st.session_state.activites_planifiees_selected_row,
         "activites_non_planifiees_selected_row": st.session_state.activites_non_planifiees_selected_row
     }
@@ -1834,7 +2039,7 @@ def undo_redo_undo():
     if st.session_state.historique_undo:
         current = {
             "df": st.session_state.df.copy(deep=True),
-            "liens": st.session_state.liens_spectacles.copy(),
+            "liens": st.session_state.liens_activites.copy(),
             "activites_planifiees_selected_row": st.session_state.activites_planifiees_selected_row,
             "activites_non_planifiees_selected_row": st.session_state.activites_non_planifiees_selected_row
         }
@@ -1842,18 +2047,19 @@ def undo_redo_undo():
         
         snapshot = st.session_state.historique_undo.pop()
         st.session_state.df = snapshot["df"]
-        st.session_state.liens_spectacles = snapshot["liens"]
+        st.session_state.liens_activites = snapshot["liens"]
         st.session_state.activites_planifiees_selected_row = snapshot["activites_planifiees_selected_row"]
         st.session_state.activites_non_planifiees_selected_row = snapshot["activites_non_planifiees_selected_row"]
         forcer_reaffichage_activites_planifiees()
         forcer_reaffichage_activites_non_planifiees()
+        save_df_to_gsheet(st.session_state.df)
         st.rerun()
 
 def undo_redo_redo():
     if st.session_state.historique_redo:
         current = {
             "df": st.session_state.df.copy(deep=True),
-            "liens": st.session_state.liens_spectacles.copy(),
+            "liens": st.session_state.liens_activites.copy(),
             "activites_planifiees_selected_row": st.session_state.activites_planifiees_selected_row,
             "activites_non_planifiees_selected_row": st.session_state.activites_non_planifiees_selected_row
         }
@@ -1861,11 +2067,12 @@ def undo_redo_redo():
         
         snapshot = st.session_state.historique_redo.pop()
         st.session_state.df = snapshot["df"]
-        st.session_state.liens_spectacles = snapshot["liens"]
+        st.session_state.liens_activites = snapshot["liens"]
         st.session_state.activites_planifiees_selected_row = snapshot["activites_planifiees_selected_row"]
         st.session_state.activites_non_planifiees_selected_row = snapshot["activites_non_planifiees_selected_row"]
         forcer_reaffichage_activites_planifiees()
         forcer_reaffichage_activites_non_planifiees()
+        save_df_to_gsheet(st.session_state.df)
         st.rerun()
 
 import base64
@@ -1941,6 +2148,7 @@ def ajouter_activite():
         st.session_state.df.at[new_idx, "Activite"] = get_nom_nouvelle_activite(st.session_state.df)
         st.session_state.activites_non_planifiees_selected_row = new_idx
         forcer_reaffichage_activites_non_planifiees()
+        save_df_to_gsheet(st.session_state.df)
         st.rerun()
 
 # Renvoie True si l'appli tourne sur mobile  
@@ -1988,6 +2196,9 @@ def main():
 
     # Affiche de l'aide
     afficher_aide()
+
+    # Initialisation du cache Google Sheet permettant de gérer la persistence du df et assurer une restitution automatique des datas en cas de rupture de connexion streamlit
+    load_from_gsheet()
 
     # chargement du fichier Excel
     charger_fichier()
