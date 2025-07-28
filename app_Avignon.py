@@ -12,6 +12,7 @@ import pandas.api.types as ptypes
 import gspread
 from gspread_dataframe import get_as_dataframe, set_with_dataframe
 from google.oauth2.service_account import Credentials
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -292,6 +293,47 @@ import base64
 def image_to_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
+
+# Selectbox avec items non editables (contrairement à st.selectbox())
+# def selectbox_aggrid(label, options, key="aggrid_selectbox", height=100):
+#     df = pd.DataFrame({"Choix": [options[0]]})
+    
+#     gb = GridOptionsBuilder.from_dataframe(df)
+#     gb.configure_column(
+#         "Choix",
+#         editable=True,
+#         cellEditor="agSelectCellEditor",
+#         cellEditorParams={"values": options},
+#         singleClickEdit=True,
+#         minWidth=120  # 🔧 largeur minimale lisible
+#     )
+#     gb.configure_grid_options(domLayout='autoHeight')
+#     gb.configure_grid_options(onGridReady="""
+#         function(params) {
+#             setTimeout(function() {
+#                 params.api.sizeColumnsToFit();
+#             }, 100);
+#         }
+#     """)
+#     gridOptions = gb.build()
+
+#     st.markdown(f"{label}")
+#     grid_response = AgGrid(
+#         df,
+#         gridOptions=gridOptions,
+#         height=height,
+#         key=key,
+#         update_mode=GridUpdateMode.MODEL_CHANGED,
+#         allow_unsafe_jscode=True,
+#         fit_columns_on_grid_load=True
+#     )
+
+#     try:
+#         return grid_response["data"]["Choix"].iloc[0]  # ✅ corrige le warning
+#     except:
+#         return None  # En cas de suppression accidentelle
+def selectbox_aggrid(label, options, key="aggrid_selectbox", default_value=None, width_px=200):
+    return st.radio(label, options, label_visibility="collapsed")
 
 ##########################
 # Fonctions applicatives #
@@ -904,8 +946,6 @@ def afficher_activites_planifiees(df):
         "Activité": "Activite",
     }
 
-    from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
-
     # Constitution du df à afficher
     planifies = get_activites_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
     df_display = planifies.rename(columns=renommage_colonnes)
@@ -1072,7 +1112,8 @@ def afficher_activites_planifiees(df):
                 if colonne_courante not in colonnes_editables:
                     colonne_courante = colonnes_editables[0]
                 # colonne = st.selectbox("🛠️ Colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_courante), key="selectbox_editeur_activites_planifiees")
-                colonne = st.selectbox("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
+                # colonne = st.selectbox("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
+                colonne = selectbox_aggrid("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
                 st.session_state.editeur_activites_planifiees_colonne_selection = colonne
                 if colonne != "Lien de recherche":
                     valeur_actuelle = row[colonne]
@@ -1147,8 +1188,6 @@ def afficher_activites_non_planifiees(df):
         "Relâche": "Relache",
         "Activité": "Activite",
     }
-
-    from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
 
     # Constitution du df à afficher
     non_planifies = get_activites_non_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
