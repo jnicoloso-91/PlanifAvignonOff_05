@@ -295,45 +295,101 @@ def image_to_base64(path):
         return base64.b64encode(f.read()).decode("utf-8")
 
 # Selectbox avec items non editables (contrairement à st.selectbox())
-# def selectbox_aggrid(label, options, key="aggrid_selectbox", height=100):
-#     df = pd.DataFrame({"Choix": [options[0]]})
+def selectbox_aggrid(label, options, key="aggrid_selectbox", height=100):
+    df = pd.DataFrame({"Choix": [options[0]]})
     
-#     gb = GridOptionsBuilder.from_dataframe(df)
-#     gb.configure_column(
-#         "Choix",
-#         editable=True,
-#         cellEditor="agSelectCellEditor",
-#         cellEditorParams={"values": options},
-#         singleClickEdit=True,
-#         minWidth=120  # 🔧 largeur minimale lisible
-#     )
-#     gb.configure_grid_options(domLayout='autoHeight')
-#     gb.configure_grid_options(onGridReady="""
-#         function(params) {
-#             setTimeout(function() {
-#                 params.api.sizeColumnsToFit();
-#             }, 100);
-#         }
-#     """)
-#     gridOptions = gb.build()
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_column(
+        "Choix",
+        editable=True,
+        cellEditor="agSelectCellEditor",
+        cellEditorParams={"values": options},
+        singleClickEdit=True,
+        minWidth=120  # 🔧 largeur minimale lisible
+    )
+    gb.configure_grid_options(domLayout='autoHeight')
+    gb.configure_grid_options(onGridReady="""
+        function(params) {
+            setTimeout(function() {
+                params.api.sizeColumnsToFit();
+            }, 100);
+        }
+    """)
+    gridOptions = gb.build()
 
-#     st.markdown(f"{label}")
-#     grid_response = AgGrid(
-#         df,
-#         gridOptions=gridOptions,
-#         height=height,
-#         key=key,
-#         update_mode=GridUpdateMode.MODEL_CHANGED,
-#         allow_unsafe_jscode=True,
-#         fit_columns_on_grid_load=True
-#     )
+    st.markdown(f"{label}")
+    grid_response = AgGrid(
+        df,
+        gridOptions=gridOptions,
+        height=height,
+        key=key,
+        update_mode=GridUpdateMode.MODEL_CHANGED,
+        allow_unsafe_jscode=True,
+        fit_columns_on_grid_load=True
+    )
 
-#     try:
-#         return grid_response["data"]["Choix"].iloc[0]  # ✅ corrige le warning
-#     except:
-#         return None  # En cas de suppression accidentelle
-def selectbox_aggrid(label, options, key="aggrid_selectbox", default_value=None, width_px=200):
-    return st.radio(label, options, label_visibility="collapsed")
+    try:
+        return grid_response["data"]["Choix"].iloc[0]  # ✅ corrige le warning
+    except:
+        return None  # En cas de suppression accidentelle
+
+# Selectbox avec items non editables (contrairement à st.selectbox())
+def aggrid_single_selection_list(label, choices, key="aggrid_select", hauteur=200):
+    # Garde-fou : le label doit être une chaîne
+    if not isinstance(label, str):
+        raise ValueError(f"Le paramètre `label` doit être une chaîne, reçu : {type(label)}")
+
+    # Transformation si liste de listes
+    if choices and isinstance(choices[0], (list, tuple)):
+        choices = [" | ".join(map(str, ligne)) for ligne in choices]
+
+    df = pd.DataFrame({label: choices})
+
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_selection(selection_mode="single", use_checkbox=False)
+    gb.configure_grid_options(
+        domLayout='normal',
+        headerHeight=0,
+        suppressRowHoverHighlight=True,
+        suppressCellFocus=True,
+    )
+    gb.configure_column(label, header_name="", wrapText=True, autoHeight=True, minWidth=200, flex=1)
+
+    st.markdown("""
+        <style>
+        .ag-root-wrapper,
+        .ag-theme-streamlit,
+        .ag-header,
+        .ag-cell:focus,
+        .ag-cell,
+        .ag-row-hover {
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            background-color: transparent !important;
+        }
+        .ag-header { display: none !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    grid_response = AgGrid(
+        df,
+        gridOptions=gb.build(),
+        key=key,
+        height=hauteur,
+        fit_columns_on_grid_load=False,
+        allow_unsafe_jscode=True,
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        enable_enterprise_modules=False
+    )
+
+    selected = grid_response.get("selected_rows")
+    if selected:
+        valeur = selected[0][label]
+        index_selection = selected[0].get("_selectedRowNodeInfo", {}).get("nodeRowIndex", None)
+        return valeur
+    else:
+        return choices[0]
 
 ##########################
 # Fonctions applicatives #
@@ -1113,7 +1169,8 @@ def afficher_activites_planifiees(df):
                     colonne_courante = colonnes_editables[0]
                 # colonne = st.selectbox("🛠️ Colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_courante), key="selectbox_editeur_activites_planifiees")
                 # colonne = st.selectbox("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
-                colonne = selectbox_aggrid("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
+                # colonne = aggrid_single_selection_list("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
+                colonne = st.radio("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees", label_visibility="collapsed")
                 st.session_state.editeur_activites_planifiees_colonne_selection = colonne
                 if colonne != "Lien de recherche":
                     valeur_actuelle = row[colonne]
@@ -1342,7 +1399,8 @@ def afficher_activites_non_planifiees(df):
                 if colonne_courante not in colonnes_editables:
                     colonne_courante = colonnes_editables[0]
                 # colonne = st.selectbox("🛠️ Colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_courante), key="selectbox_editeur_activites_non_planifiees")
-                colonne = st.selectbox("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_non_planifiees")
+                # colonne = st.selectbox("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_non_planifiees")
+                colonne = st.radio("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_non_planifiees", label_visibility="collapsed")
                 st.session_state.editeur_activites_non_planifiees_colonne_selection = colonne
                 if colonne != "Lien de recherche":
                     valeur_actuelle = row[colonne]
@@ -1431,8 +1489,9 @@ def affichage_editeur_activite(df):
         colonne_courante = st.session_state.editeur_activites_colonne_selection
         if colonne_courante not in colonnes_editables:
             colonne_courante = colonnes_editables[0]
-        # colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_courante), key="selectbox_editeur_activites_planifiees_choix_colonne")
-        colonne = st.selectbox("🔧 Choix de la colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees_choix_colonne")
+        # colonne = st.selectbox("🛠️ Choix de la colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_courante), key="selectbox_editeur_activites_planifiees_choix_colonne")
+        # colonne = st.selectbox("⚙️ Choix de la colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees_choix_colonne")
+        colonne = st.radio("⚙️ Choix de la colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees_choix_colonne", label_visibility="collapsed")
         st.session_state.editeur_activites_colonne_selection = colonne
         if colonne != "Lien de recherche":
             valeur_actuelle = row[colonne]
@@ -2061,7 +2120,7 @@ def planifier_activite_par_choix_creneau(df):
         with st.expander("Planification des créneaux disponibles"):
 
             # Affectation du flag de traitement des pauses
-            traiter_pauses = st.checkbox("Tenir compte des pauses (déjeuner, dîner, café)", value=False)  
+            traiter_pauses = st.checkbox("Tenir compte des pauses", value=False)  
 
             # Création des créneaux avant/après pour chaque spectacle planifié
             creneaux = get_creneaux(df, planifies, traiter_pauses)
