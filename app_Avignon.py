@@ -166,14 +166,14 @@ def save_df_to_gsheet(df: pd.DataFrame):
         set_with_dataframe(worksheet, df)
 
 # 📤 Sauvegarde les hyperliens dans la Google Sheet
-def save_lnk_to_gsheet(df: pd.DataFrame, lnk):
+def save_lnk_to_gsheet(lnk):
     client = connect_gsheet()
     if client:
         sheet = client.open(GSHEET_NAME)
         worksheet = sheet.get_worksheet(1)
         worksheet.clear()
         rows = [[k, v] for k, v in lnk.items()]
-        worksheet.update("A1", [["Clé", "Valeur"]] + rows)
+        worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
 
 # 📤 Sauvegarde les infos persistées dans la Google Sheet
 def save_to_gsheet(df: pd.DataFrame, fichier_excel, lnk):
@@ -917,7 +917,7 @@ def get_activites_non_planifiees(df):
     return df[df["Date"].isna() & df["Activite"].notna() & df["Debut"].notna() & df["Fin"].notna()]
 
 # Affiche le bouton de recharche sur le net
-def affiche_bouton_recherche_sur_le_net(nom_activite):                   
+def afficher_bouton_recherche_net(nom_activite):                   
     # Initialiser le dictionnaire si nécessaire
     if "liens_activites" not in st.session_state:
         st.session_state["liens_activites"] = {}
@@ -962,24 +962,6 @@ def get_lignes_modifiees(df1, df2):
                     lignes_modifiees.add((i, idx))
     return lignes_modifiees
 
-def get_iloc_from_row(df, row_dict):
-    if "__index" not in row_dict:
-        return None
-    try:
-        index_val = row_dict["__index"]
-        return df.index.get_loc(index_val)
-    except (KeyError, ValueError):
-        return None
-    
-def get_idx_from_row(df, row_dict):
-    if "__index" not in row_dict:
-        return None
-    try:
-        index_val = row_dict["__index"]
-        return index_val
-    except (KeyError, ValueError):
-        return None
-    
 # Affiche les activités planifiées dans un tableau
 def afficher_activites_planifiees(df):
     st.markdown("##### Activités planifiées")
@@ -1018,8 +1000,20 @@ def afficher_activites_planifiees(df):
     if "aggrid_activites_planifiees_forcer_reaffichage" not in st.session_state:
         st.session_state.aggrid_activites_planifiees_forcer_reaffichage = False
    
+    # Initialisation du flag permettant de savoir si l'on doit gérer les modifications de cellules
+    if "aggrid_activites_planifiees_gerer_modification_cellule" not in st.session_state:
+        st.session_state.aggrid_activites_planifiees_gerer_modification_cellule = True
+   
+    # Initialisation de la variable d'état contenant l'index de colonne courant
+    if "editeur_activites_planifiees_index_colonne_courante" not in st.session_state:
+        st.session_state.editeur_activites_planifiees_index_colonne_courante = 0
+
+    # Initialisation du flag permettant de savoir si l'on doit utiliser l'index de colonne courant pour paramétrer la selectbox concernée
+    if "editeur_activites_planifiees_utiliser_index_colonne_courante" not in st.session_state:
+        st.session_state.editeur_activites_planifiees_utiliser_index_colonne_courante = False
+
     # Enregistrement dans st.session_state d'une copy du df à afficher
-    st.session_state.df_display_planifies_initial = df_display.copy()
+    st.session_state.df_display_activites_planifiees_initial = df_display.copy()
 
     # Palette de couleurs
     couleurs_jours = {
@@ -1062,7 +1056,6 @@ def afficher_activites_planifiees(df):
 
     # Retaillage largeur colonnes
     gb.configure_default_column(resizable=True)
-    gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
 
     # Configuration de la sélection
     pre_selected_row = 0  # par défaut
@@ -1072,6 +1065,7 @@ def afficher_activites_planifiees(df):
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
+    
     js_code = JsCode(f"""
             function(params) {{
                 params.api.sizeColumnsToFit();
@@ -1079,6 +1073,19 @@ def afficher_activites_planifiees(df):
                 params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
             }}
         """)
+    # js_code = JsCode(f"""
+    #         function(params) {{
+    #             params.api.ensureIndexVisible({pre_selected_row}, 'middle');
+    #             params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
+
+    #             // Auto-size all columns to fit content
+    #             let allColumnIds = [];
+    #             params.columnApi.getAllColumns().forEach(function(column) {{
+    #                 allColumnIds.push(column.colId);
+    #             }});
+    #             params.columnApi.autoSizeColumns(allColumnIds);
+    #         }}
+    #     """)
     gb.configure_grid_options(onGridReady=js_code)
 
     grid_options = gb.build()
@@ -1107,17 +1114,20 @@ def afficher_activites_planifiees(df):
             row = df_display.iloc[pre_selected_row]
     st.session_state.aggrid_activites_planifiees_forcer_reaffichage = False
 
-    # Reaffichage si une cellule a été modifiée
-    df_modifie = pd.DataFrame(response["data"])
-    lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_planifies_initial)
-    if lignes_modifiees:
-        undo_redo_save()
-        for i, idx in lignes_modifiees:
-            for col in df_modifie.drop(columns=["__index"]).columns:
-                st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
-        # forcer_reaffichage_activites_planifiees() pas necéssaire dans ce cas car les modifs sur une cellule n'ont pas d'impact sur le reste de l'aggrid
-        save_df_to_gsheet(st.session_state.df)
-        st.rerun()
+    # Gestion des modifications de cellules
+    if st.session_state.aggrid_activites_planifiees_gerer_modification_cellule == True:
+        df_modifie = pd.DataFrame(response["data"])
+        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_planifiees_initial)
+        if lignes_modifiees:
+            undo_redo_save()
+            for i, idx in lignes_modifiees:
+                for col in df_modifie.drop(columns=["__index", "__jour"]).columns:
+                    if col not in ["Date", "Début", "Fin", "Durée"]:
+                        col_df = renommage_colonnes_inverse[col] if col in renommage_colonnes_inverse else col
+                        if df.at[idx, col_df] != df_modifie.at[i, col]:
+                            st.session_state.editeur_activites_planifiees_utiliser_index_colonne_courante = True
+                            affecter_valeur(df,idx, col_df, df_modifie.at[i, col], forcer_reaffichage=["Debut"])
+    st.session_state.aggrid_activites_planifiees_gerer_modification_cellule = True
 
     # 🟡 Traitement du clic
     if row is not None:
@@ -1129,19 +1139,18 @@ def afficher_activites_planifiees(df):
         nom_activite = str(row["Activité"]).strip() 
 
         if nom_activite:
-            st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
 
-            with st.expander("Contrôles de l'activité sélectionnée"):
+            with st.expander("Contrôles"):
+                st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
 
                 col1, col2, _ = st.columns([0.5, 0.5, 4])
                 with col1:
                     if not est_pause_str(nom_activite):
-                        affiche_bouton_recherche_sur_le_net(nom_activite)
+                        afficher_bouton_recherche_net(nom_activite)
                 with col2:
                     if not est_reserve(st.session_state.df.loc[index_df]):
                         if st.button("🗑️", key="SupprimerActivitePlanifiee"):
                             undo_redo_save()
-                            # Mise à jour st.session_state.activites_planifiees_selected_row 
                             df_display_reset = df_display.reset_index(drop=True)
                             selected_row_pos = df_display_reset["__index"].eq(index_df).idxmax()
                             new_selected_row_pos = selected_row_pos + 1 if  selected_row_pos + 1 <= len(df_display) - 1 else max(selected_row_pos - 1, 0)
@@ -1152,77 +1161,40 @@ def afficher_activites_planifiees(df):
                             st.rerun()
 
             # Formulaire d'édition de la ligne sélectionnée
-            with st.expander("Edition de la ligne sélectionnée"):
-                colonnes_editables = [col for col in df_display.columns if col not in ["__jour", "__index", "Date", "Début", "Fin", "Durée"]]
+            # with st.expander("Edition de la ligne sélectionnée"):
+            #     colonnes_editables = [col for col in df_display.columns if col not in ["__jour", "__index", "Date", "Début", "Fin", "Durée"]]
                 
-                # Ajout de l'hyperlien aux informations éditables s'il existe
-                if st.session_state.liens_activites is not None:
-                    liens_activites = st.session_state.liens_activites
-                    lien = liens_activites.get(row["Activité"])
-                    if lien:
-                        colonnes_editables.append("Lien de recherche")
+            #     # Ajout de l'hyperlien aux informations éditables s'il existe
+            #     if st.session_state.liens_activites is not None:
+            #         liens_activites = st.session_state.liens_activites
+            #         lien = liens_activites.get(row["Activité"])
+            #         if lien:
+            #             colonnes_editables.append("Lien de recherche")
 
-                if "editeur_activites_planifiees_colonne_selection" not in st.session_state:
-                    st.session_state.editeur_activites_planifiees_colonne_selection = 0
-                colonne_courante = st.session_state.editeur_activites_planifiees_colonne_selection
-                if colonne_courante not in colonnes_editables:
-                    colonne_courante = colonnes_editables[0]
-                # colonne = st.selectbox("🛠️ Colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_courante), key="selectbox_editeur_activites_planifiees")
-                colonne = st.selectbox("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
-                # colonne = aggrid_single_selection_list("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
-                # colonne = st.radio("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees", label_visibility="collapsed")
-                st.session_state.editeur_activites_planifiees_colonne_selection = colonne
-                if colonne != "Lien de recherche":
-                    valeur_actuelle = row[colonne]
-                    if pd.isna(valeur_actuelle):
-                        valeur_actuelle = ""
-                else:
-                    valeur_actuelle = lien
-                nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_actuelle) 
-                submitted = st.button("✅ Valider", key="validation_editeur_activites_planifiees")
-
-                if submitted:
-                    erreur = None
-                    colonne_df = renommage_colonnes_inverse[colonne] if colonne in renommage_colonnes_inverse else colonne
-                    # Vérification selon le nom de la colonne
-                    if colonne == "Début" and not est_format_heure(nouvelle_valeur):
-                        erreur = "⛔ Format attendu : HHhMM (ex : 10h00)"
-                    elif colonne == "Durée" and not est_format_duree(nouvelle_valeur):
-                        erreur = "⛔ Format attendu : HhMM (ex : 1h00 ou 0h30)"
-                    elif colonne == "Relâche" and not est_relache_valide(nouvelle_valeur):
-                        erreur = "⛔ Format attendu : 1, 10, pair, impair"
-                    elif colonne == "Réservé" and not est_reserve_valide(nouvelle_valeur):
-                        erreur = "⛔ Format attendu : Oui, Non)"
-                    elif ptypes.is_numeric_dtype(df[colonne_df]):
-                        try:
-                            if "." not in nouvelle_valeur and "," not in nouvelle_valeur and "e" not in nouvelle_valeur.lower():
-                                nouvelle_valeur = int(nouvelle_valeur)
-                            else:
-                                nouvelle_valeur = float(nouvelle_valeur)
-                        except:
-                            erreur = "⛔ Format numérique attendu"
-
-                    if erreur:
-                        st.error(erreur)
-                    elif nouvelle_valeur != valeur_actuelle:
-                        if colonne != "Lien de recherche":
-                            ancienne_valeur = df.at[index_df, colonne_df]
-                            try:
-                                df.at[index_df, colonne_df] = nouvelle_valeur
-                            except Exception as e:
-                                st.error(f"⛔ {e}")
-                            else:
-                                df.at[index_df, colonne_df] = ancienne_valeur
-                                undo_redo_save()
-                                df.at[index_df, colonne_df] = nouvelle_valeur
-                                forcer_reaffichage_activites_planifiees()
-                                save_df_to_gsheet(st.session_state.df)
-                                st.rerun()
-                        else:
-                            undo_redo_save()
-                            liens_activites[row["Activité"]] = nouvelle_valeur
-                            save_lnk_to_gsheet(liens_activites)
-                            st.rerun()
+            #     # colonne = st.radio("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees", label_visibility="collapsed")
+            #     index_colonne_courante = st.session_state.editeur_activites_planifiees_index_colonne_courante
+            #     if st.session_state.editeur_activites_planifiees_utiliser_index_colonne_courante == True:
+            #         colonne = st.selectbox("🛠️ Colonne à éditer", colonnes_editables, index=index_colonne_courante, key=f"selectbox_editeur_activites_planifiees")
+            #     else:
+            #         colonne = st.selectbox("🛠️ Colonne à éditer", colonnes_editables, key=f"selectbox_editeur_activites_planifiees")
+            #     st.session_state.editeur_activites_planifiees_utiliser_index_colonne_courante = False
+            #     st.session_state.editeur_activites_planifiees_index_colonne_courante = colonnes_editables.index(colonne)
+            #     if colonne != "Lien de recherche":
+            #         valeur_courante = row[colonne]
+            #         if pd.isna(valeur_courante):
+            #             valeur_courante = ""
+            #     else:
+            #         valeur_courante = lien
+            #     nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_courante) 
+            #     if st.button("✅ Valider", key="validation_editeur_activites_planifiees"):
+            #         if colonne == "Lien de recherche":
+            #             undo_redo_save()
+            #             liens_activites[row["Activité"]] = nouvelle_valeur
+            #             save_lnk_to_gsheet(liens_activites)
+            #             st.rerun()
+            #         else:
+            #             colonne_df = renommage_colonnes_inverse[colonne] if colonne in renommage_colonnes_inverse else colonne
+            #             affecter_valeur(df, index_df, colonne_df, nouvelle_valeur, forcer_reaffichage=["All"])
                                 
 # Affiche les activités non planifiées dans un tableau
 def afficher_activites_non_planifiees(df):
@@ -1260,8 +1232,20 @@ def afficher_activites_non_planifiees(df):
     if "aggrid_activites_non_planifiees_forcer_reaffichage" not in st.session_state:
         st.session_state.aggrid_activites_non_planifiees_forcer_reaffichage = False
    
+    # Initialisation du flag permettant de savoir si l'on doit gérer les modifications de cellules
+    if "aggrid_activites_non_planifiees_gerer_modification_cellule" not in st.session_state:
+        st.session_state.aggrid_activites_non_planifiees_gerer_modification_cellule = True
+   
+    # Initialisation de la variable d'état contenant l'index de colonne courant
+    if "editeur_activites_non_planifiees_index_colonne_courante" not in st.session_state:
+        st.session_state.editeur_activites_non_planifiees_index_colonne_courante = 0
+
+    # Initialisation du flag permettant de savoir si l'on doit utiliser l'index de colonne courant pour paramétrer la selectbox concernée
+    if "editeur_activites_non_planifiees_utiliser_index_colonne_courante" not in st.session_state:
+        st.session_state.editeur_activites_non_planifiees_utiliser_index_colonne_courante = False
+
     # Enregistrement dans st.session_state d'une copy du df à afficher
-    st.session_state.df_display_non_planifies_initial = df_display.copy()
+    st.session_state.df_display_activites_non_planifiees_initial = df_display.copy()
 
     # Configuration
     gb = GridOptionsBuilder.from_dataframe(df_display)
@@ -1278,7 +1262,6 @@ def afficher_activites_non_planifiees(df):
 
     # Retaillage largeur colonnes
     gb.configure_default_column(resizable=True)
-    gb.configure_grid_options(onGridReady=JsCode("function(params) { params.api.sizeColumnsToFit(); }"))
 
     # Configuration de la sélection
     pre_selected_row = 0  # par défaut
@@ -1288,6 +1271,7 @@ def afficher_activites_non_planifiees(df):
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
+    
     js_code = JsCode(f"""
             function(params) {{
                 params.api.sizeColumnsToFit();
@@ -1295,6 +1279,19 @@ def afficher_activites_non_planifiees(df):
                 params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
             }}
         """)
+    # js_code = JsCode(f"""
+    #         function(params) {{
+    #             params.api.ensureIndexVisible({pre_selected_row}, 'middle');
+    #             params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
+
+    #             // Auto-size all columns to fit content
+    #             let allColumnIds = [];
+    #             params.columnApi.getAllColumns().forEach(function(column) {{
+    #                 allColumnIds.push(column.colId);
+    #             }});
+    #             params.columnApi.autoSizeColumns(allColumnIds);
+    #         }}
+    #     """)
     gb.configure_grid_options(onGridReady=js_code)
 
     grid_options = gb.build()
@@ -1323,17 +1320,20 @@ def afficher_activites_non_planifiees(df):
             row = df_display.iloc[pre_selected_row]
     st.session_state.aggrid_activites_non_planifiees_forcer_reaffichage = False
 
-   # Reaffichage si une cellule a été modifiée
-    df_modifie = pd.DataFrame(response["data"])
-    lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_non_planifies_initial)
-    if lignes_modifiees:
-        undo_redo_save()
-        for i, idx in lignes_modifiees:
-            for col in df_modifie.drop(columns=["__index"]).columns:
-                st.session_state.df.at[idx, renommage_colonnes_inverse.get(col, col)] = df_modifie.at[i, col]        
-        forcer_reaffichage_activites_non_planifiees()
-        save_df_to_gsheet(st.session_state.df)
-        st.rerun()
+    # Gestion des modifications de cellules
+    if st.session_state.aggrid_activites_non_planifiees_gerer_modification_cellule == True:
+        df_modifie = pd.DataFrame(response["data"])
+        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_non_planifiees_initial)
+        if lignes_modifiees:
+            undo_redo_save()
+            for i, idx in lignes_modifiees:
+                for col in df_modifie.drop(columns=["__index", "__jour"]).columns:
+                    if col not in ["Date", "Fin"]:
+                        col_df = renommage_colonnes_inverse[col] if col in renommage_colonnes_inverse else col
+                        if df.at[idx, col_df] != df_modifie.at[i, col]:
+                            st.session_state.editeur_activites_non_planifiees_utiliser_index_colonne_courante = True
+                            affecter_valeur(df,idx, col_df, df_modifie.at[i, col], forcer_reaffichage=["All"])
+    st.session_state.aggrid_activites_non_planifiees_gerer_modification_cellule = True
 
     # 🟡 Traitement du clic
     if row is not None:
@@ -1342,18 +1342,18 @@ def afficher_activites_non_planifiees(df):
         # Enregistrement de la sélection courante pour gestion de la sélection
         st.session_state.activites_non_planifiees_selected_row = index_df
 
-        nom_activite = str(row["Activité"]).strip() 
+        with st.expander("Contrôles"):
 
-        if nom_activite:
-            st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
+            nom_activite = str(row["Activité"]).strip() 
 
-            with st.expander("Contrôles de l'activité sélectionnée"):
+            if nom_activite:
+                st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**")
 
                 # Bouton Chercher, Supprimer, Ajouter au planning 
                 col1, col2, col3 = st.columns([0.5,0.5,4])
                 with col1:
                     if not est_pause_str(nom_activite):
-                        affiche_bouton_recherche_sur_le_net(nom_activite)
+                        afficher_bouton_recherche_net(nom_activite)
                 with col2:
                     if st.button("🗑️", key="SupprimerActiviteNonPlanifiee"):
                         undo_redo_save()
@@ -1382,97 +1382,58 @@ def afficher_activites_non_planifiees(df):
                                 save_df_to_gsheet(st.session_state.df)
                                 st.rerun()
 
-            # Formulaire d'édition pour mobile
-            with st.expander("Edition de la ligne sélectionnée"):
-                colonnes_editables = [col for col in df_display.columns if col not in ["__index", "Date", "Fin"]]
+            # Formulaire d'édition
+            # with st.expander("Edition de la ligne sélectionnée"):
+            #     colonnes_editables = [col for col in df_display.columns if col not in ["__jour", "__index", "Date", "Fin"]]
                 
-                # Ajout de l'hyperlien aux infos éditables s'il existe
-                if st.session_state.liens_activites is not None:
-                    liens_activites = st.session_state.liens_activites
-                    lien = liens_activites.get(row["Activité"])
-                    if lien:
-                        colonnes_editables.append("Lien de recherche")
+            #     # Ajout de l'hyperlien aux infos éditables s'il existe
+            #     if st.session_state.liens_activites is not None:
+            #         liens_activites = st.session_state.liens_activites
+            #         lien = liens_activites.get(row["Activité"])
+            #         if lien:
+            #             colonnes_editables.append("Lien de recherche")
 
-                if "editeur_activites_non_planifiees_colonne_selection" not in st.session_state:
-                    st.session_state.editeur_activites_non_planifiees_colonne_selection = 0
-                colonne_courante = st.session_state.editeur_activites_non_planifiees_colonne_selection
-                if colonne_courante not in colonnes_editables:
-                    colonne_courante = colonnes_editables[0]
-                # colonne = st.selectbox("🛠️ Colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_courante), key="selectbox_editeur_activites_non_planifiees")
-                # colonne = st.selectbox("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_non_planifiees")
-                colonne = st.radio("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_non_planifiees", label_visibility="collapsed")
-                st.session_state.editeur_activites_non_planifiees_colonne_selection = colonne
-                if colonne != "Lien de recherche":
-                    valeur_actuelle = row[colonne]
-                    if pd.isna(valeur_actuelle):
-                        valeur_actuelle = ""
-                else:
-                    valeur_actuelle = lien
-                nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_actuelle)
-                submitted = st.button("✅ Valider", key="validation_editeur_activites_non_planifiees")
+            #     # colonne = st.radio("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_non_planifiees", label_visibility="collapsed")
+            #     index_colonne_courante = st.session_state.editeur_activites_non_planifiees_index_colonne_courante
+            #     if st.session_state.editeur_activites_non_planifiees_utiliser_index_colonne_courante == True:
+            #         colonne = st.selectbox("🛠️ Colonne à éditer", colonnes_editables, index=index_colonne_courante, key=f"selectbox_editeur_activites_non_planifiees")
+            #     else:
+            #         colonne = st.selectbox("🛠️ Colonne à éditer", colonnes_editables, key=f"selectbox_editeur_activites_non_planifiees")
+            #     st.session_state.editeur_activites_non_planifiees_utiliser_index_colonne_courante = False
+            #     st.session_state.editeur_activites_non_planifiees_index_colonne_courante = colonnes_editables.index(colonne)
+            #     if colonne != "Lien de recherche":
+            #         valeur_courante = row[colonne]
+            #         if pd.isna(valeur_courante):
+            #             valeur_courante = ""
+            #     else:
+            #         valeur_courante = lien
+            #     nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_courante)
+            #     if st.button("✅ Valider", key="validation_editeur_activites_non_planifiees"):
+            #         if colonne == "Lien de recherche":
+            #             undo_redo_save()
+            #             liens_activites[row["Activité"]] = nouvelle_valeur
+            #             save_lnk_to_gsheet(liens_activites)
+            #             st.rerun()
+            #         else:
+            #             colonne_df = renommage_colonnes_inverse[colonne] if colonne in renommage_colonnes_inverse else colonne
+            #             affecter_valeur(df, index_df, colonne_df, nouvelle_valeur, forcer_reaffichage=["All"])
 
-                if submitted:
-                    erreur = None
-                    colonne_df = renommage_colonnes_inverse[colonne] if colonne in renommage_colonnes_inverse else colonne
-                    # Vérification selon le nom de la colonne
-                    if colonne == "Début" and not est_format_heure(nouvelle_valeur):
-                        erreur = "⛔ Format attendu : HHhMM (ex : 10h00)"
-                    elif colonne == "Durée" and not est_format_duree(nouvelle_valeur):
-                        erreur = "⛔ Format attendu : HhMM (ex : 1h00 ou 0h30)"
-                    elif colonne == "Relâche" and not est_relache_valide(nouvelle_valeur):
-                        erreur = "⛔ Format attendu : 1, 10, pair, impair"
-                    elif colonne == "Réservé" and not est_reserve_valide(nouvelle_valeur):
-                        erreur = "⛔ Format attendu : Oui, Non"
-                    elif ptypes.is_numeric_dtype(df[colonne_df]):
-                        try:
-                            if "." not in nouvelle_valeur and "," not in nouvelle_valeur and "e" not in nouvelle_valeur.lower():
-                                nouvelle_valeur = int(nouvelle_valeur)
-                            else:
-                                nouvelle_valeur = float(nouvelle_valeur)
-                        except:
-                            erreur = "⛔ Format numérique attendu"
-
-                    if erreur:
-                        st.error(erreur)
-                    elif nouvelle_valeur != valeur_actuelle:
-                        if colonne != "Lien de recherche":
-                            ancienne_valeur = df.at[index_df, colonne_df]
-                            try:
-                                df.at[index_df, colonne_df] = nouvelle_valeur
-                            except Exception as e:
-                                st.error(f"⛔ {e}")
-                            else:
-                                df.at[index_df, colonne_df] = ancienne_valeur
-                                undo_redo_save()
-                                df.at[index_df, colonne_df] = nouvelle_valeur
-                                forcer_reaffichage_activites_non_planifiees()
-                                save_df_to_gsheet(st.session_state.df)
-                                st.rerun()
-                        else:
-                            undo_redo_save()
-                            liens_activites[row["Activité"]] = nouvelle_valeur
-                            save_lnk_to_gsheet(liens_activites)
-                            st.rerun()
-
-        ajouter_activite()
+            ajouter_activite()
 
 # Affichage de l'éditeur d'activité
-def affichage_editeur_activite(df):
-    st.markdown("##### Editeur d'ativité")
+def afficher_editeur_activite(df):
+    st.markdown("##### Editeur d'activité")
     with st.expander("Editeur d'activité"):
         activites = df["Activite"].dropna().astype(str).str.strip()
         activites = activites[activites != ""].unique().tolist()
         activites.sort()
 
         # Affichage dans une selectbox
-        activite_selectionnee = st.selectbox("Choisir une activité :", activites)
+        activite_selectionnee = st.selectbox("⚙️ Activité :", activites)
         row = df[df["Activite"].astype(str).str.strip() == activite_selectionnee].iloc[0]
         index_df = row.name  # index réel de la ligne dans df
 
-        colonne = st.selectbox("🔧 Choix de la ligne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees_choix_ligne")
-        
-        valduree = row["Date"]
-        if pd.notna(valduree) and str(valduree).strip() != "":
+        if pd.notna(row["Date"]) and str(row["Duree"]).strip() != "":
             colonnes_editables = [col for col in df.columns if col not in ["Date", "Debut", "Fin", "Duree"]]
         else:
             colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin"]]
@@ -1490,42 +1451,63 @@ def affichage_editeur_activite(df):
         if colonne_courante not in colonnes_editables:
             colonne_courante = colonnes_editables[0]
         # colonne = st.selectbox("🛠️ Choix de la colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_courante), key="selectbox_editeur_activites_planifiees_choix_colonne")
-        # colonne = st.selectbox("⚙️ Choix de la colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees_choix_colonne")
-        colonne = st.radio("⚙️ Choix de la colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees_choix_colonne", label_visibility="collapsed")
+        # colonne = st.radio("⚙️ Choix de la colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees_choix_colonne", label_visibility="collapsed")
+        colonne = st.selectbox("⚙️ Colonne", colonnes_editables, key="selectbox_editeur_activites_planifiees_choix_colonne")
         st.session_state.editeur_activites_colonne_selection = colonne
         if colonne != "Lien de recherche":
-            valeur_actuelle = row[colonne]
+            valeur_courante = row[colonne]
         else:
-            valeur_actuelle = lien
-        nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_actuelle) 
-        submitted = st.button("✅ Valider", key="validation_editeur_activites_planifiees")
+            valeur_courante = lien
+        nouvelle_valeur = st.text_input(f"✏️ Edition", valeur_courante) 
+        if st.button("✅ Valider", key="validation_editeur_activites"):
+            if colonne == "Lien de recherche":
+                undo_redo_save()
+                liens_activites[row["Activité"]] = nouvelle_valeur
+                save_lnk_to_gsheet(liens_activites)
+                st.rerun()
+            else:
+                affecter_valeur(df, index_df, colonne, nouvelle_valeur)
 
-        if submitted:
-            erreur = None
-            # Vérification selon le nom de la colonne
-            if colonne == "Début" and not est_format_heure(nouvelle_valeur):
-                erreur = "⛔ Format attendu : HHhMM (ex : 10h00)"
-            elif colonne == "Durée" and not est_format_duree(nouvelle_valeur):
-                erreur = "⛔ Format attendu : HhMM (ex : 1h00 ou 0h30)"
-            elif colonne == "Relache" and not est_relache_valide(nouvelle_valeur):
-                erreur = "⛔ Format attendu : 1, 10, pair, impair)"
-            elif colonne == "Réservé" and not est_reserve_valide(nouvelle_valeur):
-                erreur = "⛔ Format attendu : Oui, Non)"
+# Affecte une nouvelle valeur à une cellule du df donnée par son index et sa colonne
+def affecter_valeur(df, index, colonne, nouvelle_valeur, forcer_reaffichage=["Debut", "Duree"], inhiber_gestion_modification_cellule=True):
+    valeur_courante = df.at[index, colonne]
+    erreur = None
+    if colonne == "Debut" and not est_format_heure(nouvelle_valeur):
+        erreur = "⛔ Format attendu : HHhMM (ex : 10h00)"
+    elif colonne == "Duree" and not est_format_duree(nouvelle_valeur):
+        erreur = "⛔ Format attendu : HhMM (ex : 1h00 ou 0h30)"
+    elif colonne == "Relache" and not est_relache_valide(nouvelle_valeur):
+        erreur = "⛔ Format attendu : 1, 10, pair, impair"
+    elif colonne == "Reserve" and not est_reserve_valide(nouvelle_valeur):
+        erreur = "⛔ Format attendu : Oui, Non"
+    elif ptypes.is_numeric_dtype(df[colonne]):
+        try:
+            if "." not in nouvelle_valeur and "," not in nouvelle_valeur and "e" not in nouvelle_valeur.lower():
+                nouvelle_valeur = int(nouvelle_valeur)
+            else:
+                nouvelle_valeur = float(nouvelle_valeur)
+        except:
+            erreur = "⛔ Format numérique attendu"
 
-            if erreur:
-                st.error(erreur)
-            elif nouvelle_valeur != valeur_actuelle:
-                if colonne != "Lien de recherche":
-                    undo_redo_save()
-                    df.at[index_df, colonne] = nouvelle_valeur
-                    forcer_reaffichage_activites_planifiees()
-                    save_df_to_gsheet(st.session_state.df)
-                    st.rerun()
-                else:
-                    undo_redo_save()
-                    liens_activites[row["Activité"]] = nouvelle_valeur
-                    save_lnk_to_gsheet(liens_activites)
-                    st.rerun()
+    if erreur:
+        st.error(erreur)
+    elif nouvelle_valeur != valeur_courante:
+        try:
+            df.at[index, colonne] = nouvelle_valeur
+        except Exception as e:
+            st.error(f"⛔ {e}")
+        else:
+            df.at[index, colonne] = valeur_courante
+            undo_redo_save()
+            df.at[index, colonne] = nouvelle_valeur
+            if inhiber_gestion_modification_cellule:
+                st.session_state.aggrid_activites_planifiees_gerer_modification_cellule = False
+                st.session_state.aggrid_activites_non_planifiees_gerer_modification_cellule = False
+            if colonne in forcer_reaffichage or forcer_reaffichage[0].lower() == "all":
+                forcer_reaffichage_activites_planifiees()
+                forcer_reaffichage_activites_non_planifiees()
+            save_df_to_gsheet(st.session_state.df)
+            st.rerun()
 
 # Vérifie qu'une valeur est bien Oui Non
 def est_reserve_valide(val):
@@ -2343,6 +2325,9 @@ def main():
 
             # Affichage des activités non planifiées
             afficher_activites_non_planifiees(df)
+
+            # Affichage de l'éditeur d'activité
+            afficher_editeur_activite(df)
 
             # Planification d'une nouvelle activité par créneau
             planifier_activite_par_choix_creneau(df)            
