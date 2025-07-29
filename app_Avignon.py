@@ -1353,7 +1353,7 @@ def afficher_activites_non_planifiees(df):
         if lignes_modifiees:
             undo_redo_save()
             for i, idx in lignes_modifiees:
-                for col in df_modifie.drop(columns=["__index", "__jour"]).columns:
+                for col in df_modifie.drop(columns=["__index"]).columns:
                     if col not in ["Date", "Fin"]:
                         col_df = RENOMMAGE_COLONNES_INVERSE[col] if col in RENOMMAGE_COLONNES_INVERSE else col
                         if df.at[idx, col_df] != df_modifie.at[i, col]:
