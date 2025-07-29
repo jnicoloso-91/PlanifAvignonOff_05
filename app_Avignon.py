@@ -1168,9 +1168,9 @@ def afficher_activites_planifiees(df):
                 if colonne_courante not in colonnes_editables:
                     colonne_courante = colonnes_editables[0]
                 # colonne = st.selectbox("🛠️ Colonne à éditer", colonnes_editables, index=colonnes_editables.index(colonne_courante), key="selectbox_editeur_activites_planifiees")
-                # colonne = st.selectbox("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
+                colonne = st.selectbox("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
                 # colonne = aggrid_single_selection_list("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees")
-                colonne = st.radio("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees", label_visibility="collapsed")
+                # colonne = st.radio("⚙️ Colonne à éditer", colonnes_editables, key="selectbox_editeur_activites_planifiees", label_visibility="collapsed")
                 st.session_state.editeur_activites_planifiees_colonne_selection = colonne
                 if colonne != "Lien de recherche":
                     valeur_actuelle = row[colonne]
