@@ -794,9 +794,9 @@ def nettoyer_donnees(df):
             df["Priorite"] = pd.to_numeric(df["Priorite"], errors="coerce").astype("Int64")
             # df["Priorite"] = df["Priorite"].astype("object").fillna("").astype(str)
             # pd.set_option('future.no_silent_downcasting', True)
-            
-            st.session_state.fichier_invalide = False 
 
+            del st.session_state["fichier_invalide"]
+            
     except Exception as e:
         st.error(f"Erreur lors du décodage du fichier : {e}")
     
@@ -2318,7 +2318,6 @@ def initialisation_environnement_apres_chargement_fichier(df, wb, fd, lnk):
     st.session_state.wb = wb
     st.session_state.fn = fd.name
     st.session_state.liens_activites = lnk
-    st.session_state.erreur_chargement = False
     st.session_state.nouveau_fichier = True
     save_to_gsheet(df, fd, lnk)
     undo_redo_init(verify=False)
@@ -2337,13 +2336,11 @@ def charger_fichier():
                 wb = load_workbook(fd)
                 lnk = get_liens_activites(wb)
                 df = nettoyer_donnees(df)
-                if not st.session_state.fichier_invalide:
+                if "fichier_invalide" not in st.session_state:
                     initialisation_environnement_apres_chargement_fichier(df, wb, fd, lnk)
             except Exception as e:
                 st.error(f"Erreur lors du chargement du fichier : {e}")
-                st.session_state.erreur_chargement = True
-        else:
-            st.session_state.clear()
+                st.session_state.fichier_invalide = True
 
     # Chargement du fichier Excel contenant les activités à planifier
     uploaded_file = st.file_uploader(
@@ -2476,12 +2473,12 @@ def main():
     charger_fichier()
 
     # Si le fichier est chargé dans st.session_state.df et valide, on le traite
-    if "df" in st.session_state:
+    if "df" in st.session_state and isinstance(st.session_state.df, pd.DataFrame):
 
         # Accès au DataFrame après nettoyage
         df = st.session_state.df
 
-        if not st.session_state.fichier_invalide:
+        if "fichier_invalide" not in st.session_state:
 
             # Affichage des choix généraux
             afficher_infos_generales(df)
