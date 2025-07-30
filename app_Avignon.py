@@ -57,7 +57,7 @@ def get_user_id():
         st.session_state["user_id"] = user_id_from_url
 
     if "user_id" not in st.session_state:
-        st.title("Bienvenue 👋")
+        afficher_titre("Bienvenue sur le planificateur Avignon Off 👋")
         st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
         if "new_user_id" not in st.session_state:     
             st.session_state["new_user_id"] = str(uuid.uuid4())[:8]
@@ -122,64 +122,76 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
 # 📥 Charge les infos persistées depuis la Google Sheet
 def load_from_gsheet():
     if "gsheets" not in st.session_state:
-        user_id = get_user_id()
-        gsheets = get_or_create_user_gsheets(user_id, spreadsheet_id="1ytYrefEPzdJGy5w36ZAjW_QQTlvfZ17AH69JkiHQzZY")
-        st.session_state.gsheets = gsheets
-        worksheet = gsheets["data"]
-        df = get_as_dataframe(worksheet, evaluate_formulas=True)
-        df.dropna(how="all")
-        if len(df) > 0:
+        try:
+            user_id = get_user_id()
+            gsheets = get_or_create_user_gsheets(user_id, spreadsheet_id="1ytYrefEPzdJGy5w36ZAjW_QQTlvfZ17AH69JkiHQzZY")
+            st.session_state.gsheets = gsheets
+            worksheet = gsheets["data"]
+            df = get_as_dataframe(worksheet, evaluate_formulas=True)
+            df.dropna(how="all")
+            if len(df) > 0:
 
-            worksheet = gsheets["links"]
-            rows = worksheet.get_all_values()
-            lnk = {}
-            if len(rows) > 1:
-                data_rows = rows[1:]
-                lnk = {row[0]: row[1] for row in data_rows if len(row) >= 2}
+                worksheet = gsheets["links"]
+                rows = worksheet.get_all_values()
+                lnk = {}
+                if len(rows) > 1:
+                    data_rows = rows[1:]
+                    lnk = {row[0]: row[1] for row in data_rows if len(row) >= 2}
 
-            worksheet = gsheets["meta"]
-            fn  = worksheet.acell("A1").value
-            fp  = worksheet.acell("A2").value
-            wb = download_excel_from_dropbox(fp)
+                worksheet = gsheets["meta"]
+                fn  = worksheet.acell("A1").value
+                fp  = worksheet.acell("A2").value
+                wb = download_excel_from_dropbox(fp)
 
-            initialisation_environnement_apres_chargement_fichier(df, wb, fn, lnk)
+                initialisation_environnement_apres_chargement_fichier(df, wb, fn, lnk)
+        except Exception as e:
+            pass
 
 # 📤 Sauvegarde le DataFrame dans la Google Sheet
 def save_df_to_gsheet(df: pd.DataFrame):
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
-        gsheets = st.session_state.gsheets
-        worksheet = gsheets["data"]
-        worksheet.clear()
-        set_with_dataframe(worksheet, df)
+        try:
+            gsheets = st.session_state.gsheets
+            worksheet = gsheets["data"]
+            worksheet.clear()
+            set_with_dataframe(worksheet, df)
+        except Exception as e:
+            pass
 
 # 📤 Sauvegarde les hyperliens dans la Google Sheet
 def save_lnk_to_gsheet(lnk):
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
-        gsheets = st.session_state.gsheets
-        worksheet = gsheets["links"]
-        worksheet.clear()
-        rows = [[k, v] for k, v in lnk.items()]
-        worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
+        try:
+            gsheets = st.session_state.gsheets
+            worksheet = gsheets["links"]
+            worksheet.clear()
+            rows = [[k, v] for k, v in lnk.items()]
+            worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
+        except Exception as e:
+            pass
 
 # 📤 Sauvegarde l'ensemble des infos persistées dans la Google Sheet
 def save_to_gsheet(df: pd.DataFrame, fichier_excel, lnk):
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
-        gsheets = st.session_state.gsheets
+        try:
+            gsheets = st.session_state.gsheets
 
-        worksheet = gsheets["data"]
-        worksheet.clear()
-        set_with_dataframe(worksheet, df)
+            worksheet = gsheets["data"]
+            worksheet.clear()
+            set_with_dataframe(worksheet, df)
 
-        worksheet = gsheets["links"]
-        worksheet.clear()
-        rows = [[k, v] for k, v in lnk.items()]
-        worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
+            worksheet = gsheets["links"]
+            worksheet.clear()
+            rows = [[k, v] for k, v in lnk.items()]
+            worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
 
-        worksheet = gsheets["meta"]
-        worksheet.update_acell("A1", fichier_excel.name)
-        fp = upload_excel_to_dropbox(fichier_excel.getvalue(), fichier_excel.name)
-        worksheet.update_acell("A2", fp)
-        return fp
+            worksheet = gsheets["meta"]
+            worksheet.update_acell("A1", fichier_excel.name)
+            fp = upload_excel_to_dropbox(fichier_excel.getvalue(), fichier_excel.name)
+            worksheet.update_acell("A2", fp)
+            return fp
+        except Exception as e:
+            pass
     else:
         return ""
 
@@ -200,11 +212,14 @@ def save_one_row_to_gsheet(df, index_df):
             return x
     
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
-        gsheets = st.session_state.gsheets
-        worksheet = gsheets["data"]
-        valeurs = df.loc[index_df].map(convert_cell_value).tolist()
-        ligne_sheet = index_df + 2  # +1 pour index, +1 pour en-tête
-        worksheet.update(range_name=f"A{ligne_sheet}", values=[valeurs])
+        try:
+            gsheets = st.session_state.gsheets
+            worksheet = gsheets["data"]
+            valeurs = df.loc[index_df].map(convert_cell_value).tolist()
+            ligne_sheet = index_df + 2  # +1 pour index, +1 pour en-tête
+            worksheet.update(range_name=f"A{ligne_sheet}", values=[valeurs])
+        except Exception as e:
+            pass
 
 ####################
 # API Google Drive #
