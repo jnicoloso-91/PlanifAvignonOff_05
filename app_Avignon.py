@@ -1110,7 +1110,7 @@ def afficher_activites_planifiees(df):
         st.session_state.editeur_activites_planifiees_utiliser_index_colonne_courante = False
 
     # Enregistrement dans st.session_state d'une copy du df à afficher
-    st.session_state.df_display_activites_planifiees_initial = df_display.copy()
+    st.session_state.df_display_activites_planifiees = df_display.copy()
 
     # Palette de couleurs
     couleurs_jours = {
@@ -1214,7 +1214,7 @@ def afficher_activites_planifiees(df):
     # Gestion des modifications de cellules
     if st.session_state.aggrid_activites_planifiees_gerer_modification_cellule == True:
         df_modifie = pd.DataFrame(response["data"])
-        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_planifiees_initial)
+        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_planifiees)
         if lignes_modifiees:
             undo_redo_save()
             for i, idx in lignes_modifiees:
@@ -1379,7 +1379,7 @@ def afficher_activites_non_planifiees(df):
         st.session_state.editeur_activites_non_planifiees_utiliser_index_colonne_courante = False
 
     # Enregistrement dans st.session_state d'une copy du df à afficher
-    st.session_state.df_display_activites_non_planifiees_initial = df_display.copy()
+    st.session_state.df_display_activites_non_planifiees = df_display.copy()
 
     # Configuration
     gb = GridOptionsBuilder.from_dataframe(df_display)
@@ -1457,7 +1457,7 @@ def afficher_activites_non_planifiees(df):
     # Gestion des modifications de cellules
     if st.session_state.aggrid_activites_non_planifiees_gerer_modification_cellule == True:
         df_modifie = pd.DataFrame(response["data"])
-        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_non_planifiees_initial)
+        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_non_planifiees)
         if lignes_modifiees:
             undo_redo_save()
             for i, idx in lignes_modifiees:
@@ -2190,6 +2190,12 @@ def ajouter_activite_planifiee(df, date_ref, proposables, choix_activite):
             df.at[index, "Debut"] = (dict((p[1], p[0]) for p in proposables)[choix_activite]).time().strftime("%Hh%M")
             df.at[index, "Duree"] = formatter_timedelta(DUREE_CAFE)
             df.at[index, "Activite"] = "Pause café"
+
+        st.session_state.activites_non_planifiees_selected_row = ligne_voisine_index(st.session_state.df_display_activites_non_planifiees, index)
+        st.session_state.activites_planifiees_selected_row = index
+        forcer_reaffichage_activites_planifiees()
+        forcer_reaffichage_activites_non_planifiees()
+
         save_one_row_to_gsheet(df, index)
         st.rerun()
 
