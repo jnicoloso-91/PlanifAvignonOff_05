@@ -637,9 +637,9 @@ def choix_periode_a_planifier(df):
 
     col1, col2 = st.columns(2)
     with col1:
-        st.session_state.periode_a_planifier_debut = st.date_input("Début de la période à planifier", value=st.session_state.periode_a_planifier_debut)
+        st.session_state.periode_a_planifier_debut = st.date_input("Début de la période à planifier", value=st.session_state.periode_a_planifier_debut, format="DD/MM/YYYY")
     with col2:
-        st.session_state.periode_a_planifier_fin = st.date_input("Fin de la période à planifier", value=st.session_state.periode_a_planifier_fin)
+        st.session_state.periode_a_planifier_fin = st.date_input("Fin de la période à planifier", value=st.session_state.periode_a_planifier_fin, format="DD/MM/YYYY")
 
 # Nettoie les données du tableau Excel importé
 def nettoyer_donnees(df):
