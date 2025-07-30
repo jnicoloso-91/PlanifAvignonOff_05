@@ -74,8 +74,6 @@ def get_user_id():
 def show_user_link(user_id):
     app_url = "https://planifavignon-05-hymtc4ahn5ap3e7pfetzvm.streamlit.app/"  
     user_link = f"{app_url}/?user_id={user_id}"
-    app_url = "https://tonapp.streamlit.app"  # à adapter si besoin
-    user_link = f"{app_url}/?user_id={user_id}"
     st.success("Voici ton lien personnel pour revenir plus tard :")
     st.code(user_link, language="text")
     st.download_button(
