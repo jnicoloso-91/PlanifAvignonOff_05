@@ -1635,7 +1635,7 @@ def afficher_editeur_activite(df):
         else:
             valeur_courante = lien
 
-        nouvelle_valeur = st.text_input(f"✏️ Valeur", valeur_courante) 
+        nouvelle_valeur = st.text_input(f"✏️ Valeur", "" if pd.isna(valeur_courante) else str(valeur_courante)) 
         if st.button("✅ Valider", key="validation_editeur_activites"):
             if colonne_df == "Lien de recherche":
                 undo_redo_save()
