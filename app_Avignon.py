@@ -143,8 +143,6 @@ def load_from_gsheet():
                 fp  = worksheet.acell("A2").value
                 wb = download_excel_from_dropbox(fp)
 
-                df["Debut_dt"] = pd.to_datetime(df["Debut_dt"], errors="coerce")
-                df["Duree_dt"] = pd.to_timedelta(df["Duree_dt"], errors="coerce")
                 initialisation_environnement(df, wb, fn, lnk)
         except Exception as e:
             pass
@@ -217,7 +215,7 @@ def save_one_row_to_gsheet(df, index_df):
         try:
             gsheets = st.session_state.gsheets
             worksheet = gsheets["data"]
-            valeurs = df.loc[index_df].map(convert_cell_value).tolist()
+            valeurs = df.drop(columns=["Debut_dt", "Duree_dt"]).loc[index_df].map(convert_cell_value).tolist()
             ligne_sheet = index_df + 2  # +1 pour index, +1 pour en-tête
             worksheet.update(range_name=f"A{ligne_sheet}", values=[valeurs])
         except Exception as e:
@@ -371,6 +369,117 @@ def undo_redo_redo():
 #########################
 # Fonctions utilitaires #
 #########################
+
+# Renvoie val sous la forme "10h00" si datetime ou time, "" si None, str(val).strip() sinon
+def heure_str(val):
+    from datetime import datetime, time
+    if isinstance(val, (datetime, time)):
+        return val.strftime("%Hh%M")
+    if pd.isna(val):
+        return ""
+    return str(val).strip()
+
+# Renvoie un datetime basé sur BASE_DATE si h est datetime, time, str de la forme 10h00, 10:00 ou 10:00:00, None dans les autres cas
+def parse_heure(h):
+    from datetime import datetime, time
+
+    if pd.isna(h) or str(h).strip() == "":
+        return datetime.combine(BASE_DATE, time(0, 0))  # Heure nulle par défaut        if isinstance(h, time):
+    
+    if isinstance(h, datetime):
+        return datetime.combine(BASE_DATE, h.time())
+    
+    h_str = str(h).strip()
+
+    # Format 10h00
+    if re.match(r"^\d{1,2}h\d{2}$", h_str):
+        try:
+            return datetime.strptime(f"{BASE_DATE.isoformat()} {h_str}", "%Y-%m-%d %Hh%M")
+        except ValueError:
+            return None
+
+    # Format 10:00 ou 10:00:00
+    if re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", h_str):
+        try:
+            t = datetime.strptime(h_str, "%H:%M").time()
+            return datetime.combine(BASE_DATE, t)
+        except ValueError:
+            try:
+                t = datetime.strptime(h_str, "%H:%M:%S").time()
+                return datetime.combine(BASE_DATE, t)
+            except ValueError:
+                return None
+
+    return None
+
+# Renvoie val sous la forme "1h00" si timedelta, "" si None, str(val).strip() sinon
+def duree_str(val):
+    from datetime import datetime, time
+    if isinstance(val, pd.Timedelta):
+        total_minutes = int(val.total_seconds() // 60)
+        h = total_minutes // 60
+        m = total_minutes % 60
+        return f"{h}h{m:02d}"
+    if pd.isna(val):
+        return ""
+    return str(val).strip()
+
+# Renvoie un timedelta si h est timedelta, datetime, time, str de la forme 1h00, 1:00 ou 1:00:00, None dans les autres cas
+def parse_duree(d):
+    from datetime import datetime, time
+
+    if pd.isna(d) or str(d).strip() == "":
+        return pd.Timedelta(0)
+
+    # Si c'est déjà un timedelta
+    if isinstance(d, pd.Timedelta):
+        return d
+
+    # Si c'est un datetime.time
+    if isinstance(d, time):
+        return pd.Timedelta(hours=d.hour, minutes=d.minute, seconds=d.second)
+
+    # Si c'est un datetime.datetime
+    if isinstance(d, datetime):
+        t = d.time()
+        return pd.Timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
+
+    d_str = str(d).strip().lower()
+
+    # Format "1h30"
+    if re.match(r"^\d{1,2}h\d{2}$", d_str):
+        h, m = map(int, d_str.replace("h", " ").split())
+        return pd.Timedelta(hours=h, minutes=m)
+
+    # Format "1:30" ou "1:30:00"
+    if re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", d_str):
+        try:
+            parts = list(map(int, d_str.split(":")))
+            if len(parts) == 2:
+                h, m = parts
+                return pd.Timedelta(hours=h, minutes=m)
+            elif len(parts) == 3:
+                h, m, s = parts
+                return pd.Timedelta(hours=h, minutes=m, seconds=s)
+        except ValueError:
+            return None
+
+    return None
+
+# Calcule l'heure de fin à partir de l'heure de début et de la durée    
+def calculer_fin(h, d, fin_actuelle=""):
+    if isinstance(d, pd.Timedelta) and not pd.isna(h):
+        total = h + d
+        return f"{total.hour:02d}h{total.minute:02d}"
+    else:
+        return fin_actuelle if pd.notna(fin_actuelle) else ""
+
+# Calcule l'heure de fin à partir de l'heure de début et de la durée    
+def calculer_fin_row(row):
+    h = row.get("Debut_dt")
+    d = row.get("Duree_dt")
+    fin_actuelle = row.get("Fin")
+    return calculer_fin(h, d, fin_actuelle)
 
 # Formatte un objet timedelta en une chaîne de caractères "XhYY"
 def formatter_timedelta(d):
@@ -647,116 +756,14 @@ def choix_periode_a_planifier(df):
     with col2:
         st.session_state.periode_a_planifier_fin = st.date_input("Fin de la période à planifier", value=st.session_state.periode_a_planifier_fin, format="DD/MM/YYYY")
 
+# Met à jour les données calculées
+def recalculer_donnees(df):
+    df["Debut_dt"] = df["Debut"].apply(parse_heure)
+    df["Duree_dt"] = df["Duree"].apply(parse_duree)
+    df["Fin"] = df.apply(calculer_fin_row, axis=1)            
+
 # Nettoie les données du tableau Excel importé
 def nettoyer_donnees(df):
-    
-    # Renvoie val sous la forme "10h00" si datetime ou time, "" si None, str(val).strip() sinon
-    def heure_str(val):
-        from datetime import datetime, time
-        if isinstance(val, (datetime, time)):
-            return val.strftime("%Hh%M")
-        if pd.isna(val):
-            return ""
-        return str(val).strip()
-    
-    # Renvoie un datetime basé sur BASE_DATE si h est datetime, time, str de la forme 10h00, 10:00 ou 10:00:00, None dans les autres cas
-    def parse_heure(h):
-        from datetime import datetime, time
-
-        if pd.isna(h) or str(h).strip() == "":
-            return datetime.combine(BASE_DATE, time(0, 0))  # Heure nulle par défaut        if isinstance(h, time):
-        
-        if isinstance(h, datetime):
-            return datetime.combine(BASE_DATE, h.time())
-        
-        h_str = str(h).strip()
-
-        # Format 10h00
-        if re.match(r"^\d{1,2}h\d{2}$", h_str):
-            try:
-                return datetime.strptime(f"{BASE_DATE.isoformat()} {h_str}", "%Y-%m-%d %Hh%M")
-            except ValueError:
-                return None
-
-        # Format 10:00 ou 10:00:00
-        if re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", h_str):
-            try:
-                t = datetime.strptime(h_str, "%H:%M").time()
-                return datetime.combine(BASE_DATE, t)
-            except ValueError:
-                try:
-                    t = datetime.strptime(h_str, "%H:%M:%S").time()
-                    return datetime.combine(BASE_DATE, t)
-                except ValueError:
-                    return None
-
-        return None
-    
-    # Renvoie val sous la forme "1h00" si timedelta, "" si None, str(val).strip() sinon
-    def duree_str(val):
-        from datetime import datetime, time
-        if isinstance(val, pd.Timedelta):
-            total_minutes = int(val.total_seconds() // 60)
-            h = total_minutes // 60
-            m = total_minutes % 60
-            return f"{h}h{m:02d}"
-        if pd.isna(val):
-            return ""
-        return str(val).strip()
-
-    # Renvoie un timedelta si h est timedelta, datetime, time, str de la forme 1h00, 1:00 ou 1:00:00, None dans les autres cas
-    def parse_duree(d):
-        from datetime import datetime, time
-
-        if pd.isna(d) or str(d).strip() == "":
-            return pd.Timedelta(0)
-
-        # Si c'est déjà un timedelta
-        if isinstance(d, pd.Timedelta):
-            return d
-
-        # Si c'est un datetime.time
-        if isinstance(d, time):
-            return pd.Timedelta(hours=d.hour, minutes=d.minute, seconds=d.second)
-
-        # Si c'est un datetime.datetime
-        if isinstance(d, datetime):
-            t = d.time()
-            return pd.Timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
-
-        d_str = str(d).strip().lower()
-
-        # Format "1h30"
-        if re.match(r"^\d{1,2}h\d{2}$", d_str):
-            h, m = map(int, d_str.replace("h", " ").split())
-            return pd.Timedelta(hours=h, minutes=m)
-
-        # Format "1:30" ou "1:30:00"
-        if re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", d_str):
-            try:
-                parts = list(map(int, d_str.split(":")))
-                if len(parts) == 2:
-                    h, m = parts
-                    return pd.Timedelta(hours=h, minutes=m)
-                elif len(parts) == 3:
-                    h, m, s = parts
-                    return pd.Timedelta(hours=h, minutes=m, seconds=s)
-            except ValueError:
-                return None
-
-        return None
-    
-    def recalculer_fin(row):
-        h = row.get("Debut_dt")
-        d = row.get("Duree_dt")
-        fin_actuelle = row.get("Fin")
-
-        if isinstance(d, pd.Timedelta) and not pd.isna(h):
-            total = h + d
-            return f"{total.hour:02d}h{total.minute:02d}"
-        else:
-            return fin_actuelle if pd.notna(fin_actuelle) else ""
-
     try:
         # Nettoyage noms de colonnes : suppression espaces et accents
         df.columns = df.columns.str.strip().str.replace("\u202f", " ").str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8")
@@ -765,7 +772,7 @@ def nettoyer_donnees(df):
         colonnes_attendues_avec_accents = ["Date", "Début", "Fin", "Durée", "Activité", "Lieu", "Relâche", "Réservé", "Priorité", "Commentaire"]
 
         if not all(col in df.columns for col in colonnes_attendues):
-            st.error("Le fichier ne contient pas toutes les colonnes attendues: " + ", ".join(colonnes_attendues_avec_accents))
+            st.error("Le fichier n'est pas au format Excel ou ne contient pas toutes les colonnes attendues: " + ", ".join(colonnes_attendues_avec_accents) + ".")
         elif (len(df) == 0):
             st.error("Le fichier est vide")
         else:
@@ -773,16 +780,11 @@ def nettoyer_donnees(df):
             # Suppression des lignes presque vides i.e. ne contenant que des NaN ou des ""
             df = df[~df.apply(lambda row: all(pd.isna(x) or str(x).strip() == "" for x in row), axis=1)].reset_index(drop=True)
 
-            # Nettoyage Heure et ajout de la colonne Debut_dt "10h00" -> datetime.time
+            # Nettoyage Heure 
             df["Debut"] = df["Debut"].apply(heure_str)
-            df["Debut_dt"] = df["Debut"].apply(parse_heure)
 
-            # Nettoyage Duree et ajout de la colonne Duree_dt "1h00" -> timedelta
+            # Nettoyage Duree 
             df["Duree"] = df["Duree"].apply(duree_str)
-            df["Duree_dt"] = df["Duree"].apply(parse_duree)
-
-            # Recalcul de la colonne fin = Debut_dt + Duree_dt si Duree_dt non NaN
-            df["Fin"] = df.apply(recalculer_fin, axis=1)
 
             # Force les types corrects après lecture pour éviter les erreurs de conversion pandas
             colonnes_cibles = {
@@ -805,8 +807,6 @@ def nettoyer_donnees(df):
             
     except Exception as e:
         st.error(f"Erreur lors du décodage du fichier : {e}")
-    
-    return df
 
 # Renvoie les hyperliens de la colonne Activité 
 def get_liens_activites(wb):
@@ -1789,8 +1789,8 @@ def get_creneaux(df, planifies, traiter_pauses):
 # Renvoie les bornes du créneau existant avant une activité donnée par son descripteur ligne_ref
 def get_creneau_bounds_avant(planifies, ligne_ref):
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Debut_dt"]
-    duree_ref = ligne_ref["Duree_dt"]
+    debut_ref = ligne_ref["Debut_dt"] if pd.notnull(ligne_ref["Debut_dt"]) else datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
+    duree_ref = ligne_ref["Duree_dt"] if pd.notnull(ligne_ref["Duree_dt"]) else datetime.timedelta(0)
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
 
     # Chercher l'activité planifiée précédente sur le même jour
@@ -1813,9 +1813,10 @@ def get_creneau_bounds_avant(planifies, ligne_ref):
 # Renvoie les bornes du créneau existant après une activité donnée par son descripteur ligne_ref
 def get_creneau_bounds_apres(planifies, ligne_ref):
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Debut_dt"]
-    duree_ref = ligne_ref["Duree_dt"]
-    fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
+    debut_ref = ligne_ref["Debut_dt"] if pd.notnull(ligne_ref["Debut_dt"]) else datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
+    duree_ref = ligne_ref["Duree_dt"] if pd.notnull(ligne_ref["Duree_dt"]) else datetime.timedelta(0)
+    fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else debut_ref    
+
 
     # Ajuster la date de référence si le jour a changé
     if fin_ref.day != debut_ref.day:
@@ -1840,8 +1841,8 @@ def get_creneau_bounds_apres(planifies, ligne_ref):
 # Renvoie la liste des activités planifiables avant une activité donnée par son descripteur ligne_ref
 def get_activites_planifiables_avant(df, planifies, ligne_ref, traiter_pauses=True):
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Debut_dt"]
-    duree_ref = ligne_ref["Duree_dt"]
+    debut_ref = ligne_ref["Debut_dt"] if pd.notnull(ligne_ref["Debut_dt"]) else datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
+    duree_ref = ligne_ref["Duree_dt"] if pd.notnull(ligne_ref["Duree_dt"]) else datetime.timedelta(0)
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None
 
     proposables = [] 
@@ -1868,8 +1869,8 @@ def get_activites_planifiables_avant(df, planifies, ligne_ref, traiter_pauses=Tr
 # Renvoie la liste des activités planifiables après une activité donnée par son descripteur ligne_ref
 def get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses=True):
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Debut_dt"]
-    duree_ref = ligne_ref["Duree_dt"]
+    debut_ref = ligne_ref["Debut_dt"] if pd.notnull(ligne_ref["Debut_dt"]) else datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
+    duree_ref = ligne_ref["Duree_dt"] if pd.notnull(ligne_ref["Duree_dt"]) else datetime.timedelta(0)
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None   
 
     proposables = []
@@ -1927,7 +1928,7 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
                 i = planifies.index.get_loc(ligne_ref.name)  
                 Lieu_ref_prev = planifies.iloc[i - 1]["Lieu"] if i > 0 else None
                 h_cafe = fin_max - DUREE_CAFE
-                if Lieu_ref == Lieu_ref_prev: 
+                if not pd.isna(Lieu_ref_prev) and Lieu_ref == Lieu_ref_prev: 
                     # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle précédent 
                     if h_cafe >= debut_min: 
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
@@ -1940,7 +1941,7 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
                 i = planifies.index.get_loc(ligne_ref.name)  
                 Lieu_ref_suiv = planifies.iloc[i + 1]["Lieu"] if i < len(planifies) - 1 else None
                 h_cafe = debut_min
-                if Lieu_ref == Lieu_ref_suiv: 
+                if not pd.isna(Lieu_ref_suiv) and Lieu_ref == Lieu_ref_suiv: 
                     # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle suivant 
                     if h_cafe + DUREE_CAFE <= fin_max: 
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
@@ -1951,8 +1952,8 @@ def ajouter_pauses(proposables, planifies, ligne_ref, type_creneau):
                         proposables.append((h_cafe, desc(h_cafe, DUREE_CAFE, "Pause café"), None, "café"))
 
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Debut_dt"]
-    duree_ref = ligne_ref["Duree_dt"]
+    debut_ref = ligne_ref["Debut_dt"] if pd.notnull(ligne_ref["Debut_dt"]) else datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
+    duree_ref = ligne_ref["Duree_dt"] if pd.notnull(ligne_ref["Duree_dt"]) else datetime.timedelta(0)
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
 
     def desc(h, duree, nom):
@@ -2340,7 +2341,7 @@ def charger_fichier():
                 df = pd.read_excel(fd)
                 wb = load_workbook(fd)
                 lnk = get_liens_activites(wb)
-                df = nettoyer_donnees(df)
+                nettoyer_donnees(df)
                 if "fichier_invalide" not in st.session_state:
                     initialisation_environnement(df, wb, fd.name, lnk)
                     save_to_gsheet(df, fd, lnk)
@@ -2485,6 +2486,9 @@ def main():
         df = st.session_state.df
 
         if "fichier_invalide" not in st.session_state:
+
+            # Met à jour les données calculées
+            recalculer_donnees(df)
 
             # Affichage des choix généraux
             afficher_infos_generales(df)
