@@ -13,6 +13,8 @@ import gspread
 from gspread_dataframe import get_as_dataframe, set_with_dataframe
 from google.oauth2.service_account import Credentials
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
+from io import BytesIO
+import uuid
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -43,16 +45,210 @@ RENOMMAGE_COLONNES_INVERSE = {
     "Activité": "Activite",
 }
 
-GSHEET_NAME = "Persistence_Streamlit"
-SCOPES = [
-    "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/spreadsheets"
-]
+######################
+# User Sheet Manager #
+######################
+
+def get_user_id():
+    params = st.query_params
+    user_id_from_url = params.get("user_id", [None])[0]
+
+    if user_id_from_url:
+        st.session_state["user_id"] = user_id_from_url
+
+    if "user_id" not in st.session_state:
+        st.title("Bienvenue 👋")
+        st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
+        if "new_user_id" not in st.session_state:     
+            st.session_state["new_user_id"] = str(uuid.uuid4())[:8]
+        new_user_id = st.session_state.new_user_id
+        if st.button("Créer ma session privée"):
+            st.session_state["user_id"] = new_user_id
+            st.query_params.update(user_id=new_user_id)
+            st.rerun()  # Recharge la page avec le nouveau paramètre
+        show_user_link(new_user_id)
+        st.stop()
+
+    return st.session_state["user_id"]
+
+def show_user_link(user_id):
+    app_url = "https://planifavignon-05-hymtc4ahn5ap3e7pfetzvm.streamlit.app/"  
+    user_link = f"{app_url}/?user_id={user_id}"
+    app_url = "https://tonapp.streamlit.app"  # à adapter si besoin
+    user_link = f"{app_url}/?user_id={user_id}"
+    st.success("Voici ton lien personnel pour revenir plus tard :")
+    st.code(user_link, language="text")
+    st.download_button(
+        label="💾 Télécharger mon lien",
+        data=user_link,
+        file_name=f"lien_{user_id}.txt"
+    )
+    
+def get_gsheet_client():
+    try:
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        return gspread.authorize(creds)
+    except Exception as e:
+            st.error(f"Erreur de connexion à Google Sheets : {e}")
+            return None
+    
+def get_or_create_user_gsheets(user_id, spreadsheet_id):
+    gsheets = None
+    client = get_gsheet_client()
+    if client is not None:    
+        try:
+            sh = client.open_by_key(spreadsheet_id)
+        except Exception as e:
+            st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
+            st.stop()    
+
+        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"]
+        gsheets = {}
+
+        for name in sheet_names:
+            try:
+                ws = sh.worksheet(name)
+            except gspread.WorksheetNotFound:
+                ws = sh.add_worksheet(title=name, rows=1000, cols=20)
+            gsheets[name.split("_")[0]] = ws  # 'data', 'links', 'meta'
+
+    return gsheets
+
+####################
+# API Google Sheet #
+####################
+
+# 📥 Charge les infos persistées depuis la Google Sheet
+def load_from_gsheet():
+    if "gsheets" not in st.session_state:
+        user_id = get_user_id()
+        gsheets = get_or_create_user_gsheets(user_id, spreadsheet_id="1ytYrefEPzdJGy5w36ZAjW_QQTlvfZ17AH69JkiHQzZY")
+        st.session_state.gsheets = gsheets
+        worksheet = gsheets["data"]
+        df = get_as_dataframe(worksheet, evaluate_formulas=True)
+        df.dropna(how="all")
+        if len(df) > 0:
+
+            worksheet = gsheets["links"]
+            rows = worksheet.get_all_values()
+            lnk = {}
+            if len(rows) > 1:
+                data_rows = rows[1:]
+                lnk = {row[0]: row[1] for row in data_rows if len(row) >= 2}
+
+            worksheet = gsheets["meta"]
+            fn  = worksheet.acell("A1").value
+            fp  = worksheet.acell("A2").value
+            wb = download_excel_from_dropbox(fp)
+
+            initialisation_environnement_apres_chargement_fichier(df, wb, fn, lnk)
+
+# 📤 Sauvegarde le DataFrame dans la Google Sheet
+def save_df_to_gsheet(df: pd.DataFrame):
+    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
+        gsheets = st.session_state.gsheets
+        worksheet = gsheets["data"]
+        worksheet.clear()
+        set_with_dataframe(worksheet, df)
+
+# 📤 Sauvegarde les hyperliens dans la Google Sheet
+def save_lnk_to_gsheet(lnk):
+    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
+        gsheets = st.session_state.gsheets
+        worksheet = gsheets["links"]
+        worksheet.clear()
+        rows = [[k, v] for k, v in lnk.items()]
+        worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
+
+# 📤 Sauvegarde l'ensemble des infos persistées dans la Google Sheet
+def save_to_gsheet(df: pd.DataFrame, fichier_excel, lnk):
+    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
+        gsheets = st.session_state.gsheets
+
+        worksheet = gsheets["data"]
+        worksheet.clear()
+        set_with_dataframe(worksheet, df)
+
+        worksheet = gsheets["links"]
+        worksheet.clear()
+        rows = [[k, v] for k, v in lnk.items()]
+        worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
+
+        worksheet = gsheets["meta"]
+        worksheet.update_acell("A1", fichier_excel.name)
+        fp = upload_excel_to_dropbox(fichier_excel.getvalue(), fichier_excel.name)
+        worksheet.update_acell("A2", fp)
+        return fp
+    else:
+        return ""
+
+# Sauvegarde une ligne dans la Google Sheet
+def save_one_row_to_gsheet(df, index_df):
+    
+    def convert_cell_value(x):
+        if pd.isna(x):
+            return ""
+        elif isinstance(x, (pd.Timedelta, datetime.timedelta)):
+            # Convertir en durée lisible : "1:30:00" ou minutes
+            return str(x)
+        elif isinstance(x, (pd.Timestamp, datetime.datetime)):
+            return x.strftime("%Y-%m-%d %H:%M:%S")
+        elif hasattr(x, "item"):
+            return x.item()  # Pour np.int64, np.float64, etc.
+        else:
+            return x
+    
+    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
+        gsheets = st.session_state.gsheets
+        worksheet = gsheets["data"]
+        valeurs = df.loc[index_df].map(convert_cell_value).tolist()
+        ligne_sheet = index_df + 2  # +1 pour index, +1 pour en-tête
+        worksheet.update(range_name=f"A{ligne_sheet}", values=[valeurs])
+
+####################
+# API Google Drive #
+####################
+
+# Sauvegarde sur le google drive le fichier Excel de l'utilisateur (nécessite un drive partagé payant sur Google Space -> Non utilisé, remplacé par DropBox)
+# Cette sauvegarde permet de garder une trace de la mise en page du fichier utilisateur
+# from googleapiclient.http import MediaIoBaseUpload
+# from googleapiclient.discovery import build
 
 # Id du drive partagé utilisé pour enregistrer une copie du fichier Excel utilisateur (nécessite un drive partagé payant sur Google Space -> Non utilisé, remplacé par DropBox)
 # Cette sauvegarde permet de garder une trace de la mise en page du fichier utilisateur
-SHARED_DRIVE_ID = "xxxx" 
+# SHARED_DRIVE_ID = "xxxx" 
 
+# def upload_excel_to_drive(file_bytes, filename, mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"):
+#     try:
+#         creds = get_gcp_credentials()
+#         drive_service = build("drive", "v3", credentials=creds)
+
+#         file_metadata = {"name": filename, "parents": [SHARED_DRIVE_ID]}
+#         media = MediaIoBaseUpload(BytesIO(file_bytes), mimetype=mime_type, resumable=True)
+#         uploaded = drive_service.files().create(body=file_metadata, media_body=media, fields="id", supportsAllDrives=True).execute()
+#         return uploaded["id"]
+#     except Exception as e:
+#         return None
+
+# from googleapiclient.http import MediaIoBaseDownload
+
+# Renvoie le fichier Excel de l'utilisateur sauvegardé sur le google drive (nécessite un drive partagé payant sur Google Space -> Non utilisé, remplacé par DropBox)
+# Cette sauvegarde permet de garder une trace de la mise en page du fichier utilisateur
+# def download_excel_from_drive(file_id):
+#     try:
+#         creds = get_gcp_credentials()
+#         service = build('drive', 'v3', credentials=creds)
+#         request = service.files().get_media(fileId=file_id)
+#         fh = BytesIO()
+#         downloader = MediaIoBaseDownload(fh, request)
+#         done = False
+#         while not done:
+#             _, done = downloader.next_chunk()
+#         fh.seek(0)
+#         return load_workbook(BytesIO(fh.read()))
+#     except Exception as e:
+#         return Workbook()
 
 ###############
 # API DropBox #
@@ -91,154 +287,6 @@ def download_excel_from_dropbox(file_path):
     except Exception as e:
         # st.error(f"❌ Erreur lors du téléchargement depuis Dropbox : {e}")
         return Workbook()
-
-##############
-# API Google #
-##############
-
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
-from io import BytesIO
-
-# Retourne les credentials pour les API Google
-def get_gcp_credentials():
-    return Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"], scopes=SCOPES
-    )
-
-# Sauvegarde sur le google drive le fichier Excel de l'utilisateur (nécessite un drive partagé payant sur Google Space -> Non utilisé, remplacé par DropBox)
-# Cette sauvegarde permet de garder une trace de la mise en page du fichier utilisateur
-# def upload_excel_to_drive(file_bytes, filename, mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"):
-#     try:
-#         creds = get_gcp_credentials()
-#         drive_service = build("drive", "v3", credentials=creds)
-
-#         file_metadata = {"name": filename, "parents": [SHARED_DRIVE_ID]}
-#         media = MediaIoBaseUpload(BytesIO(file_bytes), mimetype=mime_type, resumable=True)
-#         uploaded = drive_service.files().create(body=file_metadata, media_body=media, fields="id", supportsAllDrives=True).execute()
-#         return uploaded["id"]
-#     except Exception as e:
-#         return None
-
-# from googleapiclient.http import MediaIoBaseDownload
-
-# Renvoie le fichier Excel de l'utilisateur sauvegardé sur le google drive (nécessite un drive partagé payant sur Google Space -> Non utilisé, remplacé par DropBox)
-# Cette sauvegarde permet de garder une trace de la mise en page du fichier utilisateur
-# def download_excel_from_drive(file_id):
-#     try:
-#         creds = get_gcp_credentials()
-#         service = build('drive', 'v3', credentials=creds)
-#         request = service.files().get_media(fileId=file_id)
-#         fh = BytesIO()
-#         downloader = MediaIoBaseDownload(fh, request)
-#         done = False
-#         while not done:
-#             _, done = downloader.next_chunk()
-#         fh.seek(0)
-#         return load_workbook(BytesIO(fh.read()))
-#     except Exception as e:
-#         return Workbook()
-
-# ⚙️ Connexion à la Google Sheet en charge de la persistence
-@st.cache_resource
-def connect_gsheet():
-    try:
-        creds = get_gcp_credentials()
-        client = gspread.authorize(creds)
-        return client
-    except Exception as e:
-        return None
-
-# 📥 Charge les infos persistées depuis la Google Sheet
-def load_from_gsheet():
-    if "df" not in st.session_state:
-        client = connect_gsheet()
-        if client:
-            sheet = client.open(GSHEET_NAME)
-            worksheet = sheet.get_worksheet(0)
-            df = get_as_dataframe(worksheet, evaluate_formulas=True)
-            df.dropna(how="all")
-            if len(df) > 0:
-
-                worksheet = sheet.get_worksheet(1)
-                rows = worksheet.get_all_values()
-                lnk = {}
-                if len(rows) > 1:
-                    data_rows = rows[1:]
-                    lnk = {row[0]: row[1] for row in data_rows if len(row) >= 2}
-
-                worksheet = sheet.get_worksheet(2)
-                fn  = worksheet.acell("A1").value
-                fp  = worksheet.acell("A2").value
-                wb = download_excel_from_dropbox(fp)
-
-                initialisation_environnement_apres_chargement_fichier(df, wb, fn, lnk)
-
-# 📤 Sauvegarde le DataFrame dans la Google Sheet
-def save_df_to_gsheet(df: pd.DataFrame):
-    client = connect_gsheet()
-    if client:
-        sheet = client.open(GSHEET_NAME)
-        worksheet = sheet.get_worksheet(0)
-        worksheet.clear()
-        set_with_dataframe(worksheet, df)
-
-# 📤 Sauvegarde les hyperliens dans la Google Sheet
-def save_lnk_to_gsheet(lnk):
-    client = connect_gsheet()
-    if client:
-        sheet = client.open(GSHEET_NAME)
-        worksheet = sheet.get_worksheet(1)
-        worksheet.clear()
-        rows = [[k, v] for k, v in lnk.items()]
-        worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
-
-# 📤 Sauvegarde l'ensemble des infos persistées dans la Google Sheet
-def save_to_gsheet(df: pd.DataFrame, fichier_excel, lnk):
-    client = connect_gsheet()
-    if client:
-        sheet = client.open(GSHEET_NAME)
-
-        worksheet = sheet.get_worksheet(0)
-        worksheet.clear()
-        set_with_dataframe(worksheet, df)
-
-        worksheet = sheet.get_worksheet(1)
-        worksheet.clear()
-        rows = [[k, v] for k, v in lnk.items()]
-        worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
-
-        worksheet = sheet.get_worksheet(2)
-        worksheet.update_acell("A1", fichier_excel.name)
-        fp = upload_excel_to_dropbox(fichier_excel.getvalue(), fichier_excel.name)
-        worksheet.update_acell("A2", fp)
-        return fp
-    else:
-        return ""
-
-# Sauvegarde une ligne dans la Google Sheet
-def save_one_row_to_gsheet(df, index_df):
-    
-    def convert_cell_value(x):
-        if pd.isna(x):
-            return ""
-        elif isinstance(x, (pd.Timedelta, datetime.timedelta)):
-            # Convertir en durée lisible : "1:30:00" ou minutes
-            return str(x)
-        elif isinstance(x, (pd.Timestamp, datetime.datetime)):
-            return x.strftime("%Y-%m-%d %H:%M:%S")
-        elif hasattr(x, "item"):
-            return x.item()  # Pour np.int64, np.float64, etc.
-        else:
-            return x
-    
-    client = connect_gsheet()
-    if client:
-        sheet = client.open(GSHEET_NAME)
-        worksheet = sheet.get_worksheet(0)
-        valeurs = df.loc[index_df].map(convert_cell_value).tolist()
-        ligne_sheet = index_df + 2  # +1 pour index, +1 pour en-tête
-        worksheet.update(range_name=f"A{ligne_sheet}", values=[valeurs])
 
 #######################
 # Gestion Undo / Redo #
@@ -453,7 +501,7 @@ def get_descripteur_activite(date, row):
     return titre
 
 # Affiche le titre de la page de l'application
-def afficher_titre():
+def afficher_titre(title):
     # Réduire l’espace en haut de la page
     st.markdown(
         """
@@ -466,7 +514,7 @@ def afficher_titre():
     )
 
     # Titre de la page
-    st.markdown("## Planificateur Avignon Off")
+    st.markdown(f"## {title}")
 
 # Affiche l'aide de l'application
 def afficher_aide():
@@ -2404,14 +2452,14 @@ def afficher_controles_principaux(df):
 
 
 def main():
+    # Initialisation du cache Google Sheet permettant de gérer la persistence du df et assurer une restitution automatique des datas en cas de rupture de connexion streamlit
+    load_from_gsheet()
+
     # Affichage du titre
-    afficher_titre()
+    afficher_titre("Planificateur Avignon Off")
 
     # Affiche de l'aide
     afficher_aide()
-
-    # Initialisation du cache Google Sheet permettant de gérer la persistence du df et assurer une restitution automatique des datas en cas de rupture de connexion streamlit
-    load_from_gsheet()
 
     # chargement du fichier Excel
     charger_fichier()
