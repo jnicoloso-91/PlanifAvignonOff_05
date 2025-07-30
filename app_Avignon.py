@@ -101,7 +101,8 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
             st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
             st.stop()    
 
-        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"]
+        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
+        # sheet_names = [f"data", f"links", f"meta"] # pour debugger en local 
         gsheets = {}
 
         for name in sheet_names:
@@ -141,7 +142,9 @@ def load_from_gsheet():
                 fp  = worksheet.acell("A2").value
                 wb = download_excel_from_dropbox(fp)
 
-                initialisation_environnement_apres_chargement_fichier(df, wb, fn, lnk)
+                df["Debut_dt"] = pd.to_datetime(df["Debut_dt"], errors="coerce")
+                df["Duree_dt"] = pd.to_timedelta(df["Duree_dt"], errors="coerce")
+                initialisation_environnement(df, wb, fn, lnk)
         except Exception as e:
             pass
 
@@ -2313,13 +2316,12 @@ def forcer_reaffichage_activites_non_planifiees():
         st.session_state.aggrid_activites_non_planifiees_forcer_reaffichage = True
 
 # Réinitialisation de l'environnement après chargement fichier
-def initialisation_environnement_apres_chargement_fichier(df, wb, fd, lnk):
+def initialisation_environnement(df, wb, fn, lnk):
     st.session_state.df = df
     st.session_state.wb = wb
-    st.session_state.fn = fd.name
+    st.session_state.fn = fn
     st.session_state.liens_activites = lnk
     st.session_state.nouveau_fichier = True
-    save_to_gsheet(df, fd, lnk)
     undo_redo_init(verify=False)
     forcer_reaffichage_activites_planifiees()
     forcer_reaffichage_activites_non_planifiees()
@@ -2337,7 +2339,8 @@ def charger_fichier():
                 lnk = get_liens_activites(wb)
                 df = nettoyer_donnees(df)
                 if "fichier_invalide" not in st.session_state:
-                    initialisation_environnement_apres_chargement_fichier(df, wb, fd, lnk)
+                    initialisation_environnement(df, wb, fd.name, lnk)
+                    save_to_gsheet(df, fd, lnk)
             except Exception as e:
                 st.error(f"Erreur lors du chargement du fichier : {e}")
                 st.session_state.fichier_invalide = True
