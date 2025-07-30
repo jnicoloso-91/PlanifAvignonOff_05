@@ -2191,10 +2191,10 @@ def ajouter_activite_planifiee(df, date_ref, proposables, choix_activite):
             df.at[index, "Duree"] = formatter_timedelta(DUREE_CAFE)
             df.at[index, "Activite"] = "Pause café"
 
-        st.session_state.activites_non_planifiees_selected_row = ligne_voisine_index(st.session_state.df_display_activites_non_planifiees, index)
         st.session_state.activites_planifiees_selected_row = index
         forcer_reaffichage_activites_planifiees()
-        forcer_reaffichage_activites_non_planifiees()
+        # st.session_state.activites_non_planifiees_selected_row = ligne_voisine_index(st.session_state.df_display_activites_non_planifiees, index)
+        # forcer_reaffichage_activites_non_planifiees()
 
         save_one_row_to_gsheet(df, index)
         st.rerun()
