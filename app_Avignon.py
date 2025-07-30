@@ -752,30 +752,18 @@ def nettoyer_donnees(df):
             return fin_actuelle if pd.notna(fin_actuelle) else ""
 
     try:
-        # Nettoyage noms de colonnes : suppression espaces et normalisation accents
+        # Nettoyage noms de colonnes : suppression espaces et accents
         df.columns = df.columns.str.strip().str.replace("\u202f", " ").str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8")
 
         colonnes_attendues = ["Date", "Debut", "Fin", "Duree", "Activite", "Lieu", "Relache", "Reserve", "Priorite", "Commentaire"]
         colonnes_attendues_avec_accents = ["Date", "Début", "Fin", "Durée", "Activité", "Lieu", "Relâche", "Réservé", "Priorité", "Commentaire"]
 
-        if not all(col in df.columns for col in colonnes_attendues) and ("Activite" in df.columns or "Spectacle" in df.columns):
+        if not all(col in df.columns for col in colonnes_attendues):
             st.error("Le fichier ne contient pas toutes les colonnes attendues: " + ", ".join(colonnes_attendues_avec_accents))
-            st.session_state["fichier_invalide"] = True
         elif (len(df) == 0):
             st.error("Le fichier est vide")
-            st.session_state["fichier_invalide"] = True       
         else:
 
-            # Types 
-
-            # Suppression du flag "fichier_invalide" s'il existe
-            if "fichier_invalide" in st.session_state:
-                del st.session_state["fichier_invalide"] 
-
-            # Changement de la colonne Spectacle en Activite
-            if "Spectacle" in df.columns:
-                df.rename(columns={"Spectacle": "Activite"}, inplace=True)
-            
             # Suppression des lignes presque vides i.e. ne contenant que des NaN ou des ""
             df = df[~df.apply(lambda row: all(pd.isna(x) or str(x).strip() == "" for x in row), axis=1)].reset_index(drop=True)
 
@@ -807,9 +795,10 @@ def nettoyer_donnees(df):
             # df["Priorite"] = df["Priorite"].astype("object").fillna("").astype(str)
             # pd.set_option('future.no_silent_downcasting', True)
             
+            st.session_state.fichier_invalide = False 
+
     except Exception as e:
         st.error(f"Erreur lors du décodage du fichier : {e}")
-        st.session_state["fichier_invalide"] = True
     
     return df
 
@@ -819,7 +808,7 @@ def get_liens_activites(wb):
     try:
         ws = wb.worksheets[0]
         for cell in ws[1]:
-            if cell.value and str(cell.value).strip().lower() in ["activité", "spectacle"]:
+            if cell.value and str(cell.value).strip().lower() in ["activité"]:
                 col_excel_index = cell.column
         for row in ws.iter_rows(min_row=2, min_col=col_excel_index, max_col=col_excel_index):
             cell = row[0]
@@ -2019,10 +2008,10 @@ def sauvegarder_fichier():
         # Réinjecter les données du df dans la feuille Excel
         from copy import copy
 
-        col_spectacle = None
+        col_activite = None
         for cell in ws[1]:
-            if cell.value and str(cell.value).strip().lower() in ["activité", "spectacle"]:
-                col_spectacle = cell.column
+            if cell.value and str(cell.value).strip().lower() in ["activité"]:
+                col_activite = cell.column
         source_font = ws.cell(row=1, column=1).font
 
         # Réindexer proprement pour éviter les trous
@@ -2050,9 +2039,9 @@ def sauvegarder_fichier():
                     except (ValueError, TypeError):
                         cell.value = value
 
-                    # Ajout d'hyperlien pour la colonne Spectacle
-                    if col_spectacle is not None:
-                        if col_idx == col_spectacle and liens_activites is not None:
+                    # Ajout d'hyperlien pour la colonne Activite
+                    if col_activite is not None:
+                        if col_idx == col_activite and liens_activites is not None:
                             lien = liens_activites.get(value)
                             if lien:
                                 cell.hyperlink = lien
@@ -2324,13 +2313,14 @@ def forcer_reaffichage_activites_non_planifiees():
         st.session_state.aggrid_activites_non_planifiees_forcer_reaffichage = True
 
 # Réinitialisation de l'environnement après chargement fichier
-def initialisation_environnement_apres_chargement_fichier(df, wb, fn, lnk):
+def initialisation_environnement_apres_chargement_fichier(df, wb, fd, lnk):
     st.session_state.df = df
     st.session_state.wb = wb
-    st.session_state.fn = fn
+    st.session_state.fn = fd.name
     st.session_state.liens_activites = lnk
-    st.session_state["erreur_chargement"] = False
+    st.session_state.erreur_chargement = False
     st.session_state.nouveau_fichier = True
+    save_to_gsheet(df, fd, lnk)
     undo_redo_init(verify=False)
     forcer_reaffichage_activites_planifiees()
     forcer_reaffichage_activites_non_planifiees()
@@ -2339,17 +2329,19 @@ def initialisation_environnement_apres_chargement_fichier(df, wb, fn, lnk):
 def charger_fichier():
     # Callback de st.file_uploader pour charger le fichier Excel
     def file_uploader_callback():
-        fichier_excel = st.session_state.get("file_uploader")
-        if fichier_excel is not None:
+        st.session_state.fichier_invalide = True
+        fd = st.session_state.get("file_uploader")
+        if fd is not None:
             try:
-                df = pd.read_excel(fichier_excel)
-                wb = load_workbook(fichier_excel)
+                df = pd.read_excel(fd)
+                wb = load_workbook(fd)
                 lnk = get_liens_activites(wb)
-                save_to_gsheet(df, fichier_excel, lnk)
-                initialisation_environnement_apres_chargement_fichier(df, wb, fichier_excel.name, lnk)
+                df = nettoyer_donnees(df)
+                if not st.session_state.fichier_invalide:
+                    initialisation_environnement_apres_chargement_fichier(df, wb, fd, lnk)
             except Exception as e:
                 st.error(f"Erreur lors du chargement du fichier : {e}")
-                st.session_state["erreur_chargement"] = True
+                st.session_state.erreur_chargement = True
         else:
             st.session_state.clear()
 
@@ -2483,19 +2475,13 @@ def main():
     # chargement du fichier Excel
     charger_fichier()
 
-    # Initialisation undo redo
-    undo_redo_init()
-
     # Si le fichier est chargé dans st.session_state.df et valide, on le traite
     if "df" in st.session_state:
-
-        # Nettoyage des données
-        st.session_state.df = nettoyer_donnees(st.session_state.df)
 
         # Accès au DataFrame après nettoyage
         df = st.session_state.df
 
-        if not "fichier_invalide" in st.session_state:
+        if not st.session_state.fichier_invalide:
 
             # Affichage des choix généraux
             afficher_infos_generales(df)
