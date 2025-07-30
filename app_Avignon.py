@@ -15,6 +15,7 @@ from google.oauth2.service_account import Credentials
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
 from io import BytesIO
 import uuid
+import math
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -383,6 +384,8 @@ def formatter_timedelta(d):
 # Formatte le contenu d'une cellule entiere
 def formatter_cellule_int(d):
     if isinstance(d, int) or isinstance(d, float):
+        if isinstance(d, float) and math.isnan(d):
+            return d
         return int(d)
     return d
     
