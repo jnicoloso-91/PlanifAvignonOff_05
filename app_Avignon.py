@@ -16,6 +16,8 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode, GridUpdateMode
 from io import BytesIO
 import uuid
 import math
+import hashlib
+import json
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -114,8 +116,8 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
             st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
             st.stop()    
 
-        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
-        # sheet_names = [f"data", f"links", f"meta"] # pour debugger en local 
+        # sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
+        sheet_names = [f"data", f"links", f"meta"] # pour debugger en local 
         gsheets = {}
 
         for name in sheet_names:
@@ -748,6 +750,17 @@ def aggrid_single_selection_list(label, choices, key="aggrid_select", hauteur=20
         return valeur
     else:
         return choices[0]
+
+# Crée un hash stable des colonnes significatives du df pour identifier les changements.
+def hash_df_colonnes(df: pd.DataFrame, colonnes: list, params):
+    # Attention : convertir les colonnes de type datetime en string pour JSON
+    df_subset = df[colonnes].astype(str)
+    data = {
+        "df": df_subset.to_dict("records"),
+        "params": params
+    }
+    json_data = json.dumps(data, sort_keys=True)
+    return hashlib.sha256(json_data.encode()).hexdigest()
 
 ##########################
 # Fonctions applicatives #
@@ -1888,33 +1901,41 @@ def get_creneaux(df, planifies, traiter_pauses):
             "__index": row.name
         }
     
-    creneaux = []
-    bornes = []
+    hash_val  = hash_df_colonnes(df, [col for col in df.columns if col not in ["debut_dt", "duree_dt"]], traiter_pauses)
+    hash_key = "creneaux__hash"
+    key = "creneaux"
+    
+    if st.session_state.get(hash_key) != hash_val:
+        
+        creneaux = []
+        bornes = []
 
-    for _, row in planifies.iterrows():
+        for _, row in planifies.iterrows():
 
-        # Heure de début d'activité
-        heure_debut = row["Debut_dt"]
-        # Heure de fin d'activité
-        heure_fin = heure_debut + row["Duree_dt"] if pd.notnull(heure_debut) and pd.notnull(row["Duree_dt"]) else None
+            # Heure de début d'activité
+            heure_debut = row["Debut_dt"]
+            # Heure de fin d'activité
+            heure_fin = heure_debut + row["Duree_dt"] if pd.notnull(heure_debut) and pd.notnull(row["Duree_dt"]) else None
 
-        # Ajout des creneaux avant l'activité considérée s'ils existent
-        if pd.notnull(heure_debut):
-            if get_activites_planifiables_avant(df, planifies, row, traiter_pauses):
-                borne_min, borne_max, pred = get_creneau_bounds_avant(planifies, row)
-                if (borne_min, borne_max) not in bornes:
-                    bornes.append((borne_min, borne_max))
-                    creneaux.append(description_creneau(row, borne_min, borne_max, pred["Activite"] if pred is not None else "", row["Activite"], "Avant"))
+            # Ajout des creneaux avant l'activité considérée s'ils existent
+            if pd.notnull(heure_debut):
+                if get_activites_planifiables_avant(df, planifies, row, traiter_pauses):
+                    borne_min, borne_max, pred = get_creneau_bounds_avant(planifies, row)
+                    if (borne_min, borne_max) not in bornes:
+                        bornes.append((borne_min, borne_max))
+                        creneaux.append(description_creneau(row, borne_min, borne_max, pred["Activite"] if pred is not None else "", row["Activite"], "Avant"))
 
-        # Ajout des creneaux après l'activité considérée s'ils existent
-        if pd.notnull(heure_fin):
-            if get_activites_planifiables_apres(df, planifies, row, traiter_pauses):
-                borne_min, borne_max, next = get_creneau_bounds_apres(planifies, row)
-                if (borne_min, borne_max) not in bornes:
-                    bornes.append((borne_min, borne_max))
-                    creneaux.append(description_creneau(row, borne_min, borne_max, row["Activite"], next["Activite"] if next is not None else "", "Après"))
+            # Ajout des creneaux après l'activité considérée s'ils existent
+            if pd.notnull(heure_fin):
+                if get_activites_planifiables_apres(df, planifies, row, traiter_pauses):
+                    borne_min, borne_max, next = get_creneau_bounds_apres(planifies, row)
+                    if (borne_min, borne_max) not in bornes:
+                        bornes.append((borne_min, borne_max))
+                        creneaux.append(description_creneau(row, borne_min, borne_max, row["Activite"], next["Activite"] if next is not None else "", "Après"))
 
-    return pd.DataFrame(creneaux).sort_values(by=["Date", "Debut"], ascending=[True, True]) if creneaux else pd.DataFrame(creneaux)
+        st.session_state[key] = pd.DataFrame(creneaux).sort_values(by=["Date", "Debut"], ascending=[True, True]) if creneaux else pd.DataFrame(creneaux)
+        st.session_state[hash_key] = hash_val
+    return st.session_state[key]
 
 # Renvoie les bornes du créneau existant avant une activité donnée par son descripteur ligne_ref
 def get_creneau_bounds_avant(planifies, ligne_ref):
@@ -2443,7 +2464,7 @@ def planifier_activite_par_choix_creneau(df):
         st.session_state.traiter_pauses = traiter_pauses
 
         # Création des créneaux avant/après pour chaque spectacle planifié
-        creneaux = get_creneaux(df, planifies, traiter_pauses)
+        creneaux = get_creneaux(df, planifies, traiter_pauses) 
 
         if not creneaux.empty:
             choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
