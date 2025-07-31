@@ -1914,7 +1914,7 @@ def get_creneaux(df, planifies, traiter_pauses):
                     bornes.append((borne_min, borne_max))
                     creneaux.append(description_creneau(row, borne_min, borne_max, row["Activite"], next["Activite"] if next is not None else "", "Après"))
 
-    return pd.DataFrame(creneaux).sort_values(by=["Date", "Debut"], ascending=[True, True])
+    return pd.DataFrame(creneaux).sort_values(by=["Date", "Debut"], ascending=[True, True]) if creneaux else pd.DataFrame(creneaux)
 
 # Renvoie les bornes du créneau existant avant une activité donnée par son descripteur ligne_ref
 def get_creneau_bounds_avant(planifies, ligne_ref):
@@ -2465,7 +2465,7 @@ def planifier_activite_par_choix_creneau(df):
                     proposables = get_activites_planifiables_apres(df, planifies, ligne_ref, traiter_pauses)
 
                 if proposables:
-                    proposables = pd.DataFrame(proposables).sort_values(by=["Debut"], ascending=[True])
+                    proposables = pd.DataFrame(proposables).sort_values(by=["Debut"], ascending=[True]) if proposables else pd.DataFrame(proposables)
                     label = f"Activités planifiables sur le créneau du {int(date_ref)} entre [{choix_creneau["Debut"]}-{choix_creneau["Fin"]}]"
                     choix_activite = afficher_df(label, proposables, hide=["__type_activite", "__index"], key="activites_planifiables_dans_creneau_selectionne")
                     if choix_activite is not None:
