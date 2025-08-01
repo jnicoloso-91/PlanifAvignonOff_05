@@ -809,14 +809,13 @@ def afficher_aide():
         <ul style="margin-top: 0em; margin-bottom: 2em">
         <li>Choix de la période à programmer</li>
         <li>Chargement des activités à programmer à partir d'un fichier Excel</li>
-        <li>Affichage des activités programmées (i.e. celles dont le champ Date est renseigné)</li>
-        <li>Affichage des activités non programmées (i.e. celles dont le champ Date n'est pas renseigné)</li>
-        <li>Gestion de la programmation des activités en respectant les règles décrites ci-dessous</li>
+        <li>Gestion de la programmation des activités en respectant les règles décrites dans le paragraphe ci-dessous</li>
         <li>Gestion des créneaux disponibles</li>
         <li>Prise en compte optionnelle des pauses (déjeuner, dîner, café)</li>
         <li>Gestion des liens de recherche sur le net</li>
         <li>Sauvegarde des données modifiées dans un fichier téléchargeable</li>
         <li>Fonction défaire / refaire</li>
+        <li>Vérification de cohérence des données d'entrée (chevauchements d'activités, marges trop courtes, formats de données)</li>
         </ul>
         
         <p style="margin-bottom: 0.2em">Règles adoptées pour la programmation des activités:</p>
@@ -824,7 +823,7 @@ def afficher_aide():
         <li>30 minutes de marge entre activités</li>
         <li>1 heure par pause repas</li>
         <li>1/2 heure par pause café sans marge avec l'activité précédente ou suivante</li>
-        <li>Respect des relâches pour les spectacles</li>
+        <li>Respect des jours de relâches</li>
         </ul>
       
         <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir les colonnes suivantes:</p>
