@@ -388,13 +388,29 @@ def undo_redo_redo():
 
 # Evite la surbrillance rose pâle des lignes qui ont le focus sans être sélectionnées dans les AgGrid
 def patch_aggrid_css():
+    # st.markdown("""
+    #     <style>
+    #     .ag-row.ag-row-focus {
+    #         background-color: transparent !important;
+    #     }
+    #     </style>
+    # """, unsafe_allow_html=True)
     st.markdown("""
         <style>
-        .ag-row.ag-row-focus {
+        /* Supprime l'effet de hover pâle sur mobile */
+        .ag-row:hover:not(.ag-row-selected) {
             background-color: transparent !important;
         }
+
+        /* Supprime l'effet de "focus ligne" qui donne le rose pâle */
+        .ag-row.ag-row-focus:not(.ag-row-selected) {
+            background-color: transparent !important;
+        }
+
+        /* Ne touche pas aux lignes sélectionnées (rose plus foncé) */
         </style>
     """, unsafe_allow_html=True)
+
 
 # Renvoie True si l'appli tourne sur mobile  
 def mode_mobile():    
