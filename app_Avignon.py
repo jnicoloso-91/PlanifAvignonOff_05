@@ -1166,7 +1166,7 @@ def verifier_coherence(df):
             contenu += f"<p>{bloc}</p>"
     contenu += "</div>"
 
-    with st.expander("🔍 Vérification du fichier"):
+    with st.expander("🔍 Cohérence des données"):
         st.markdown(contenu, unsafe_allow_html=True)
 
 # Indique si une row est une activité programmée
