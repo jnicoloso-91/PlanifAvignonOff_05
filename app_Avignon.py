@@ -386,6 +386,28 @@ def undo_redo_redo():
 # Fonctions utilitaires #
 #########################
 
+# Evite la surbrillance rose pâle des lignes qui ont le focus sans être sélectionnées dans les AgGrid
+def patch_aggrid_css():
+    st.markdown("""
+        <style>
+        .ag-row.ag-row-focus {
+            background-color: transparent !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+# Renvoie True si l'appli tourne sur mobile  
+def mode_mobile():    
+    from streamlit_js_eval import streamlit_js_eval, get_geolocation
+    if "mode_mobile" not in st.session_state:
+        _mode_mobile = False
+        user_agent = streamlit_js_eval(js_expressions="navigator.userAgent", key="ua")
+        if user_agent: # Renvoie toujours None...
+            if "Mobile" in user_agent or "Android" in user_agent or "iPhone" in user_agent:
+                _mode_mobile = True
+        st.session_state.mode_mobile = _mode_mobile
+    return True # st.session_state.mode_mobile
+
 # Renvoie val sous la forme "10h00" si datetime ou time, "" si None, str(val).strip() sinon
 def heure_str(val):
     from datetime import datetime, time
@@ -2648,18 +2670,6 @@ def ajouter_activite(df):
         save_one_row_to_gsheet(df, new_idx)
         st.rerun()
 
-# Renvoie True si l'appli tourne sur mobile  
-def mode_mobile():    
-    from streamlit_js_eval import streamlit_js_eval, get_geolocation
-    if "mode_mobile" not in st.session_state:
-        _mode_mobile = False
-        user_agent = streamlit_js_eval(js_expressions="navigator.userAgent", key="ua")
-        if user_agent: # Renvoie toujours None...
-            if "Mobile" in user_agent or "Android" in user_agent or "iPhone" in user_agent:
-                _mode_mobile = True
-        st.session_state.mode_mobile = _mode_mobile
-    return True # st.session_state.mode_mobile
-
 # Affichage des choix généraux
 def afficher_infos_generales(df):
     with st.expander("Informations générales"):
@@ -2686,10 +2696,17 @@ def afficher_controles_generaux(df):
         with col3:
             sauvegarder_fichier()
 
+# Configuration de la page
+# Mettre ici les CSS de configuration générale de la page
+def configurer_page():
+    patch_aggrid_css()
 
 def main():
     # Initialisation du cache Google Sheet permettant de gérer la persistence du df et assurer une restitution automatique des datas en cas de rupture de connexion streamlit
     load_from_gsheet()
+
+    # Configuration de la page
+    configurer_page()
 
     # Affichage du titre
     afficher_titre("Planificateur Avignon Off")
