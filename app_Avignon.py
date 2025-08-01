@@ -116,8 +116,8 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
             st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
             st.stop()    
 
-        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
-        # sheet_names = [f"data", f"links", f"meta"] # pour debugger en local 
+        # sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
+        sheet_names = [f"data", f"links", f"meta"] # pour debugger en local 
         gsheets = {}
 
         for name in sheet_names:
@@ -752,7 +752,7 @@ def aggrid_single_selection_list(label, choices, key="aggrid_select", hauteur=20
         return choices[0]
 
 # Crée un hash stable des colonnes significatives du df pour identifier les changements.
-def hash_df_colonnes(df: pd.DataFrame, colonnes: list, params):
+def hash_df_colonnes(df: pd.DataFrame, colonnes: list, params=None):
     # Attention : convertir les colonnes de type datetime en string pour JSON
     df_subset = df[colonnes].astype(str)
     data = {
@@ -1191,11 +1191,11 @@ def est_reserve(ligne_df):
     return str(ligne_df["Reserve"]).strip().lower() == "oui"
 
 # Renvoie les lignes modifées entre df1 et df2, l'index de df2 est supposé se trouver dans la colonne __index de df1
-def get_lignes_modifiees(df1, df2):
+def get_lignes_modifiees(df1, df2, columns_to_drop=[]):
     lignes_modifiees = set()
     for i, row in df1.iterrows():
         idx = row["__index"]
-        for col in df1.drop(columns=["__index"]).columns:
+        for col in df1.drop(columns=columns_to_drop).columns:
             if idx in df2.index:
                 val_avant = df2.at[idx, col]
                 val_apres = row[col]
@@ -1213,6 +1213,13 @@ def get_lignes_modifiees(df1, df2):
                     lignes_modifiees.add((i, idx))
     return lignes_modifiees
 
+@st.dialog("Replanification activité")
+def show_replanification_modal():
+    choix = st.selectbox("Choisis une nouvelle activité :", ["Danse", "Théâtre", "Musique"])
+    if st.button("Valider"):
+        st.session_state.choix = choix
+        st.rerun()
+
 # Affiche les activités planifiées dans un tableau
 def afficher_activites_planifiees(df):
     st.markdown("##### Activités planifiées")
@@ -1222,6 +1229,9 @@ def afficher_activites_planifiees(df):
     df_display = planifies.rename(columns=RENOMMAGE_COLONNES)
     df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
     df_display["__index"] = df_display.index
+    st.session_state.planifies = get_activites_planifiees(df)
+    df_display["__options_date"] = calculer_options_date_activites_planifiees(df_display) 
+    df_display["Date"] = df_display["Date"].astype(int).astype(str)
     df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
 
 
@@ -1255,18 +1265,33 @@ def afficher_activites_planifiees(df):
     # Configuration
     gb = GridOptionsBuilder.from_dataframe(df_display)
 
-    # squage des colonnes de travail
+    # Masquage des colonnes de travail
     gb.configure_column("__index", hide=True)
     gb.configure_column("__jour", hide=True)
+    gb.configure_column("__options_date", hide=True)
 
     # Colonnes editables
-    editable_cols = {col: True for col in df_display.columns if col != "__index" and col != "__jour"}
+    editable_cols = {col: True for col in df_display.columns if col != "__index" and col != "__jour" and col != "__options_date"}
     editable_cols["Date"] = False  
     editable_cols["Début"] = False  
     editable_cols["Fin"] = False  
     editable_cols["Durée"] = False  
     for col, editable in editable_cols.items():
         gb.configure_column(col, editable=editable)
+
+    # Configuration des menus de la colonne Date
+    gb.configure_column(
+        "Date",
+        editable=True,
+        cellEditor="agSelectCellEditor",
+        cellEditorParams=JsCode("""
+            function(params) {
+                return {
+                    values: params.data.__options_date || []
+                }
+            }
+        """),
+    )
 
     # Colorisation
     gb.configure_grid_options(getRowStyle=JsCode(f"""
@@ -1343,16 +1368,25 @@ def afficher_activites_planifiees(df):
     # Gestion des modifications de cellules
     if st.session_state.aggrid_activites_planifiees_gerer_modification_cellule == True:
         df_modifie = pd.DataFrame(response["data"])
-        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_planifiees)
+        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_planifiees, columns_to_drop=["__index", "__jour", "__options_date"])
         if lignes_modifiees:
             undo_redo_save()
             for i, idx in lignes_modifiees:
-                for col in df_modifie.drop(columns=["__index", "__jour"]).columns:
+                for col in df_modifie.drop(columns=["__index", "__jour", "__options_date"]).columns:
                     if col not in ["Date", "Début", "Fin", "Durée"]:
                         col_df = RENOMMAGE_COLONNES_INVERSE[col] if col in RENOMMAGE_COLONNES_INVERSE else col
                         if df.at[idx, col_df] != df_modifie.at[i, col]:
                             # st.session_state.editeur_activites_planifiees_utiliser_index_colonne_courante = True
                             affecter_valeur(df,idx, col_df, df_modifie.at[i, col], forcer_reaffichage=["Debut"])
+                    elif col == "Date":
+                        if df_modifie.at[i, col] != "":
+                            jour_choisi = int(df_modifie.at[i, col])
+                            undo_redo_save()
+                            df.at[idx, "Date"] = jour_choisi
+                            forcer_reaffichage_activites_non_planifiees()
+                            forcer_reaffichage_activites_planifiees()
+                            save_one_row_to_gsheet(df, idx)
+                            st.rerun()
     st.session_state.aggrid_activites_planifiees_gerer_modification_cellule = True
 
     # 🟡 Traitement du clic
@@ -1420,23 +1454,27 @@ def afficher_activites_planifiees(df):
                         if not est_reserve(st.session_state.df.loc[index_df]):
                             if jours_possibles:
                                 if st.button("🗓️", key="ReplanifierActivitéPlanifiee"):
-                                    if jour_selection == jour_escape:
-                                        undo_redo_save()
-                                        st.session_state.activites_planifiees_selected_row = ligne_voisine_index(df_display, index_df)
-                                        st.session_state.activites_non_planifiees_selected_row = index_df
-                                        supprimer_activite_planifiee(df, index_df)
-                                        forcer_reaffichage_activites_planifiees()
-                                        forcer_reaffichage_activites_non_planifiees()
-                                        forcer_reaffichage_df("creneaux_disponibles")
-                                        save_one_row_to_gsheet(df, index_df)
-                                        st.rerun()
-                                    else:
-                                        jour_choisi = int(jour_selection.split()[-1])
-                                        undo_redo_save()
-                                        df.at[index_df, "Date"] = jour_choisi
-                                        forcer_reaffichage_activites_planifiees()
-                                        save_one_row_to_gsheet(df, index_df)
-                                        st.rerun()
+                                    show_replanification_modal()
+                                    # with st.experimental_dialog("Replanification activité"):
+                                    #     jour_selection = st.selectbox("Choix jour", jours_label, label_visibility = "collapsed", key = "ChoixJourReplanifActivitePlanifiee")
+                                    #     if st.button("Valider"):
+                                    #         if jour_selection == jour_escape:
+                                    #             undo_redo_save()
+                                    #             st.session_state.activites_planifiees_selected_row = ligne_voisine_index(df_display, index_df)
+                                    #             st.session_state.activites_non_planifiees_selected_row = index_df
+                                    #             supprimer_activite_planifiee(df, index_df)
+                                    #             forcer_reaffichage_activites_planifiees()
+                                    #             forcer_reaffichage_activites_non_planifiees()
+                                    #             forcer_reaffichage_df("creneaux_disponibles")
+                                    #             save_one_row_to_gsheet(df, index_df)
+                                    #             st.rerun()
+                                    #         else:
+                                    #             jour_choisi = int(jour_selection.split()[-1])
+                                    #             undo_redo_save()
+                                    #             df.at[index_df, "Date"] = jour_choisi
+                                    #             forcer_reaffichage_activites_planifiees()
+                                    #             save_one_row_to_gsheet(df, index_df)
+                                    #             st.rerun()
 
             # Formulaire d'édition de la ligne sélectionnée
             # with st.expander("Edition de la ligne sélectionnée"):
@@ -1479,10 +1517,12 @@ def afficher_activites_non_planifiees(df):
     st.markdown("##### Activités non planifiées")
 
     # Constitution du df à afficher
-    non_planifies = get_activites_non_planifiees(df).sort_values(by=["Debut_dt"], ascending=[True])
+    non_planifies = get_activites_non_planifiees(df).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
     df_display = non_planifies.rename(columns=RENOMMAGE_COLONNES)
     df_display["__index"] = df_display.index
-    df_display.drop(columns=["Date", "Debut_dt", "Duree_dt"], inplace=True)
+    st.session_state.planifies = get_activites_planifiees(df)
+    df_display["__options_date"] = calculer_options_date_activites_non_planifiees(df_display) 
+    df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
 
     # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
     if "aggrid_activites_non_planifiees_reset_counter" not in st.session_state:
@@ -1516,13 +1556,27 @@ def afficher_activites_non_planifiees(df):
 
     # Masquage des colonnes de travail
     gb.configure_column("__index", hide=True)
+    gb.configure_column("__options_date", hide=True)
 
     # Colonnes editables
-    editable_cols = {col: True for col in df_display.columns if col != "__index"}
-    # editable_cols["Date"] = False  
+    editable_cols = {col: True for col in df_display.columns if col != "__index" and col != "__options_date"}
     editable_cols["Fin"] = False  
     for col, editable in editable_cols.items():
         gb.configure_column(col, editable=editable)
+
+    # Configuration des menus de la colonne Date
+    gb.configure_column(
+        "Date",
+        editable=True,
+        cellEditor="agSelectCellEditor",
+        cellEditorParams=JsCode("""
+            function(params) {
+                return {
+                    values: params.data.__options_date || []
+                }
+            }
+        """),
+    )
 
     # Retaillage largeur colonnes
     gb.configure_default_column(resizable=True)
@@ -1587,16 +1641,26 @@ def afficher_activites_non_planifiees(df):
     # Gestion des modifications de cellules
     if st.session_state.aggrid_activites_non_planifiees_gerer_modification_cellule == True:
         df_modifie = pd.DataFrame(response["data"])
-        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_non_planifiees)
+        lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_non_planifiees, columns_to_drop=["__index", "__options_date"])
         if lignes_modifiees:
             undo_redo_save()
             for i, idx in lignes_modifiees:
-                for col in df_modifie.drop(columns=["__index"]).columns:
+                for col in df_modifie.drop(columns=["__index", "__options_date"]).columns:
                     if col not in ["Date", "Fin"]:
                         col_df = RENOMMAGE_COLONNES_INVERSE[col] if col in RENOMMAGE_COLONNES_INVERSE else col
                         if df.at[idx, col_df] != df_modifie.at[i, col]:
                             # st.session_state.editeur_activites_non_planifiees_utiliser_index_colonne_courante = True
                             affecter_valeur(df,idx, col_df, df_modifie.at[i, col], forcer_reaffichage=["Debut", "Duree"])
+                    elif col == "Date":
+                        if df_modifie.at[i, col] != "":
+                            jour_choisi = int(df_modifie.at[i, col])
+                            undo_redo_save()
+                            df.at[idx, "Date"] = jour_choisi
+                            forcer_reaffichage_activites_non_planifiees()
+                            forcer_reaffichage_activites_planifiees()
+                            save_one_row_to_gsheet(df, idx)
+                            st.rerun()
+                           
     st.session_state.aggrid_activites_non_planifiees_gerer_modification_cellule = True
 
     # 🟡 Traitement du clic
@@ -1901,7 +1965,7 @@ def get_creneaux(df, planifies, traiter_pauses):
             "__index": row.name
         }
     
-    hash_val  = hash_df_colonnes(df, [col for col in df.columns if col not in ["debut_dt", "duree_dt"]], traiter_pauses)
+    hash_val  = hash_df_colonnes(df, [col for col in df.columns if col not in ["Debut_dt", "Duree_dt"]], traiter_pauses)
     hash_key = "creneaux__hash"
     key = "creneaux"
     
@@ -2415,6 +2479,40 @@ def get_jours_possibles(df, planifies, idx_activite):
                 jours_possibles.append(jour)
 
     return jours_possibles
+
+# idem get_jours_possibles avec en paramètre une row d'activité planifiée contenant en colonne __index l'index du df de base
+# les paramètres df et planifies de get_jours_possibles sont supposés etre stockés dans st.session_state
+def get_jours_possibles_from_activite_planifiee(row: pd.Series):
+    jours = get_jours_possibles(st.session_state.df, st.session_state.planifies, row["__index"])
+    jours = [""] + jours if not est_reserve(st.session_state.df.loc[row["__index"]]) else jours
+    return [str(j) for j in jours] if isinstance(jours, list) else []
+
+# idem get_jours_possibles avec en paramètre une row d'activité non planifiée contenant en colonne __index l'index du df de base
+# les paramètres df et planifies de get_jours_possibles sont supposés etre stockés dans st.session_state
+def get_jours_possibles_from_activite_non_planifiee(row: pd.Series):
+    jours = get_jours_possibles(st.session_state.df, st.session_state.planifies, row["__index"])
+    jours = [None] + jours if jours != [] else jours
+    return [str(j) for j in jours] if isinstance(jours, list) else []
+
+# Calcule les options des dates pour les activiés planifiées
+def calculer_options_date_activites_planifiees(df_display):
+    hash_val  = hash_df_colonnes(df_display, ["Date", "Début", "Durée"])
+    hash_key = "options_date_activites_planifiees__hash"
+    key = "options_date_activites_planifiees"
+    if st.session_state.get(hash_key) != hash_val:
+        st.session_state[key] = df_display.apply(lambda row: get_jours_possibles_from_activite_planifiee(row), axis=1)
+        st.session_state[hash_key] = hash_val
+    return st.session_state[key]
+
+# Calcule les options des dates pour les activiés non planifiées
+def calculer_options_date_activites_non_planifiees(df_display):
+    hash_val  = hash_df_colonnes(df_display, ["Date", "Début", "Durée"])
+    hash_key = "options_date_activites_non_planifiees__hash"
+    key = "options_date_activites_non_planifiees"
+    if st.session_state.get(hash_key) != hash_val:
+        st.session_state[key] = df_display.apply(lambda row: get_jours_possibles_from_activite_non_planifiee(row), axis=1)
+        st.session_state[hash_key] = hash_val
+    return st.session_state[key]
 
 # Planifie une activité choisie en fonction des jours possibles
 def planifier_activite_par_choix_activite(df):
