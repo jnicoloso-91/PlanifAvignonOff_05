@@ -1626,16 +1626,15 @@ def afficher_activites_programmees(df):
 
             nom_activite = str(row["Activité"]).strip() if pd.notna(row["Activité"]) else ""
 
-            label = f"🎯 Activité sélectionnée : **{nom_activite}**" if nom_activite != "" else "🎯 Activité sélectionnée : "
-            label = label + " <span style='color:red'>(Réservé)</span>" if len(df) > 0 and est_reserve(df.loc[index_df]) else label
-
-            st.markdown(label, unsafe_allow_html=True)
-
             if nom_activite != "":
                 jours_possibles = get_jours_possibles(df, get_activites_programmees(df), index_df)
    
                 # Boutons Chercher, Supprimer, Programmer 
                 if len(df) > 0:
+                    label = f"🎯 Activité sélectionnée : **{nom_activite}**" if nom_activite != "" else "🎯 Activité sélectionnée : "
+                    label = label + " <span style='color:red'>(Réservé)</span>" if len(df) > 0 and est_reserve(df.loc[index_df]) else label
+                    st.markdown(label, unsafe_allow_html=True)
+
                     if est_reserve(df.loc[index_df]):
                         if not est_pause_str(nom_activite):
                             afficher_bouton_recherche_net(nom_activite)
@@ -1866,7 +1865,8 @@ def afficher_activites_non_programmees(df):
 
             nom_activite = str(row["Activité"]).strip() if pd.notna(row["Activité"]) else ""
 
-            st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**" if nom_activite != "" else "🎯 Activité sélectionnée : ")
+            if nom_activite != "":
+                st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**" if nom_activite != "" else "🎯 Activité sélectionnée : ")
 
             # Boutons Ajouter, Chercher, Supprimer, Programmer 
             col1, col2, col3, col4 = st.columns([0.5,0.5,0.5,4])
