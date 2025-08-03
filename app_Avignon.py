@@ -120,8 +120,8 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
             st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
             st.stop()    
 
-        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
-        # sheet_names = [f"data", f"links", f"meta"] # pour debugger en local 
+        # sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
+        sheet_names = [f"data", f"links", f"meta"] # pour debugger en local 
         gsheets = {}
 
         for name in sheet_names:
@@ -1279,9 +1279,9 @@ def verifier_coherence(df):
 # Indique si une row est une activité programmée
 def est_activite_programmee(row):
     return (est_float_valide(row["Date"]) and 
-            est_heure_valide(row["Debut"]) and 
-            est_duree_valide(row["Duree"]) and 
-            row["Activite"].notna())
+             pd.notna(row["Debut"]) and 
+             pd.notna(row["Duree"]) and 
+             pd.notna(row["Activite"]))
 
 
 # Renvoie le dataframe des activités programmées
@@ -1295,12 +1295,17 @@ def get_activites_programmees(df):
 
 # Renvoie le dataframe des activités non programmées
 def get_activites_non_programmees(df):
-    return df[~(
-        df["Date"].apply(est_float_valide) & 
-        df["Debut"].notna() & 
-        df["Duree"].notna() &
-        df["Activite"].notna()
-    )].sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
+    return df[df["Date"].isna() & 
+              df["Activite"].notna() & 
+              df["Debut"].notna() & 
+              df["Fin"].notna()
+    ].sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
+    # return df[~(
+    #     df["Date"].apply(est_float_valide) & 
+    #     df["Debut"].notna() & 
+    #     df["Duree"].notna() &
+    #     df["Activite"].notna()
+    # )].sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
 
 # Affiche le bouton de recharche sur le net
 def afficher_bouton_recherche_net(nom_activite):    
@@ -1646,8 +1651,9 @@ def afficher_activites_programmees(df):
                     st.markdown(label, unsafe_allow_html=True)
 
                     if est_reserve(df.loc[index_df]):
-                        if not est_pause_str(nom_activite):
-                            afficher_bouton_recherche_net(nom_activite)
+                        with st.expander("Contrôles généraux"):
+                            if not est_pause_str(nom_activite):
+                                afficher_bouton_recherche_net(nom_activite)
                     else:
                         with st.expander("Contrôles généraux"):
                             col1, col2, col3 = st.columns([0.5,0.5,4.2])
@@ -1667,7 +1673,13 @@ def afficher_activites_programmees(df):
                                     afficher_bouton_recherche_net(nom_activite)
                             with col3:
                                 if st.button("🗑️", key="SupprimerActiviteProgrammee"):
-                                    show_dialog_supprimer_activite(df, index_df, df_display)
+                                    # show_dialog_supprimer_activite(df, index_df, df_display)
+                                    undo_redo_save()
+                                    st.session_state.activites_programmees_selected_row = ligne_voisine_index(df_display, index_df)
+                                    supprimer_activite(df, index_df)
+                                    forcer_reaffichage_activites_programmees()
+                                    sauvegarder_row_ds_gsheet(df, index_df)
+                                    st.rerun()
 
                         # Affichage de la selectbox de sélection du jour de programmation
                         jours_possibles = get_jours_possibles(df, get_activites_programmees(df), index_df)
@@ -1883,13 +1895,19 @@ def afficher_activites_non_programmees(df):
                 with col1:
                     ajouter_activite(df)
 
-                if nom_activite != "":
-                    with col2:
-                        if not est_pause_str(nom_activite):
-                            afficher_bouton_recherche_net(nom_activite)
-                    with col3:
-                        if st.button("🗑️", key="SupprimerActiviteNonProgrammee"):
-                            show_dialog_supprimer_activite(df, index_df, df_display)
+                with col2:
+                    if not est_pause_str(nom_activite):
+                        afficher_bouton_recherche_net(nom_activite)
+                with col3:
+                    if st.button("🗑️", key="SupprimerActiviteNonProgrammee"):
+                        # show_dialog_supprimer_activite(df, index_df, df_display)
+                        undo_redo_save()
+                        st.session_state.activites_programmees_selected_row = ligne_voisine_index(df_display, index_df)
+                        supprimer_activite(df, index_df)
+                        forcer_reaffichage_activites_non_programmees()
+                        forcer_reaffichage_df("activites_programmable_dans_creneau_selectionne")
+                        sauvegarder_row_ds_gsheet(df, index_df)
+                        st.rerun()
 
 
             jours_possibles = get_jours_possibles(df, get_activites_programmees(df), index_df)
@@ -1904,7 +1922,7 @@ def afficher_activites_non_programmees(df):
                     col1, col2 = st.columns([0.25,1])
                     with col1:
                         jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
-                        jour_choisi = st.selectbox("Jours de programmation possibles", jours_label, label_visibility="collapsed", key = "ChoixJourPlanifActiviteNonProgrammee")
+                        jour_choisi = st.selectbox("Jours de programmation possibles", jours_label, label_visibility="collapsed", key = "ChoixJourProgrammationActiviteNonProgrammee")
                     with col2:
                         if st.button("🗓️", key="AjouterAuxActivitésProgrammees"):
                             undo_redo_save()
@@ -1953,7 +1971,10 @@ def afficher_editeur_activite(df):
         row = df.loc[index_selectionne]
         index_df = row.name  # index réel de la ligne dans df
 
-        colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt"]]
+        if est_reserve(row):
+            colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt", "Debut", "Duree"]]
+        else:
+            colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt"]]
 
         # Ajout de l'hyperlien aux infos éditables
         colonnes_editables.append("Lien de recherche")
@@ -2851,7 +2872,8 @@ def initialiser_etat_contexte(df, wb, fn, lnk):
     st.session_state.fn = fn
     st.session_state.liens_activites = lnk
     st.session_state.nouveau_fichier = True
-    
+    st.session_state.compteur_activite = 0
+
     forcer_reaffichage_activites_programmees()
     forcer_reaffichage_activites_non_programmees()
     forcer_reaffichage_df("creneaux_disponibles")
@@ -2860,13 +2882,20 @@ def ajouter_activite(df):
     import numpy as np
 
     def get_nom_nouvelle_activite(df):
-        st.session_state.compteur_activite += 1
         noms_existants = df["Activite"].dropna().astype(str).str.strip().tolist()
         while True:
+            st.session_state.compteur_activite += 1
             nom_candidat = f"Activité {st.session_state.compteur_activite}"
             if nom_candidat not in noms_existants:
                 return nom_candidat
             
+    def get_next_free_index(df):
+        existing = set(df.index)
+        i = 0
+        while i in existing:
+            i += 1
+        return i
+    
     # Initialiser le DataFrame dans session_state si absent
     if "compteur_activite" not in st.session_state:
         st.session_state.compteur_activite = 0
@@ -2875,7 +2904,13 @@ def ajouter_activite(df):
     if st.button("➕"):
 
         undo_redo_save()
-        new_idx = len(df)
+        # nouvelle_ligne = {col: pd.NA for col in df.columns}
+        # nouvelle_ligne["Debut"] = "09h00"
+        # nouvelle_ligne["Duree"] = "1h00"
+        # nouvelle_ligne["Activite"] = get_nom_nouvelle_activite(df)
+        # df = pd.concat([df, pd.DataFrame([nouvelle_ligne])], ignore_index=True)
+        # new_idx = df.index[-1]
+        new_idx = get_next_free_index(df)
         df.at[new_idx, "Debut"] = "09h00"
         df.at[new_idx, "Duree"] = "1h00"
         df.at[new_idx, "Activite"] = get_nom_nouvelle_activite(df)
