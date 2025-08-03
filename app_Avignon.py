@@ -1651,11 +1651,11 @@ def afficher_activites_programmees(df):
                     st.markdown(label, unsafe_allow_html=True)
 
                     if est_reserve(df.loc[index_df]):
-                        with st.expander("Contrôles généraux"):
+                        with st.expander("Edition"):
                             if not est_pause_str(nom_activite):
                                 afficher_bouton_recherche_net(nom_activite)
                     else:
-                        with st.expander("Contrôles généraux"):
+                        with st.expander("Edition"):
                             col1, col2, col3 = st.columns([0.5,0.5,4.2])
                             with col1:
                                 if st.button("❌", key="DéprogrammerActivitéProgrammee"):
@@ -1691,7 +1691,7 @@ def afficher_activites_programmees(df):
                                 #     show_dialog_reprogrammer_activite_programmee(df, index_df, df_display, jours_possibles)
                                 col1, col2 = st.columns([0.25,1])
                                 with col1:
-                                    jours_label = [f"{int(jour):02d}" for jour in jours_possibles[:-1]] + [jours_possibles[-1]]
+                                    jours_label = [f"{int(jour):02d}" for jour in jours_possibles] + [jours_possibles]
                                     jour_choisi = st.selectbox("Jours de programmation possibles", jours_label, label_visibility="collapsed", key = "ChoixJourReprogrammationActiviteProgrammee")
                                 with col2:
                                     if st.button("🗓️", key="ReprogrammerActivitéProgrammee"):
@@ -1889,7 +1889,7 @@ def afficher_activites_non_programmees(df):
             if nom_activite != "":
                 st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**" if nom_activite != "" else "🎯 Activité sélectionnée : ")
 
-            with st.expander("Contrôles généraux"):
+            with st.expander("Edition"):
                 # Boutons Ajouter, Chercher, Supprimer, Programmer 
                 col1, col2, col3 = st.columns([0.5,0.5,4.2])
                 with col1:
@@ -2974,7 +2974,7 @@ def est_contexte_valide():
 
 # Affichage des contrôles fichier
 def afficher_controles_fichier():
-    with st.expander("Contrôles Fichier"):
+    with st.expander("Fichier"):
         col1, col2, col3 = st.columns([0.5, 0.5, 4])
         with col1:
             creer_nouveau_contexte()
@@ -2985,7 +2985,7 @@ def afficher_controles_fichier():
 
 # Affichage des contrôles d'édition
 def afficher_controles_edition():
-    with st.expander("Contrôles Edition"):
+    with st.expander("Défaire / Refaire"):
         col1, col2, col3 = st.columns([0.5, 0.5, 4])
         with col1:
             if st.button("↩️", 
@@ -3002,7 +3002,7 @@ def afficher_controles_edition():
 
 # Affichage des choix généraux
 def afficher_infos_generales(df):
-    with st.expander("Informations générales"):
+    with st.expander("Infos"):
         # Vérification de cohérence des informations du df
         verifier_coherence(df) 
 
@@ -3041,13 +3041,13 @@ def main():
         # Met à jour les données calculées
         maj_donnees_calculees(df)
 
-        # Affichage des choix généraux
+        # Affichage des infos générales
         afficher_infos_generales(df)
 
-        # Affichage des contrôles généraux
+        # Affichage des contrôles fichiers
         afficher_controles_fichier()
 
-        # Affichage des contrôles généraux
+        # Affichage des contrôles undo/redo
         afficher_controles_edition()
 
         # Affichage des activités programmées
