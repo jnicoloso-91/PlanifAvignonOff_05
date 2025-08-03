@@ -1508,7 +1508,7 @@ def afficher_activites_programmees(df):
 
     # Colonnes editables
     non_editable_cols = ["Fin"] + work_cols
-    for col in df.columns:
+    for col in df_display.columns:
         gb.configure_column(col, editable=(col not in non_editable_cols))
 
     gb.configure_column(
@@ -1788,7 +1788,7 @@ def afficher_activites_non_programmees(df):
 
     # Colonnes editables
     non_editable_cols = ["Fin"] + work_cols
-    for col in df.columns:
+    for col in df_display.columns:
         gb.configure_column(col, editable=(col not in non_editable_cols))
 
     # Configuration des menus de la colonne Date
