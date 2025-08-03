@@ -1709,15 +1709,15 @@ def afficher_activites_programmees(df):
                                     sauvegarder_row_ds_gsheet(df, index_df)
                                     st.rerun()
 
-                        # Affichage de la selectbox de sélection du jour de programmation
-                        jours_possibles = get_jours_possibles(df, get_activites_programmees(df), index_df)
-                        if jours_possibles:
-                            with st.expander("Programmation"):
+                        with st.expander("Programmation"):
+                            col1, col2, col3 = st.columns([0.45,0.2, 1.55])
+                            # Affichage de la selectbox de sélection du jour de programmation
+                            jours_possibles = get_jours_possibles(df, get_activites_programmees(df), index_df)
+                            if jours_possibles:
                                 # Version Modale
                                 # if st.button("🗓️", key="ReprogrammerActivitéProgrammee"):
                                 #     jours_possibles = get_jours_possibles(df, get_activites_programmees(df), index_df)
                                 #     show_dialog_reprogrammer_activite_programmee(df, index_df, df_display, jours_possibles)
-                                col1, col2, col3 = st.columns([0.45,0.2, 1.55])
                                 with col1:
                                     jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
                                     jour_choisi = st.selectbox("Jours de programmation possibles", jours_label, label_visibility="collapsed", key = "ChoixJourReprogrammationActiviteProgrammee")
@@ -1740,6 +1740,18 @@ def afficher_activites_programmees(df):
                                         forcer_reaffichage_df("creneaux_disponibles")
                                         sauvegarder_row_ds_gsheet(df, index_df)
                                         st.rerun()
+                            else:
+                                if st.button("❌", key="DéprogrammerActivitéProgrammee"):
+                                    undo_redo_save()
+                                    st.session_state.activites_programmees_selected_row = ligne_voisine_index(df_display, index_df)
+                                    st.session_state.activites_non_programmees_selected_row = index_df
+                                    deprogrammer_activite_programmee(df, index_df)
+                                    forcer_reaffichage_activites_programmees()
+                                    forcer_reaffichage_activites_non_programmees()
+                                    forcer_reaffichage_df("creneaux_disponibles")
+                                    sauvegarder_row_ds_gsheet(df, index_df)
+                                    st.rerun()
+                               
 
 # Affiche les activités non programmées dans un tableau
 def afficher_activites_non_programmees(df):
@@ -3027,12 +3039,12 @@ def afficher_controles_edition():
         col1, col2, col3 = st.columns([0.5, 0.5, 4])
         with col1:
             if st.button("↩️", 
-                disabled=not st.session_state.historique_undo, 
+                disabled=not st.session_state.get("historique_undo"), 
                 key="undo_btn") and st.session_state.historique_undo:
                 undo_redo_undo()
         with col2:
             if st.button("↪️", 
-                disabled=not st.session_state.historique_redo, 
+                disabled=not st.session_state.get("historique_redo"), 
                 key="redo_btn") and st.session_state.historique_redo:
                 undo_redo_redo()
         with col3:
