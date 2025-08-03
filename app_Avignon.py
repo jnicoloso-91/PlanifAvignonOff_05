@@ -120,8 +120,8 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
             st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
             st.stop()    
 
-        # sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
-        sheet_names = [f"data", f"links", f"meta"] # pour debugger en local 
+        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
+        # sheet_names = [f"data", f"links", f"meta"] # pour debugger en local 
         gsheets = {}
 
         for name in sheet_names:
