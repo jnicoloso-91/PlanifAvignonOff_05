@@ -911,48 +911,75 @@ def afficher_titre(title):
 def afficher_aide():
     
     with st.expander("ℹ️ À propos"):
-        st.markdown("""
-        <div style='font-size: 14px;'>
-        <p style="margin-bottom: 0.2em">Cette application offre les fonctionnalités suivantes:</p>
-        <ul style="margin-top: 0em; margin-bottom: 2em">
-        <li>Choix de la période à programmer</li>
-        <li>Chargement des activités à programmer à partir d'un fichier Excel</li>
-        <li>Gestion de la programmation des activités en respectant les règles décrites dans le paragraphe ci-dessous</li>
-        <li>Gestion des créneaux disponibles</li>
-        <li>Prise en compte optionnelle des pauses (déjeuner, dîner, café)</li>
-        <li>Gestion des liens de recherche sur le net</li>
-        <li>Sauvegarde des données modifiées dans un fichier téléchargeable</li>
-        <li>Fonction défaire / refaire</li>
-        <li>Vérification de cohérence des données d'entrée (chevauchements d'activités, marges trop courtes, formats de données)</li>
-        </ul>
-        
-        <p style="margin-bottom: 0.2em">Règles adoptées pour la programmation des activités:</p>
-        <ul style="margin-top: 0em; margin-bottom: 2em">
-        <li>30 minutes de marge entre activités</li>
-        <li>1 heure par pause repas</li>
-        <li>1/2 heure par pause café sans marge avec l'activité précédente ou suivante</li>
-        <li>Respect des jours de relâches</li>
-        </ul>
-      
-        <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir les colonnes suivantes:</p>
-        <ul style="margin-top: 0em; margin-bottom: 2em">
-        <li>Date : Date de l'activité (entier)</li>
-        <li>Début : Heure de début de l'activité (format HHhMM)</li>
-        <li>Fin : Heure de fin de l'activité (format HHhMM)</li>
-        <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
-        <li>Activité : Nom de l'activité (nom de spectacle, pause, visite, ...)</li>
-        <li>Lieu : Lieu de l'activité</li>
-        <li>Relâche : Jours de relâche pour l'activité (liste d'entiers, peut être vide)</li>
-        <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
-        </ul>
+        with st.expander("Fonctionnalités générales"):
+            st.markdown("""
+            <div style='font-size: 14px;'>
+            <p style="margin-bottom: 0.2em">Cette application offre les fonctionnalités suivantes:</p>
+            <ul style="margin-top: 0em; margin-bottom: 2em">
+            <li>Choix de la période à programmer</li>
+            <li>Chargement des activités à programmer à partir d'un fichier Excel</li>
+            <li>Gestion de la programmation des activités en respectant les règles décrites dans le paragraphe ci-dessous</li>
+            <li>Gestion des créneaux disponibles</li>
+            <li>Prise en compte optionnelle des pauses (déjeuner, dîner, café)</li>
+            <li>Gestion des liens de recherche sur le net</li>
+            <li>Sauvegarde des données modifiées dans un fichier téléchargeable</li>
+            <li>Fonction défaire / refaire</li>
+            <li>Vérification de cohérence des données d'entrée (chevauchements d'activités, marges trop courtes, formats de données)</li>
+            </ul>            
+            </div>
+            """, unsafe_allow_html=True)  
 
-        <p style="margin-bottom: 0.2em">📥Un modèle Excel est disponible <a href="https://github.com/jnicoloso-91/PlanifAvignon-05/raw/main/Mod%C3%A8le%20Excel.xlsx" download>
-        ici
-        </a></p>
-        <p>ℹ️ Si le téléchargement ne démarre pas, faites un clic droit → "Enregistrer le lien sous...".</p>
+        with st.expander("Règles de programmation des activités"):
+            st.markdown("""
+            <div style='font-size: 14px;'>
+            <p style="margin-bottom: 0.2em">Règles adoptées pour la programmation des activités:</p>
+            <ul style="margin-top: 0em; margin-bottom: 2em">
+            <li>30 minutes de marge entre activités</li>
+            <li>1 heure par pause repas</li>
+            <li>1/2 heure par pause café sans marge avec l'activité précédente ou suivante</li>
+            <li>Respect des jours de relâches</li>
+            </ul>
+            </div>
+            """, unsafe_allow_html=True)  
 
-        </div>
-        """, unsafe_allow_html=True)  
+        with st.expander("Format des données"):
+            st.markdown("""
+            <div style='font-size: 14px;'>
+            <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir les colonnes suivantes:</p>
+            <ul style="margin-top: 0em; margin-bottom: 2em">
+            <li>Date : Date de l'activité (entier)</li>
+            <li>Début : Heure de début de l'activité (format HHhMM)</li>
+            <li>Fin : Heure de fin de l'activité (format HHhMM)</li>
+            <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
+            <li>Activité : Nom de l'activité (nom de spectacle, pause, visite, ...)</li>
+            <li>Lieu : Lieu de l'activité</li>
+            <li>Relâche : Jours de relâche pour l'activité (liste d'entiers, peut être vide)</li>
+            <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
+            </ul>
+
+            <p style="margin-bottom: 0.2em">📥Un modèle Excel est disponible <a href="https://github.com/jnicoloso-91/PlanifAvignon-05/raw/main/Mod%C3%A8le%20Excel.xlsx" download>
+            ici
+            </a></p>
+            <p>ℹ️ Si le téléchargement ne démarre pas, faites un clic droit → "Enregistrer le lien sous...".</p>
+            </div>
+            """, unsafe_allow_html=True)  
+
+        with st.expander("Boutons"):
+            st.markdown("""
+            <div style='font-size: 14px;'>
+            <p style="margin-bottom: 0.2em">Aide boutons:</p>
+            <ul style="margin-top: 0em; margin-bottom: 2em">
+            <li>📝 Nouveau contexte</li>
+            <li>💾 Sauvegarder contexte</li>
+            <li>↩️ Défaire</li>
+            <li>↪️ Refaire</li>
+            <li>🗑️ Supprimer activité</li>
+            <li>➕ Ajouter activité</li>
+            <li>🗓️ Programmer activité</li>
+            <li>❌ Déprogrammer activité</li>
+            </ul>
+            </div>
+            """, unsafe_allow_html=True)  
 
 # 1️⃣ Tentative de récupération des dates du festival depuis le site officiel (recherche simple)
 def fetch_off_festival_dates():
@@ -1437,12 +1464,14 @@ def afficher_activites_programmees(df):
     # Constitution du df à afficher
     activites_programmees = get_activites_programmees(df)
     st.session_state.activites_programmees = activites_programmees
-    df_display = activites_programmees.rename(columns=RENOMMAGE_COLONNES)
+    df_display = activites_programmees.copy()
     df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
     df_display["__index"] = df_display.index
     df_display["__options_date"] = calculer_options_date_activites_programmees(df_display) 
+    df_display["__non_reserve"] = df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
     df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
     df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
+    df_display.rename(columns=RENOMMAGE_COLONNES, inplace=True)
 
     # Calcul de la hauteur de l'aggrid
     nb_lignes = len(df_display)
@@ -1473,15 +1502,25 @@ def afficher_activites_programmees(df):
     gb = GridOptionsBuilder.from_dataframe(df_display)
 
     # Masquage des colonnes de travail
-    gb.configure_column("__index", hide=True)
-    gb.configure_column("__jour", hide=True)
-    gb.configure_column("__options_date", hide=True)
+    work_cols = ["__index", "__jour", "__options_date", "__non_reserve"]
+    for col in work_cols:
+        gb.configure_column(col, hide=True)
 
     # Colonnes editables
-    editable_cols = {col: True for col in df_display.columns if col != "__index" and col != "__jour" and col != "__options_date"}
-    editable_cols["Fin"] = False  
-    for col, editable in editable_cols.items():
-        gb.configure_column(col, editable=editable)
+    non_editable_cols = ["Fin"] + work_cols
+    for col in df.columns:
+        gb.configure_column(col, editable=(col not in non_editable_cols))
+
+    gb.configure_column(
+        "Début",
+        editable=JsCode("function(params) { return params.data.__non_reserve; }")
+    )
+
+    gb.configure_column(
+        "Durée" \
+        "",
+        editable=JsCode("function(params) { return params.data.__non_reserve; }")
+    )
 
     # Configuration des menus de la colonne Date
     gb.configure_column(
@@ -1578,12 +1617,12 @@ def afficher_activites_programmees(df):
     if st.session_state.aggrid_activites_programmees_gerer_modification_cellule == True:
         if isinstance(response["data"], pd.DataFrame):
             df_modifie = pd.DataFrame(response["data"])
-            lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_programmees, columns_to_drop=["__index", "__jour", "__options_date"])
+            lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_programmees, columns_to_drop=work_cols)
             if lignes_modifiees:
                 st.session_state.aggrid_activites_programmees_erreur = None
                 undo_redo_save()
                 for i, idx in lignes_modifiees:
-                    for col in df_modifie.drop(columns=["Fin", "__index", "__jour", "__options_date"]).columns:
+                    for col in [col for col in df_modifie.columns if col not in non_editable_cols]:
                         col_df = RENOMMAGE_COLONNES_INVERSE[col] if col in RENOMMAGE_COLONNES_INVERSE else col
                         if pd.isna(df.at[idx, col_df]) and pd.isna(df_modifie.at[i, col]):
                             continue
@@ -1691,7 +1730,7 @@ def afficher_activites_programmees(df):
                                 #     show_dialog_reprogrammer_activite_programmee(df, index_df, df_display, jours_possibles)
                                 col1, col2 = st.columns([0.25,1])
                                 with col1:
-                                    jours_label = [f"{int(jour):02d}" for jour in jours_possibles] + [jours_possibles]
+                                    jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
                                     jour_choisi = st.selectbox("Jours de programmation possibles", jours_label, label_visibility="collapsed", key = "ChoixJourReprogrammationActiviteProgrammee")
                                 with col2:
                                     if st.button("🗓️", key="ReprogrammerActivitéProgrammee"):
@@ -1707,13 +1746,12 @@ def afficher_activites_non_programmees(df):
     st.markdown("##### Activités non programmées")
 
     # Constitution du df à afficher
-    activites_non_programmees = get_activites_non_programmees(df)
-    df_display = activites_non_programmees.rename(columns=RENOMMAGE_COLONNES)
+    df_display = get_activites_non_programmees(df)
     df_display["__index"] = df_display.index
-    st.session_state.activites_programmees = get_activites_programmees(df)
     df_display["__options_date"] = calculer_options_date_activites_non_programmees(df_display) 
     df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
     df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
+    df_display.rename(columns=RENOMMAGE_COLONNES, inplace=True)
 
     # Calcul de la hauteur de l'aggrid
     nb_lignes = len(df_display)
@@ -1744,14 +1782,14 @@ def afficher_activites_non_programmees(df):
     gb = GridOptionsBuilder.from_dataframe(df_display)
 
     # Masquage des colonnes de travail
-    gb.configure_column("__index", hide=True)
-    gb.configure_column("__options_date", hide=True)
+    work_cols = ["__index", "__options_date"]
+    for col in work_cols:
+        gb.configure_column(col, hide=True)
 
     # Colonnes editables
-    editable_cols = {col: True for col in df_display.columns if col != "__index" and col != "__options_date"}
-    editable_cols["Fin"] = False  
-    for col, editable in editable_cols.items():
-        gb.configure_column(col, editable=editable)
+    non_editable_cols = ["Fin"] + work_cols
+    for col in df.columns:
+        gb.configure_column(col, editable=(col not in non_editable_cols))
 
     # Configuration des menus de la colonne Date
     gb.configure_column(
@@ -1836,12 +1874,12 @@ def afficher_activites_non_programmees(df):
     if st.session_state.aggrid_activites_non_programmees_gerer_modification_cellule == True:
         if isinstance(response["data"], pd.DataFrame):
             df_modifie = pd.DataFrame(response["data"])
-            lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_non_programmees, columns_to_drop=["__index", "__options_date"])
+            lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.df_display_activites_non_programmees, columns_to_drop=work_cols)
             if lignes_modifiees:
                 undo_redo_save()
                 st.session_state.aggrid_activites_non_programmees_erreur = None
                 for i, idx in lignes_modifiees:
-                    for col in df_modifie.drop(columns=["Fin", "__index", "__options_date"]).columns:
+                    for col in [col for col in df_modifie.columns if col not in non_editable_cols]:
                         col_df = RENOMMAGE_COLONNES_INVERSE[col] if col in RENOMMAGE_COLONNES_INVERSE else col
                         if pd.isna(df.at[idx, col_df]) and pd.isna(df_modifie.at[i, col]):
                             continue
@@ -2752,7 +2790,7 @@ def get_jours_possibles_from_activite_non_programmee(row: pd.Series):
 
 # Calcule les options des dates pour les activiés programmées
 def calculer_options_date_activites_programmees(df_display):
-    hash_val  = hash_df_colonnes(df_display, ["Date", "Début", "Durée"])
+    hash_val  = hash_df_colonnes(df_display, ["Date", "Debut", "Duree"])
     hash_key = "options_date_activites_programmees__hash"
     key = "options_date_activites_programmees"
     if st.session_state.get(hash_key) != hash_val:
@@ -2762,7 +2800,7 @@ def calculer_options_date_activites_programmees(df_display):
 
 # Calcule les options des dates pour les activiés non programmées
 def calculer_options_date_activites_non_programmees(df_display):
-    hash_val  = hash_df_colonnes(df_display, ["Date", "Début", "Durée"])
+    hash_val  = hash_df_colonnes(df_display, ["Date", "Debut", "Duree"])
     hash_key = "options_date_activites_non_programmees__hash"
     key = "options_date_activites_non_programmees"
     if st.session_state.get(hash_key) != hash_val:
