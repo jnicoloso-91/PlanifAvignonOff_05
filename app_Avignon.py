@@ -2762,7 +2762,7 @@ def ajouter_activite_non_programmee(df):
 def ajouter_activite_programmee(df, date_ref, activite):
 
     type_activite = activite["__type_activite"]
-    if st.button(LABEL_BOUTON_PROGRAMMER, key="AjouterAuPlanningParCréneau"):
+    if st.button(LABEL_BOUTON_PROGRAMMER, use_container_width=True, key="AjouterAuPlanningParCréneau"):
         undo_redo_save()
         if type_activite == "ActiviteExistante":
             # Pour les spectacles, on programme la date et l'heure
