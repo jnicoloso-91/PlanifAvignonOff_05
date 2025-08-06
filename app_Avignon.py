@@ -80,6 +80,7 @@ LABEL_BOUTON_REPROGRAMMER = "Reprogrammer"
 LABEL_BOUTON_DEPROGRAMMER = "Déprogrammer"
 LABEL_BOUTON_VALIDER = "Valider"
 LABEL_BOUTON_ANNULER = "Annuler"
+LABEL_BOUTON_EDITER = "Editer"
 
 CENTRER_BOUTONS = True
 
@@ -499,27 +500,29 @@ def mode_mobile():
         st.session_state.mode_mobile = _mode_mobile
     return True # st.session_state.mode_mobile
 
-def st_info_avec_label(label, info_text, color="blue", label_separe=True):
+def st_info_avec_label(label, info_text, color="blue", afficher_label=True, label_separe=True):
     if label_separe:
-        st.markdown(f"""
-        <div style='
-            font-size: 0.88rem;
-            font-weight: normal;
-            margin-bottom: 0.2rem;
-        '>
-            {label}
-        </div>
-        """, unsafe_allow_html=True)
+        if afficher_label:
+            st.markdown(f"""
+            <div style='
+                font-size: 0.88rem;
+                font-weight: normal;
+                margin-bottom: 0.2rem;
+            '>
+                {label}
+            </div>
+            """, unsafe_allow_html=True)
 
         if color.lower() == "red":
             st.error(info_text) 
         else:
             st.info(info_text)
     else:
+        info_text = f"**{label}:** {info_text}" if afficher_label else info_text
         if color.lower() == "red":
-            st.error(f"**{label}**: {info_text}")  
+            st.error(info_text)  
         else:
-            st.info(f"**{label}**: {info_text}")
+            st.info(info_text)
 
 # Indique si val est un float valide
 def est_float_valide(val):
@@ -1839,7 +1842,7 @@ def afficher_activites_programmees(df):
         st.session_state.aggrid_activites_programmees_gerer_modification_cellule = True
 
         # # Affichage de l'activité sélectionnée
-        # afficher_label_activite(nom_activite)
+        # afficher_nom_activite(nom_activite)
     
     elif len(df_display) == 0:
         if MENU_ACTIVITE_UNIQUE:
@@ -1863,7 +1866,7 @@ def afficher_activites_programmees(df):
 def menu_activites_programmees(df, index_df, df_display, nom_activite):
 
     # Affichage du label d'activité
-    afficher_label_activite(df, index_df, nom_activite)
+    afficher_nom_activite(df, index_df, nom_activite)
 
     # Affichage contrôle Ajouter
     if MENU_ACTIVITE_UNIQUE:
@@ -1916,9 +1919,9 @@ def menu_activites_programmees(df, index_df, df_display, nom_activite):
                 jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
                 st.session_state.activites_programmees_jour_choisi = st.selectbox("Jours possibles", jours_label, label_visibility="visible", key = "ChoixJourReprogrammationActiviteProgrammee") 
             
-            # Affichage de l'éditeur d'activité
-            if st.button("Editeur", use_container_width=CENTRER_BOUTONS, key="menu_activites_programmees_bouton_editeur"):
-                show_dialog_editeur_activite(df)
+        # Affichage de l'éditeur d'activité
+        if st.button(LABEL_BOUTON_EDITER, use_container_width=CENTRER_BOUTONS, key="menu_activites_programmees_bouton_editeur"):
+            show_dialog_editeur_activite(df, index_df)
                                
 # Affiche les activités non programmées dans un tableau
 def afficher_activites_non_programmees(df):
@@ -2188,7 +2191,7 @@ def afficher_activites_non_programmees(df):
         st.session_state.aggrid_activites_non_programmees_gerer_modification_cellule = True
 
         # # Affichage de l'activité sélectionnée
-        # afficher_label_activite(nom_activite)
+        # afficher_nom_activite(nom_activite)
 
     elif len(df_display) == 0:
         if MENU_ACTIVITE_UNIQUE:
@@ -2215,7 +2218,7 @@ def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
     ajouter_activite(df, key="ajouter_activites_non_programmees")
 
     # Affichage du label d'activité
-    afficher_label_activite(df, index_df, nom_activite)
+    afficher_nom_activite(df, index_df, nom_activite)
 
     if nom_activite != "" and index_df is not None and len(df) > 0:
     
@@ -2254,23 +2257,28 @@ def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
             jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
             st.session_state.activites_non_programmees_jour_choisi = st.selectbox("Jours possibles", jours_label, label_visibility="visible", key = "ChoixJourProgrammationActiviteNonProgrammee") # , width=90
             
-            # Affichage de l'éditeur d'activité
-            if st.button("Editeur", use_container_width=CENTRER_BOUTONS,  key="menu_activites_non_programmees_bouton_editeur"):
-                show_dialog_editeur_activite(df)
+        # Affichage de l'éditeur d'activité
+        if st.button(LABEL_BOUTON_EDITER, use_container_width=CENTRER_BOUTONS,  key="menu_activites_non_programmees_bouton_editeur"):
+            show_dialog_editeur_activite(df, index_df)
 
 # Affichage de l'éditeur d'activité en mode modal
 @st.dialog("Editeur d'activité")
-def show_dialog_editeur_activite(df):
-    afficher_editeur_activite(df)
+def show_dialog_editeur_activite(df, index_df):
+    afficher_nom_activite(df, index_df, afficher_label=False)
+    afficher_editeur_activite(df, index_df)
 
 # Affichage de l'éditeur d'activité
-def afficher_editeur_activite(df, key="editeur_activite"):
+def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
     # Rien à faire sur df vide
     if len(df) <= 0:
         return
     
-    if "editeur_activite_courante_idx" in st.session_state:
-        index_df = st.session_state.editeur_activite_courante_idx 
+    if index_df is None:
+        if "editeur_activite_courante_idx" in st.session_state:
+            index_df = st.session_state.editeur_activite_courante_idx 
+    
+    if index_df is not None:
+
         row = df.loc[index_df]
 
         if est_reserve(row):
@@ -3268,7 +3276,7 @@ def initialiser_page():
     patch_aggrid_css()
 
 # Affiche le label d'activité
-def afficher_label_activite(df, index_df, nom_activite=None):
+def afficher_nom_activite(df, index_df, nom_activite=None, afficher_label=True):
     if index_df is not None:
         row = df.loc[index_df]
         if nom_activite == None:
@@ -3276,12 +3284,12 @@ def afficher_label_activite(df, index_df, nom_activite=None):
         if est_activite_programmee(row):
             label_activite = f"Le {int(row["Date"])} de {row["Debut"]} à {row["Fin"]}"
             if est_reserve(row):
-                st_info_avec_label(label_activite, nom_activite, color="red")
+                st_info_avec_label(label_activite, nom_activite, afficher_label=afficher_label, color="red")
             else:
-                st_info_avec_label(label_activite, nom_activite)
+                st_info_avec_label(label_activite, nom_activite, afficher_label=afficher_label)
         else:
             label_activite = f"De {row["Debut"]} à {row["Fin"]}"
-            st_info_avec_label(label_activite, nom_activite)
+            st_info_avec_label(label_activite, nom_activite, afficher_label=afficher_label)
 
 # Affichage de la la sidebar min avec menus fichier et edition 
 # (le reste est affiché dans d'affichage de données en fonction du contexte)
