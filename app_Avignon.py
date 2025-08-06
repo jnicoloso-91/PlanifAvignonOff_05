@@ -2138,7 +2138,7 @@ def afficher_activites_non_programmees(df):
                 "nom_activite": nom_activite
             }
 
-        # Affichage des l'erreur renvoyée par le précédent run
+        # Affichage de l'erreur renvoyée par le précédent run
         erreur = st.session_state.get("aggrid_activites_non_programmees_erreur") 
         if erreur is not None:
             st.error(erreur)
@@ -2258,10 +2258,10 @@ def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
 @st.dialog("Editeur d'activité")
 def show_dialog_editeur_activite(df, index_df):
     afficher_nom_activite(df, index_df, afficher_label=False)
-    afficher_editeur_activite(df, index_df)
+    afficher_editeur_activite(df, index_df, modale=True)
 
 # Affichage de l'éditeur d'activité
-def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
+def afficher_editeur_activite(df, index_df=None, modale=False, key="editeur_activite"):
     # Rien à faire sur df vide
     if len(df) <= 0:
         return
@@ -2306,7 +2306,8 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
                     valeur_courante = lien
 
         nouvelle_valeur = st.text_input(f"✏️ Valeur", "" if pd.isna(valeur_courante) else str(valeur_courante), key=key+"_valeur") 
-        
+
+        erreur = None
         col1, col2 = st.columns([1, 1])
         with col1:
             if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS, key=key+"_validation"):
@@ -2328,9 +2329,10 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
                                 forcer_reaffichage_df("creneaux_disponibles")
                             st.rerun()
                         else:
-                            st.session_state.editeur_activite_erreur = erreur
-                            forcer_reaffichage_activites_programmees()
-                            st.rerun()
+                            if not modale:
+                                st.session_state.editeur_activite_erreur = erreur
+                                forcer_reaffichage_activites_programmees()
+                                st.rerun()
                     else:
                         erreur = affecter_valeur(df, index_df, colonne_df, nouvelle_valeur)
                         if not erreur:
@@ -2338,17 +2340,20 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
                             forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
                             st.rerun()
                         else:
-                            st.session_state.editeur_activite_erreur = erreur
-                            forcer_reaffichage_activites_non_programmees()
-                            st.rerun()
+                            if not modale:
+                                st.session_state.editeur_activite_erreur = erreur
+                                forcer_reaffichage_activites_non_programmees()
+                                st.rerun()
         with col2:
             if st.button(LABEL_BOUTON_ANNULER, use_container_width=CENTRER_BOUTONS):
                 st.rerun()
         
-        # Affichage des l'erreur renvoyée par le précédent run
-        erreur = st.session_state.get("editeur_activite_erreur") 
+        if not modale:
+            # Affichage de l'erreur renvoyée par le précédent run
+            erreur = st.session_state.get("editeur_activite_erreur") 
         if erreur is not None:
             st.error(erreur)
+            
 
 # Affecte une nouvelle valeur à une cellule du df donnée par son index et sa colonne
 def affecter_valeur(df, index, colonne, nouvelle_valeur, inhiber_gestion_modification_cellule=True):
