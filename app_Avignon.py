@@ -184,7 +184,7 @@ def charger_contexte_depuis_gsheet():
                 initialiser_etat_contexte(df, wb, fn, lnk)
                 undo_redo_init(verify=False)
             else:
-                initialiser_nouveau_contexte()
+                initialiser_nouveau_contexte(avec_sauvegarde=False)
                 undo_redo_init(verify=False)
         except Exception as e:
             pass
@@ -498,6 +498,28 @@ def mode_mobile():
                 _mode_mobile = True
         st.session_state.mode_mobile = _mode_mobile
     return True # st.session_state.mode_mobile
+
+def st_info_avec_label(label, info_text, color="blue", label_separe=True):
+    if label_separe:
+        st.markdown(f"""
+        <div style='
+            font-size: 0.88rem;
+            font-weight: normal;
+            margin-bottom: 0.2rem;
+        '>
+            {label}
+        </div>
+        """, unsafe_allow_html=True)
+
+        if color.lower() == "red":
+            st.error(info_text) 
+        else:
+            st.info(info_text)
+    else:
+        if color.lower() == "red":
+            st.error(f"**{label}**: {info_text}")  
+        else:
+            st.info(f"**{label}**: {info_text}")
 
 # Indique si val est un float valide
 def est_float_valide(val):
@@ -1671,7 +1693,7 @@ def afficher_activites_programmees(df):
         # Gestion du menu activité en fonction du type d'évènement renvoyé
         event_data = response.get("event_data")
         event_type = event_data["type"] if isinstance(event_data, dict) else None
-        print(f"PROG {event_type}")
+        # print(f"PROG {event_type}")
 
         if MENU_ACTIVITE_UNIQUE:
             # La détection des "rowClicked" permet de mettre à jour le menu activité y compris si l'on clicke sur la ligne déja sépectionnée 
@@ -2033,7 +2055,7 @@ def afficher_activites_non_programmees(df):
         # Gestion du menu activité en fonction du type d'évènement renvoyé
         event_data = response.get("event_data")
         event_type = event_data["type"] if isinstance(event_data, dict) else None
-        print(f"NONPROG {event_type}")
+        # print(f"NONPROG {event_type}")
 
         if MENU_ACTIVITE_UNIQUE:
             # La détection des "rowClicked" permet de mettre à jour le menu activité y compris si l'on clicke sur la ligne déja sépectionnée 
@@ -3059,22 +3081,6 @@ def afficher_creneaux_disponibles(df):
 # Menu de gestion des créneaux disponibles
 def menu_creneaux_disponibles(df, date, creneau, activite):
 
-    def st_info(label, info_text, label_separe=True):
-        if label_separe:
-            st.markdown(f"""
-            <div style='
-                font-size: 0.88rem;
-                font-weight: normal;
-                margin-bottom: 0.2rem;
-            '>
-                {label}
-            </div>
-            """, unsafe_allow_html=True)
-
-            st.info(info_text)
-        else:
-            st.info(f"**{label}**: {info_text}")
-
     # Gestion du flag de traitement des pauses
     if "traiter_pauses" not in st.session_state: 
         st.session_state.traiter_pauses = False
@@ -3086,10 +3092,10 @@ def menu_creneaux_disponibles(df, date, creneau, activite):
         st.rerun()
 
     # Affichage du créneau sélectionné et de l'activité séléctionnées dans le créneau
-    st_info("Le", f"{int(date)}")
-    st_info(f"Entre {creneau['Debut']}", creneau['Activité avant'])
-    st_info(f"Et {creneau['Fin']}", creneau['Activité après'])
-    st_info(f"A {activite['Debut']}", activite['Activite'])
+    st_info_avec_label("Le", f"{int(date)}")
+    st_info_avec_label(f"Entre {creneau['Debut']}", creneau['Activité avant'])
+    st_info_avec_label(f"Et {creneau['Fin']}", creneau['Activité après'])
+    st_info_avec_label(f"A {activite['Debut']}", activite['Activite'])
     
 
     # Gestion du bouton Programmer
@@ -3204,7 +3210,7 @@ def initialiser_dtypes(df):
             df[col] = df[col].astype("str")
 
 # Initialisation d'un nouveau contexte
-def initialiser_nouveau_contexte():
+def initialiser_nouveau_contexte(avec_sauvegarde=True):
     df = pd.DataFrame(columns=COLONNES_ATTENDUES)
     initialiser_dtypes(df)
     wb = None
@@ -3215,7 +3221,8 @@ def initialiser_nouveau_contexte():
     df["Priorite"] = pd.to_numeric(df["Priorite"], errors="coerce").astype("Int64")
 
     initialiser_etat_contexte(df, wb, fn, lnk)
-    sauvegarder_contexte_ds_gsheet(df, lnk)
+    if avec_sauvegarde:
+        sauvegarder_contexte_ds_gsheet(df, lnk)
     maj_donnees_calculees(df)
 
 # Création d'un nouveau contexte
@@ -3261,12 +3268,20 @@ def initialiser_page():
     patch_aggrid_css()
 
 # Affiche le label d'activité
-def afficher_label_activite(df, index_df, nom_activite):
+def afficher_label_activite(df, index_df, nom_activite=None):
     if index_df is not None:
-        if est_reserve(df.loc[index_df]):
-            st.error(nom_activite)
+        row = df.loc[index_df]
+        if nom_activite == None:
+            nom_activite = row["Activite"].strip()
+        if est_activite_programmee(row):
+            label_activite = f"Le {int(row["Date"])} de {row["Debut"]} à {row["Fin"]}"
+            if est_reserve(row):
+                st_info_avec_label(label_activite, nom_activite, color="red")
+            else:
+                st_info_avec_label(label_activite, nom_activite)
         else:
-            st.info(nom_activite)
+            label_activite = f"De {row["Debut"]} à {row["Fin"]}"
+            st_info_avec_label(label_activite, nom_activite)
 
 # Affichage de la la sidebar min avec menus fichier et edition 
 # (le reste est affiché dans d'affichage de données en fonction du contexte)
@@ -3331,7 +3346,7 @@ def afficher_sidebar(df):
 
 def main():
     
-    print(f"MAIN ______________________")
+    # print(f"____________MAIN ______________")
     
     # Gestion du chargement de contexte depuis la Google Sheet en charge de la persistence 
     charger_contexte_depuis_gsheet()
