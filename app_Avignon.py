@@ -2222,7 +2222,7 @@ def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
         # Affichage contrôle Supprimer
         if st.button(LABEL_BOUTON_SUPPRIMER, use_container_width=CENTRER_BOUTONS, key="SupprimerActiviteNonProgrammee"):
             undo_redo_save()
-            st.session_state.activites_programmees_selected_row = ligne_voisine_index(df_display, index_df)
+            st.session_state.activites_non_programmees_selected_row = ligne_voisine_index(df_display, index_df)
             supprimer_activite(df, index_df)
             forcer_reaffichage_activites_non_programmees()
             forcer_reaffichage_df("activites_programmable_dans_creneau_selectionne")
