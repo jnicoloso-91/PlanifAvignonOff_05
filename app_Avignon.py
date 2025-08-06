@@ -63,30 +63,11 @@ PALETTE_COULEURS_JOURS = {
     31: "#d0e0e3"
 }
 
-# LABEL_BOUTON_NOUVEAU = "📄"
-# LABEL_BOUTON_SAUVEGARDER = "💾"
-# LABEL_BOUTON_DEFAIRE = "↩️"
-# LABEL_BOUTON_REFAIRE = "↪️"
-# LABEL_BOUTON_AJOUTER = "➕"
-# LABEL_BOUTON_SUPPRIMER = "🗑️"
-# LABEL_BOUTON_CHERCHER = "🔍"
-# LABEL_BOUTON_PROGRAMMER = "🗓️"
-# LABEL_BOUTON_REPROGRAMMER = "🗓️"
-# LABEL_BOUTON_DEPROGRAMMER = "❌"
-# LABEL_BOUTON_VALIDER = "Valider"
-# LABEL_BOUTON_ANNULER = "Annuler"
-# LABEL_BOUTON_NOUVEAU = "📄 Nouveau"
-# LABEL_BOUTON_SAUVEGARDER = "💾 Sauvegarder"
-# LABEL_BOUTON_DEFAIRE = "↩️ Défaire"
-# LABEL_BOUTON_REFAIRE = "↪️ Refaire"
-# LABEL_BOUTON_AJOUTER = "➕ Ajouter"
-# LABEL_BOUTON_SUPPRIMER = "🗑️ Supprimer"
-# LABEL_BOUTON_CHERCHER = "🔍 Chercher"
-# LABEL_BOUTON_PROGRAMMER = "🗓️ Programmer"
-# LABEL_BOUTON_REPROGRAMMER = "🗓️ Reprogrammer"
-# LABEL_BOUTON_DEPROGRAMMER = "❌ Déprogrammer"
-# LABEL_BOUTON_VALIDER = "Valider"
-# LABEL_BOUTON_ANNULER = "Annuler"
+# AgGrid uodate_on
+AGGRID_UPDATE_ON_SANS_CELL_CLICKED = ["modelChanged", "selectionChanged"]
+AGGRID_UPDATE_ON_AVEC_CELL_CLICKED = ["modelChanged", "selectionChanged", "rowClicked"]
+MENU_ACTIVITE_UNIQUE = False
+
 LABEL_BOUTON_NOUVEAU = "Nouveau"
 LABEL_BOUTON_SAUVEGARDER = "Sauvegarder"
 LABEL_BOUTON_DEFAIRE = "Défaire"
@@ -947,59 +928,93 @@ def afficher_titre(title):
 
 # Affiche l'aide de l'application
 def afficher_aide():
+    with st.expander("À propos"):
     
-    with st.expander("Fonctionnalités générales"):
-        st.markdown("""
-        <div style='font-size: 14px;'>
-        <p style="margin-bottom: 0.2em">Cette application offre les fonctionnalités suivantes:</p>
-        <ul style="margin-top: 0em; margin-bottom: 2em">
-        <li>Choix de la période à programmer</li>
-        <li>Chargement des activités à programmer à partir d'un fichier Excel</li>
-        <li>Gestion de la programmation des activités en respectant les règles décrites dans le paragraphe ci-dessous</li>
-        <li>Gestion des créneaux disponibles</li>
-        <li>Prise en compte optionnelle des pauses (déjeuner, dîner, café)</li>
-        <li>Gestion des liens de recherche sur le net</li>
-        <li>Sauvegarde des données modifiées dans un fichier téléchargeable</li>
-        <li>Fonction défaire / refaire</li>
-        <li>Vérification de cohérence des données d'entrée (chevauchements d'activités, marges trop courtes, formats de données)</li>
-        </ul>            
-        </div>
-        """, unsafe_allow_html=True)  
+        with st.expander("Fonctionnalités générales"):
+            st.markdown("""
+            <div style='font-size: 14px;'>
+            <p style="margin-bottom: 0.2em">Cette application offre les fonctionnalités suivantes:</p>
+            <ul style="margin-top: 0em; margin-bottom: 2em">
+            <li>Choix de la période à programmer</li>
+            <li>Chargement des activités à programmer à partir d'un fichier Excel</li>
+            <li>Gestion de la programmation des activités en respectant les règles décrites dans le paragraphe ci-dessous</li>
+            <li>Gestion des créneaux disponibles</li>
+            <li>Prise en compte optionnelle des pauses (déjeuner, dîner, café)</li>
+            <li>Gestion des liens de recherche sur le net</li>
+            <li>Sauvegarde des données modifiées dans un fichier téléchargeable</li>
+            <li>Fonction défaire / refaire</li>
+            <li>Vérification de cohérence des données d'entrée (chevauchements d'activités, marges trop courtes, formats de données)</li>
+            </ul>            
+            </div>
+            """, unsafe_allow_html=True)  
 
-    with st.expander("Règles de programmation des activités"):
-        st.markdown("""
-        <div style='font-size: 14px;'>
-        <p style="margin-bottom: 0.2em">Règles adoptées pour la programmation des activités:</p>
-        <ul style="margin-top: 0em; margin-bottom: 2em">
-        <li>30 minutes de marge entre activités</li>
-        <li>1 heure par pause repas</li>
-        <li>1/2 heure par pause café sans marge avec l'activité précédente ou suivante</li>
-        <li>Respect des jours de relâches</li>
-        </ul>
-        </div>
-        """, unsafe_allow_html=True)  
+        with st.expander("Règles de programmation des activités"):
+            st.markdown("""
+            <div style='font-size: 14px;'>
+            <p style="margin-bottom: 0.2em">Règles adoptées pour la programmation des activités:</p>
+            <ul style="margin-top: 0em; margin-bottom: 2em">
+            <li>30 minutes de marge entre activités</li>
+            <li>1 heure par pause repas</li>
+            <li>1/2 heure par pause café sans marge avec l'activité précédente ou suivante</li>
+            <li>Respect des jours de relâches</li>
+            </ul>
+            </div>
+            """, unsafe_allow_html=True)  
 
-    with st.expander("Format des données"):
-        st.markdown("""
-        <div style='font-size: 14px;'>
-        <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir les colonnes suivantes:</p>
-        <ul style="margin-top: 0em; margin-bottom: 2em">
-        <li>Date : Date de l'activité (entier)</li>
-        <li>Début : Heure de début de l'activité (format HHhMM)</li>
-        <li>Fin : Heure de fin de l'activité (format HHhMM)</li>
-        <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
-        <li>Activité : Nom de l'activité (nom de spectacle, pause, visite, ...)</li>
-        <li>Lieu : Lieu de l'activité</li>
-        <li>Relâche : Jours de relâche pour l'activité (liste d'entiers, peut être vide)</li>
-        <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
-        </ul>
+        with st.expander("Utilisation"):
+            st.markdown("""
+            <div style='font-size: 14px;'>
+            <p>Les activités à programmer sont présentées dans deux tableaux séparés, 
+                l'un pour les activités déja programmées à une date donnée, l'autre pour les activités restant à programmer. 
+                Dans ces deux tableaux les informations sont éditables, sauf les heures de fin (qui sont calculées automatiquement) 
+                et les date de programmation, heure de début et durée des activités réservées (celles dont la colonne 'Réservé' est à Oui).</p>
+            
+            <p>Deux autres tableaux adressent la gestion des créneaux disponibles. 
+                Le premier présente les créneaux encore disponibles sur la période considérée et le deuxième les activités programmables dans le créneau sélectionné en tenant compte de leur durée et de la marge entre activités.</p>
+            
+            <p style="margin-bottom: 0.2em">Les menus sont regroupés dans une barre latérale escamotable:</p>
+            <ul style="margin-top: 0em">
+                <li>Menu Fichier: permet de charger un contexte à partir d'un fichier, initialiser un nouveau contexte, sauvegarder le contexte courant dans un fichier téléchargeable.</li>
+                <li>Menu Edition: permet de défaire, refaire une opération.</li>
+                <li>Menu Activités programmées: permet sur l'activité programmée courante de rechercher de l'information sur le net (via un lien éditable dans les propriétés), supprimer cette activité (si elles est non réservée), la déprogrammer, la reprogrammer et éditer ses propriétés.</li>
+                <li>Menu Activités non programmées: permet de créer une nouvelle activité et sur l'activité non programmée courante de rechercher de l'informations sur le net, supprimer et programmer cette activité, éditer ses propriétés.</li>
+                <li>Menu créneau disponible: présente le créneau sélectionné dans la table des créneaux disponibles, l'activité sélectionnée dans la table des activités programmables sur ce créneau et permet de programmer ladite activité sur le créneau choisi.</li>
+            </ul>
+                        
+            <p style="margin-bottom: 0.2em">En haut de la page principale une rubrique escamotable 'Infos' présente:</p>
+            <ul style="margin-top: 0em">
+                <li>La présente aide.</li>
+                <li>Une rubrique présentant les incohérences dans le fichier chargé (notamment les chevauchements de programmation en tenant compte des marges entre activités). 
+                    Cette rubrique est mise à jour au fil de l'eau.</li>
+                <li>La période programmation: elle est automatiquement déduite des activités renseignées dans le fichier chargé, mais peut être modifiée en cours d'édition. Par défaut l'application recherche les dates de début et de fin du festival de l'année courante.</li>
+            </ul>
+                        
+            <p>A la première utilisation l'application propose à l'utilisateur de créer un espace personnel dans lequel est automatiquement sauvegardé le contexte de travail (l'adresse de cet espace est : adresse de l'application/?user_id=id utilisateur).
+                En cas de rupture de connexion avec le serveur, le travail en cours est ainsi automatiquement restitué à la prochaine reconnexion.</p>
+            </div>
+            """, unsafe_allow_html=True)  
 
-        <p style="margin-bottom: 0.2em">📥Un modèle Excel est disponible <a href="https://github.com/jnicoloso-91/PlanifAvignon-05/raw/main/Mod%C3%A8le%20Excel.xlsx" download>
-        ici
-        </a></p>
-        <p>ℹ️ Si le téléchargement ne démarre pas, faites un clic droit → "Enregistrer le lien sous...".</p>
-        </div>
-        """, unsafe_allow_html=True)  
+        with st.expander("Format des données"):
+            st.markdown("""
+            <div style='font-size: 14px;'>
+            <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir les colonnes suivantes:</p>
+            <ul style="margin-top: 0em; margin-bottom: 2em">
+            <li>Date : Date de l'activité (entier)</li>
+            <li>Début : Heure de début de l'activité (format HHhMM)</li>
+            <li>Fin : Heure de fin de l'activité (format HHhMM)</li>
+            <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
+            <li>Activité : Nom de l'activité (nom de spectacle, pause, visite, ...)</li>
+            <li>Lieu : Lieu de l'activité</li>
+            <li>Relâche : Jours de relâche pour l'activité (liste d'entiers, peut être vide)</li>
+            <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
+            </ul>
+
+            <p style="margin-bottom: 0.2em">📥Un modèle Excel est disponible <a href="https://github.com/jnicoloso-91/PlanifAvignon-05/raw/main/Mod%C3%A8le%20Excel.xlsx" download>
+            ici
+            </a></p>
+            <p>ℹ️ Si le téléchargement ne démarre pas, faites un clic droit → "Enregistrer le lien sous...".</p>
+            </div>
+            """, unsafe_allow_html=True)  
 
 def get_dates_festival():
     
@@ -1337,7 +1352,7 @@ def verifier_coherence(df):
         contenu += "</div>"
         return contenu
 
-    with st.expander("🔍 Cohérence des données"):
+    with st.expander("Cohérence des données"):
         st.markdown(get_log_verifier_coherence(df), unsafe_allow_html=True)
 
 # Indique si une row est une activité programmée
@@ -1614,8 +1629,12 @@ def afficher_activites_programmees(df):
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
 
+    # Affectation du masque d'évènements UI à prendre en compte
     if "activites_programmees_update_on" not in st.session_state:
-        st.session_state.activites_programmees_update_on = ["modelChanged", "selectionChanged", "rowClicked"]
+        if MENU_ACTIVITE_UNIQUE:
+            st.session_state.activites_programmees_update_on = AGGRID_UPDATE_ON_AVEC_CELL_CLICKED  
+        else:
+            st.session_state.activites_programmees_update_on = AGGRID_UPDATE_ON_SANS_CELL_CLICKED
 
     # Affichage
     response = AgGrid(
@@ -1654,77 +1673,91 @@ def afficher_activites_programmees(df):
         event_type = event_data["type"] if isinstance(event_data, dict) else None
         print(f"PROG {event_type}")
 
-        # La détection des "rowClicked" permet de mettre à jour le menu activité y compris si l'on clicke sur la ligne déja sépectionnée 
-        if event_type == "rowClicked": 
-
-            # Désactiver "rowClicked" pour cet aggrid et le retrigger pour les autres et remettre leur compteur d'event à zéro
-            st.session_state.activites_programmees_update_on = ["modelChanged", "selectionChanged"]  
-            st.session_state.activites_non_programmees_update_on = ["modelChanged", "selectionChanged", "rowClicked"]
-            st.session_state.activites_non_programmees_event_counter = 0
-            st.session_state.activites_programmees_event_counter = 0
-
-            # Mise à jour du menu activité géré par afficher_sidebar()
-            st.session_state.menu_activite = {
-                "menu": "menu_activites_programmees",
-                "df": df,
-                "index_df": index_df,
-                "df_display": df_display,
-                "nom_activite": nom_activite
-            }
-
-            # Rerun avec reaffichage des aggrid pour bonne mise à jour des évènements à prendre en compte par ces derniers
-            forcer_reaffichage_activites_programmees()      
-            forcer_reaffichage_activites_non_programmees()     
-            st.rerun()
-
-        # Evènement de type "selectionChanged" ou "modelChanged"
-        else:
-            if index_df != st.session_state.activites_programmees_selected_row:
-                st.session_state.activites_programmees_selected_row = index_df
-                st.session_state.editeur_activite_courante_idx = index_df
+        if MENU_ACTIVITE_UNIQUE:
+            # La détection des "rowClicked" permet de mettre à jour le menu activité y compris si l'on clicke sur la ligne déja sépectionnée 
+            if event_type == "rowClicked": 
 
                 # Désactiver "rowClicked" pour cet aggrid et le retrigger pour les autres et remettre leur compteur d'event à zéro
-                if "activites_programmees_event_counter" not in st.session_state:
-                    st.session_state.activites_programmees_event_counter = 0
-                if st.session_state.activites_programmees_event_counter == 0:
-                    st.session_state.activites_programmees_event_counter += 1
-                    st.session_state.activites_programmees_update_on = ["modelChanged", "selectionChanged"]  
-                    st.session_state.activites_non_programmees_event_counter = 0
-                    st.session_state.activites_non_programmees_update_on = ["modelChanged", "selectionChanged", "rowClicked"]
+                st.session_state.activites_programmees_update_on = ["modelChanged", "selectionChanged"]  
+                st.session_state.activites_non_programmees_update_on = ["modelChanged", "selectionChanged", "rowClicked"]
+                st.session_state.activites_non_programmees_event_counter = 0
+                st.session_state.activites_programmees_event_counter = 0
 
-                    # Mise à jour du menu activité géré par afficher_sidebar()
-                    st.session_state.menu_activite = {
-                        "menu": "menu_activites_programmees",
-                        "df": df,
-                        "index_df": index_df,
-                        "df_display": df_display,
-                        "nom_activite": nom_activite
-                    }
-
-                    # Rerun avec reaffichage des aggrid pour bonne mise à jour des évènements à prendre en compte par ces derniers
-                    forcer_reaffichage_activites_non_programmees()
-                    forcer_reaffichage_activites_programmees()     
-                    st.rerun()
-                else:
-                    # Mise à jour du menu activité géré par afficher_sidebar()
-                    st.session_state.menu_activite = {
-                        "menu": "menu_activites_programmees",
-                        "df": df,
-                        "index_df": index_df,
-                        "df_display": df_display,
-                        "nom_activite": nom_activite
-                    }
-                    
-            if st.session_state.forcer_menu_activites_programmees:
-                st.session_state.menu_activite = {
+                # Mise à jour du menu activité géré par afficher_sidebar()
+                st.session_state.menu_activites = {
                     "menu": "menu_activites_programmees",
                     "df": df,
                     "index_df": index_df,
                     "df_display": df_display,
                     "nom_activite": nom_activite
                 }
-            st.session_state.forcer_menu_activites_programmees  = False
 
+                # Rerun avec reaffichage des aggrid pour bonne mise à jour des évènements à prendre en compte par ces derniers
+                forcer_reaffichage_activites_programmees()      
+                forcer_reaffichage_activites_non_programmees()     
+                st.rerun()
+
+            # Evènement de type "selectionChanged" ou "modelChanged"
+            else:
+                if index_df != st.session_state.activites_programmees_selected_row:
+                    st.session_state.activites_programmees_selected_row = index_df
+                    st.session_state.editeur_activite_courante_idx = index_df
+
+                    # Désactiver "rowClicked" pour cet aggrid et le retrigger pour les autres et remettre leur compteur d'event à zéro
+                    if "activites_programmees_event_counter" not in st.session_state:
+                        st.session_state.activites_programmees_event_counter = 0
+                    if st.session_state.activites_programmees_event_counter == 0:
+                        st.session_state.activites_programmees_event_counter += 1
+                        st.session_state.activites_programmees_update_on = ["modelChanged", "selectionChanged"]  
+                        st.session_state.activites_non_programmees_event_counter = 0
+                        st.session_state.activites_non_programmees_update_on = ["modelChanged", "selectionChanged", "rowClicked"]
+
+                        # Mise à jour du menu activité géré par afficher_sidebar()
+                        st.session_state.menu_activites = {
+                            "menu": "menu_activites_programmees",
+                            "df": df,
+                            "index_df": index_df,
+                            "df_display": df_display,
+                            "nom_activite": nom_activite
+                        }
+
+                        # Rerun avec reaffichage des aggrid pour bonne mise à jour des évènements à prendre en compte par ces derniers
+                        forcer_reaffichage_activites_non_programmees()
+                        forcer_reaffichage_activites_programmees()     
+                        st.rerun()
+                    else:
+                        # Mise à jour du menu activité géré par afficher_sidebar()
+                        st.session_state.menu_activites = {
+                            "menu": "menu_activites_programmees",
+                            "df": df,
+                            "index_df": index_df,
+                            "df_display": df_display,
+                            "nom_activite": nom_activite
+                        }
+                        
+                if st.session_state.forcer_menu_activites_programmees:
+                    st.session_state.menu_activites = {
+                        "menu": "menu_activites_programmees",
+                        "df": df,
+                        "index_df": index_df,
+                        "df_display": df_display,
+                        "nom_activite": nom_activite
+                    }
+                st.session_state.forcer_menu_activites_programmees  = False
+        else:
+            if index_df != st.session_state.activites_programmees_selected_row:
+                st.session_state.activites_programmees_selected_row = index_df
+                st.session_state.editeur_activite_courante_idx = index_df
+
+            # Mise à jour du menu activité géré par afficher_sidebar()
+            st.session_state.menu_activites_programmees = {
+                "menu": "menu_activites_programmees",
+                "df": df,
+                "index_df": index_df,
+                "df_display": df_display,
+                "nom_activite": nom_activite
+            }
+                    
         # Affichage de l'erreur renvoyée par le précédent run
         erreur = st.session_state.get("aggrid_activites_programmees_erreur") 
         if erreur is not None:
@@ -1784,15 +1817,35 @@ def afficher_activites_programmees(df):
         st.session_state.aggrid_activites_programmees_gerer_modification_cellule = True
 
         # # Affichage de l'activité sélectionnée
-        # label = f"🎯 Activité sélectionnée : **{nom_activite}**" if nom_activite != "" else "🎯 Activité sélectionnée : "
-        # label = label + " <span style='color:red'>(Réservé)</span>" if len(df) > 0 and est_reserve(df.loc[index_df]) else label
-        # st.markdown(label, unsafe_allow_html=True)
+        # afficher_label_activite(nom_activite)
+    
+    elif len(df_display) == 0:
+        if MENU_ACTIVITE_UNIQUE:
+            st.session_state.menu_activites = {
+                "menu": "menu_activites_non_programmees",
+                "df": df,
+                "index_df": None,
+                "df_display": df_display,
+                "nom_activite": ""
+            }
+        else:
+            st.session_state.menu_activites_programmees = {
+                "menu": "menu_activites_programmees",
+                "df": df,
+                "index_df": None,
+                "df_display": df_display,
+                "nom_activite": ""
+            }
     
 # Menu activité à afficher dans la sidebar si click dans aggrid d'activités programmées         }
 def menu_activites_programmees(df, index_df, df_display, nom_activite):
 
+    # Affichage du label d'activité
+    afficher_label_activite(df, index_df, nom_activite)
+
     # Affichage contrôle Ajouter
-    ajouter_activite(df)
+    if MENU_ACTIVITE_UNIQUE:
+        ajouter_activite(df, key="ajouter_activites_programmees")
 
     if nom_activite != "" and index_df is not None and len(df) > 0:
 
@@ -1840,7 +1893,10 @@ def menu_activites_programmees(df, index_df, df_display, nom_activite):
                 # Affichage Liste des jours possibles
                 jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
                 st.session_state.activites_programmees_jour_choisi = st.selectbox("Jours possibles", jours_label, label_visibility="visible", key = "ChoixJourReprogrammationActiviteProgrammee") 
-
+            
+            # Affichage de l'éditeur d'activité
+            if st.button("Editeur", use_container_width=CENTRER_BOUTONS, key="menu_activites_programmees_bouton_editeur"):
+                show_dialog_editeur_activite(df)
                                
 # Affiche les activités non programmées dans un tableau
 def afficher_activites_non_programmees(df):
@@ -1935,8 +1991,12 @@ def afficher_activites_non_programmees(df):
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
 
+    # Affectation du masque d'évènements UI à prendre en compte
     if "activites_non_programmees_update_on" not in st.session_state:
-        st.session_state.activites_non_programmees_update_on = ["modelChanged", "selectionChanged", "rowClicked"]
+        if MENU_ACTIVITE_UNIQUE:
+            st.session_state.activites_non_programmees_update_on = AGGRID_UPDATE_ON_AVEC_CELL_CLICKED  
+        else:
+            st.session_state.activites_non_programmees_update_on = AGGRID_UPDATE_ON_SANS_CELL_CLICKED
 
     # Affichage
     response = AgGrid(
@@ -1975,76 +2035,90 @@ def afficher_activites_non_programmees(df):
         event_type = event_data["type"] if isinstance(event_data, dict) else None
         print(f"NONPROG {event_type}")
 
-        # La détection des "rowClicked" permet de mettre à jour le menu activité y compris si l'on clicke sur la ligne déja sépectionnée 
-        if event_type == "rowClicked": 
-
-            # Désactiver "rowClicked" pour cet aggrid et le retrigger pour les autres et remettre leur compteur d'event à zéro
-            st.session_state.activites_non_programmees_update_on = ["modelChanged", "selectionChanged"]  
-            st.session_state.activites_programmees_update_on = ["modelChanged", "selectionChanged", "rowClicked"]
-            st.session_state.activites_non_programmees_event_counter = 0
-            st.session_state.activites_programmees_event_counter = 0
-            
-            # Mise à jour du menu activité géré par afficher_sidebar()
-            st.session_state.menu_activite = {
-                "menu": "menu_activites_non_programmees",
-                "df": df,
-                "index_df": index_df,
-                "df_display": df_display,
-                "nom_activite": nom_activite
-            }
-
-            # Rerun avec reaffichage des aggrid pour bonne mise à jour des évènements à prendre en compte par ces derniers
-            forcer_reaffichage_activites_non_programmees()
-            forcer_reaffichage_activites_programmees()     
-            st.rerun()
-
-        # Evènement de type "selectionChanged" ou "modelChanged"
-        else:
-            if index_df != st.session_state.activites_non_programmees_selected_row:
-                st.session_state.activites_non_programmees_selected_row = index_df
-                st.session_state.editeur_activite_courante_idx = index_df
+        if MENU_ACTIVITE_UNIQUE:
+            # La détection des "rowClicked" permet de mettre à jour le menu activité y compris si l'on clicke sur la ligne déja sépectionnée 
+            if event_type == "rowClicked": 
 
                 # Désactiver "rowClicked" pour cet aggrid et le retrigger pour les autres et remettre leur compteur d'event à zéro
-                if "activites_non_programmees_event_counter" not in st.session_state:
-                    st.session_state.activites_non_programmees_event_counter = 0
-                if st.session_state.activites_non_programmees_event_counter == 0:
-                    st.session_state.activites_non_programmees_event_counter += 1
-                    st.session_state.activites_non_programmees_update_on = ["modelChanged", "selectionChanged"]  
-                    st.session_state.activites_programmees_event_counter = 0
-                    st.session_state.activites_programmees_update_on = ["modelChanged", "selectionChanged", "rowClicked"]
-
-                    # Mise à jour du menu activité géré par afficher_sidebar()
-                    st.session_state.menu_activite = {
-                        "menu": "menu_activites_non_programmees",
-                        "df": df,
-                        "index_df": index_df,
-                        "df_display": df_display,
-                        "nom_activite": nom_activite
-                    }
-
-                    # Rerun avec reaffichage des aggrid pour bonne mise à jour des évènements à prendre en compte par ces derniers
-                    forcer_reaffichage_activites_non_programmees()
-                    forcer_reaffichage_activites_programmees()     
-                    st.rerun()
-                else:
-                    # Mise à jour du menu activité géré par afficher_sidebar()
-                    st.session_state.menu_activite = {
-                        "menu": "menu_activites_non_programmees",
-                        "df": df,
-                        "index_df": index_df,
-                        "df_display": df_display,
-                        "nom_activite": nom_activite
-                    }
-
-            if st.session_state.forcer_menu_activites_non_programmees:
-                st.session_state.menu_activite = {
+                st.session_state.activites_non_programmees_update_on = ["modelChanged", "selectionChanged"]  
+                st.session_state.activites_programmees_update_on = ["modelChanged", "selectionChanged", "rowClicked"]
+                st.session_state.activites_non_programmees_event_counter = 0
+                st.session_state.activites_programmees_event_counter = 0
+                
+                # Mise à jour du menu activité géré par afficher_sidebar()
+                st.session_state.menu_activites = {
                     "menu": "menu_activites_non_programmees",
                     "df": df,
                     "index_df": index_df,
                     "df_display": df_display,
                     "nom_activite": nom_activite
                 }
-            st.session_state.forcer_menu_activites_non_programmees  = False
+
+                # Rerun avec reaffichage des aggrid pour bonne mise à jour des évènements à prendre en compte par ces derniers
+                forcer_reaffichage_activites_non_programmees()
+                forcer_reaffichage_activites_programmees()     
+                st.rerun()
+
+            # Evènement de type "selectionChanged" ou "modelChanged"
+            else:
+                if index_df != st.session_state.activites_non_programmees_selected_row:
+                    st.session_state.activites_non_programmees_selected_row = index_df
+                    st.session_state.editeur_activite_courante_idx = index_df
+
+                    # Désactiver "rowClicked" pour cet aggrid et le retrigger pour les autres et remettre leur compteur d'event à zéro
+                    if "activites_non_programmees_event_counter" not in st.session_state:
+                        st.session_state.activites_non_programmees_event_counter = 0
+                    if st.session_state.activites_non_programmees_event_counter == 0:
+                        st.session_state.activites_non_programmees_event_counter += 1
+                        st.session_state.activites_non_programmees_update_on = ["modelChanged", "selectionChanged"]  
+                        st.session_state.activites_programmees_event_counter = 0
+                        st.session_state.activites_programmees_update_on = ["modelChanged", "selectionChanged", "rowClicked"]
+
+                        # Mise à jour du menu activité géré par afficher_sidebar()
+                        st.session_state.menu_activites = {
+                            "menu": "menu_activites_non_programmees",
+                            "df": df,
+                            "index_df": index_df,
+                            "df_display": df_display,
+                            "nom_activite": nom_activite
+                        }
+
+                        # Rerun avec reaffichage des aggrid pour bonne mise à jour des évènements à prendre en compte par ces derniers
+                        forcer_reaffichage_activites_non_programmees()
+                        forcer_reaffichage_activites_programmees()     
+                        st.rerun()
+                    else:
+                        # Mise à jour du menu activité géré par afficher_sidebar()
+                        st.session_state.menu_activites = {
+                            "menu": "menu_activites_non_programmees",
+                            "df": df,
+                            "index_df": index_df,
+                            "df_display": df_display,
+                            "nom_activite": nom_activite
+                        }
+
+                if st.session_state.forcer_menu_activites_non_programmees:
+                    st.session_state.menu_activites = {
+                        "menu": "menu_activites_non_programmees",
+                        "df": df,
+                        "index_df": index_df,
+                        "df_display": df_display,
+                        "nom_activite": nom_activite
+                    }
+                st.session_state.forcer_menu_activites_non_programmees  = False
+        else:
+            if index_df != st.session_state.activites_non_programmees_selected_row:
+                st.session_state.activites_non_programmees_selected_row = index_df
+                st.session_state.editeur_activite_courante_idx = index_df
+
+            # Mise à jour du menu activité géré par afficher_sidebar()
+            st.session_state.menu_activites_non_programmees = {
+                "menu": "menu_activites_non_programmees",
+                "df": df,
+                "index_df": index_df,
+                "df_display": df_display,
+                "nom_activite": nom_activite
+            }
 
         # Affichage des l'erreur renvoyée par le précédent run
         erreur = st.session_state.get("aggrid_activites_non_programmees_erreur") 
@@ -2092,22 +2166,34 @@ def afficher_activites_non_programmees(df):
         st.session_state.aggrid_activites_non_programmees_gerer_modification_cellule = True
 
         # # Affichage de l'activité sélectionnée
-        # st.markdown(f"🎯 Activité sélectionnée : **{nom_activite}**" if nom_activite != "" else "🎯 Activité sélectionnée : ")
+        # afficher_label_activite(nom_activite)
 
-    elif len(df) == 0:
-        st.session_state.menu_activite = {
-            "menu": "menu_activites_non_programmees",
-            "df": df,
-            "index_df": None,
-            "df_display": df_display,
-            "nom_activite": ""
-        }
+    elif len(df_display) == 0:
+        if MENU_ACTIVITE_UNIQUE:
+            st.session_state.menu_activites = {
+                "menu": "menu_activites_non_programmees",
+                "df": df,
+                "index_df": None,
+                "df_display": df_display,
+                "nom_activite": ""
+            }
+        else:
+            st.session_state.menu_activites_non_programmees = {
+                "menu": "menu_activites_non_programmees",
+                "df": df,
+                "index_df": None,
+                "df_display": df_display,
+                "nom_activite": ""
+            }
 
 # Menu activité à afficher dans la sidebar si click dans aggrid d'activités non programmées         }
 def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
 
     # Affichage contrôle Ajouter
-    ajouter_activite(df)
+    ajouter_activite(df, key="ajouter_activites_non_programmees")
+
+    # Affichage du label d'activité
+    afficher_label_activite(df, index_df, nom_activite)
 
     if nom_activite != "" and index_df is not None and len(df) > 0:
     
@@ -2145,48 +2231,59 @@ def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
             # Affichage Liste des jours possibles
             jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
             st.session_state.activites_non_programmees_jour_choisi = st.selectbox("Jours possibles", jours_label, label_visibility="visible", key = "ChoixJourProgrammationActiviteNonProgrammee") # , width=90
-    
-# Affichage de l'éditeur d'activité
-def afficher_editeur_activite(df):
-    with st.expander("Edition"):
-        # Rien à faire sur df vide
-        if len(df) <= 0:
-            return
-        
-        if "editeur_activite_courante_idx" in st.session_state:
-            index_df = st.session_state.editeur_activite_courante_idx 
-            row = df.loc[index_df]
-
-            if est_reserve(row):
-                colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt", "Debut", "Duree"]]
-            else:
-                colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt"]]
-
-            # Ajout de l'hyperlien aux infos éditables
-            colonnes_editables.append("Lien de recherche")
-
-            # Traitement de l'accentuation
-            colonnes_editables_avec_accents = [RENOMMAGE_COLONNES.get(col, col) for col in colonnes_editables]
             
-            if "editeur_activites_index_colonne_courante" not in st.session_state:
-                st.session_state.editeur_activites_index_colonne_courante = 0
+            # Affichage de l'éditeur d'activité
+            if st.button("Editeur", use_container_width=CENTRER_BOUTONS,  key="menu_activites_non_programmees_bouton_editeur"):
+                show_dialog_editeur_activite(df)
 
-            colonne = st.selectbox("⚙️ Colonne", colonnes_editables_avec_accents, key="selectbox_editeur_activites_choix_colonne")
-            st.session_state.editeur_activites_index_colonne_courante = colonnes_editables_avec_accents.index(colonne)
-            colonne_df = RENOMMAGE_COLONNES_INVERSE[colonne] if colonne in RENOMMAGE_COLONNES_INVERSE else colonne
+# Affichage de l'éditeur d'activité en mode modal
+@st.dialog("Editeur d'activité")
+def show_dialog_editeur_activite(df):
+    afficher_editeur_activite(df)
 
-            valeur_courante = None
-            if colonne_df != "Lien de recherche":
-                valeur_courante = row[colonne_df]
-            else:
-                liens_activites = st.session_state.get("liens_activites")
-                if isinstance(liens_activites, dict):
-                    if row["Activite"] in liens_activites:
-                        lien = liens_activites.get(row["Activite"])
-                        valeur_courante = lien
+# Affichage de l'éditeur d'activité
+def afficher_editeur_activite(df, key="editeur_activite"):
+    # Rien à faire sur df vide
+    if len(df) <= 0:
+        return
+    
+    if "editeur_activite_courante_idx" in st.session_state:
+        index_df = st.session_state.editeur_activite_courante_idx 
+        row = df.loc[index_df]
 
-            nouvelle_valeur = st.text_input(f"✏️ Valeur", "" if pd.isna(valeur_courante) else str(valeur_courante)) 
-            if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS, key="validation_editeur_activites"):
+        if est_reserve(row):
+            colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt", "Debut", "Duree"]]
+        else:
+            colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt"]]
+
+        # Ajout de l'hyperlien aux infos éditables
+        colonnes_editables.append("Lien de recherche")
+
+        # Traitement de l'accentuation
+        colonnes_editables_avec_accents = [RENOMMAGE_COLONNES.get(col, col) for col in colonnes_editables]
+        
+        if "editeur_activites_index_colonne_courante" not in st.session_state:
+            st.session_state.editeur_activites_index_colonne_courante = 0
+
+        colonne = st.selectbox("⚙️ Colonne", colonnes_editables_avec_accents, key=key+"_selectbox_choix_colonne")
+        st.session_state.editeur_activites_index_colonne_courante = colonnes_editables_avec_accents.index(colonne)
+        colonne_df = RENOMMAGE_COLONNES_INVERSE[colonne] if colonne in RENOMMAGE_COLONNES_INVERSE else colonne
+
+        valeur_courante = None
+        if colonne_df != "Lien de recherche":
+            valeur_courante = row[colonne_df]
+        else:
+            liens_activites = st.session_state.get("liens_activites")
+            if isinstance(liens_activites, dict):
+                if row["Activite"] in liens_activites:
+                    lien = liens_activites.get(row["Activite"])
+                    valeur_courante = lien
+
+        nouvelle_valeur = st.text_input(f"✏️ Valeur", "" if pd.isna(valeur_courante) else str(valeur_courante), key=key+"_valeur") 
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS, key=key+"_validation"):
                 st.session_state.editeur_activite_erreur = None
                 if colonne_df == "Lien de recherche":
                     undo_redo_save()
@@ -2218,11 +2315,14 @@ def afficher_editeur_activite(df):
                             st.session_state.editeur_activite_erreur = erreur
                             forcer_reaffichage_activites_non_programmees()
                             st.rerun()
-            
-            # Affichage des l'erreur renvoyée par le précédent run
-            erreur = st.session_state.get("editeur_activite_erreur") 
-            if erreur is not None:
-                st.error(erreur)
+        with col2:
+            if st.button(LABEL_BOUTON_ANNULER, use_container_width=CENTRER_BOUTONS):
+                st.rerun()
+        
+        # Affichage des l'erreur renvoyée par le précédent run
+        erreur = st.session_state.get("editeur_activite_erreur") 
+        if erreur is not None:
+            st.error(erreur)
 
 # Affecte une nouvelle valeur à une cellule du df donnée par son index et sa colonne
 def affecter_valeur(df, index, colonne, nouvelle_valeur, inhiber_gestion_modification_cellule=True):
@@ -2916,11 +3016,14 @@ def afficher_creneaux_disponibles(df):
         if len(df) <= 0:
             return
         
-        # Création des créneaux avant/après pour chaque spectacle programmé
+        # initialisation du flag traiter_pauses
         if "traiter_pauses" not in st.session_state:
             st.session_state.traiter_pauses = False
         traiter_pauses = st.session_state.traiter_pauses
+
+        # Création des créneaux avant/après pour chaque spectacle programmé
         creneaux = get_creneaux(df, activites_programmees, traiter_pauses) 
+
         if not creneaux.empty:
             st.markdown("##### Créneaux disponibles")
             choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
@@ -2948,24 +3051,51 @@ def afficher_creneaux_disponibles(df):
 
                 st.session_state.menu_creneaux_disponibles = {
                     "df": df,
-                    "date_ref": date_ref,
+                    "date": date_ref,
+                    "creneau": choix_creneau,
                     "activite": activite,
                 }
 
 # Menu de gestion des créneaux disponibles
-def menu_creneaux_disponibles(df, date_ref, activite):
+def menu_creneaux_disponibles(df, date, creneau, activite):
+
+    def st_info(label, info_text, label_separe=True):
+        if label_separe:
+            st.markdown(f"""
+            <div style='
+                font-size: 0.88rem;
+                font-weight: normal;
+                margin-bottom: 0.2rem;
+            '>
+                {label}
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.info(info_text)
+        else:
+            st.info(f"**{label}**: {info_text}")
 
     # Gestion du flag de traitement des pauses
+    if "traiter_pauses" not in st.session_state: 
+        st.session_state.traiter_pauses = False
     traiter_pauses = st.checkbox("Tenir compte des pauses", value=False)  
-    if "traiter_pauses" in st.session_state and traiter_pauses != st.session_state.traiter_pauses:
+    if traiter_pauses != st.session_state.traiter_pauses:
+        st.session_state.traiter_pauses = traiter_pauses
         forcer_reaffichage_df("creneaux_disponibles")
         st.session_state.creneaux_disponibles_choix_activite = None
-    st.session_state.traiter_pauses = traiter_pauses
+        st.rerun()
+
+    # Affichage du créneau sélectionné et de l'activité séléctionnées dans le créneau
+    st_info("Le", f"{int(date)}", label_separe=True)
+    st_info("Entre", creneau['Activité avant'], label_separe=True)
+    st_info("Et", creneau['Activité après'], label_separe=True)
+    st_info("Activité sélectionnée", activite['Activite'], label_separe=True)
+    
 
     # Gestion du bouton Programmer
     if activite is not None:
         if st.button(LABEL_BOUTON_PROGRAMMER, use_container_width=CENTRER_BOUTONS, key="AjouterAuPlanningParCréneau"):
-            programmer_activite_non_programmee(df, date_ref, activite)
+            programmer_activite_non_programmee(df, date, activite)
 
 # Force le reaffichage de l'agrid des activités programmées
 def forcer_reaffichage_activites_programmees():
@@ -2989,14 +3119,17 @@ def initialiser_etat_contexte(df, wb, fn, lnk):
     st.session_state.liens_activites = lnk
     st.session_state.nouveau_fichier = True
     st.session_state.compteur_activite = 0
-    st.session_state.menu_activite = None
+    st.session_state.menu_activites = None
+    st.session_state.menu_activites_programmees = None
+    st.session_state.menu_activites_non_programmees = None
+    st.session_state.menu_creneaux_disponibles = None
     initialiser_periode_a_programmer(df)
 
     forcer_reaffichage_activites_programmees()
     forcer_reaffichage_activites_non_programmees()
     forcer_reaffichage_df("creneaux_disponibles")
 
-def ajouter_activite(df):
+def ajouter_activite(df, key="ajouter_activite"):
     import numpy as np
 
     def get_nom_nouvelle_activite(df):
@@ -3019,7 +3152,7 @@ def ajouter_activite(df):
         st.session_state.compteur_activite = 0
 
     # Bouton Ajouter
-    if st.button(LABEL_BOUTON_AJOUTER, use_container_width=CENTRER_BOUTONS, key="ajouter_activite"):
+    if st.button(LABEL_BOUTON_AJOUTER, use_container_width=CENTRER_BOUTONS, key=key):
 
         undo_redo_save()
         new_idx = get_next_free_index(df)
@@ -3111,7 +3244,10 @@ def afficher_controles_edition():
 
 # Affichage des choix généraux
 def afficher_infos_generales(df):
-    with st.expander("Infos"):
+    with st.expander("ℹ️ Infos"):
+        # Vérification de l'aide
+        afficher_aide()        
+        
         # Vérification de cohérence des informations du df
         verifier_coherence(df) 
 
@@ -3124,6 +3260,14 @@ def initialiser_page():
     # Evite la surbrillance rose pâle des lignes qui ont le focus sans être sélectionnées dans les AgGrid
     patch_aggrid_css()
 
+# Affiche le label d'activité
+def afficher_label_activite(df, index_df, nom_activite):
+    if index_df is not None:
+        if est_reserve(df.loc[index_df]):
+            st.error(nom_activite)
+        else:
+            st.info(nom_activite)
+
 # Affichage de la la sidebar min avec menus fichier et edition 
 # (le reste est affiché dans d'affichage de données en fonction du contexte)
 def afficher_sidebar(df):
@@ -3133,52 +3277,57 @@ def afficher_sidebar(df):
         charger_contexte_depuis_fichier()
         creer_nouveau_contexte()
         sauvegarder_contexte()
-        afficher_infos_generales(df)
 
     with st.sidebar.expander("Edition"):
         afficher_controles_edition()
 
-    with st.sidebar.expander("Activité"):
-        if "menu_activite" in st.session_state and isinstance(st.session_state.menu_activite, dict):
-            if est_reserve(st.session_state.menu_activite["df"].loc[st.session_state.menu_activite["index_df"]]):
-                st.error(st.session_state.menu_activite["nom_activite"])
-            else:
-                st.info(st.session_state.menu_activite["nom_activite"])
+    if MENU_ACTIVITE_UNIQUE:
+        with st.sidebar.expander("Activités"):
+            if "menu_activites" in st.session_state and isinstance(st.session_state.menu_activites, dict):
+                if st.session_state.menu_activites["menu"] == "menu_activites_programmees":
+                    menu_activites_programmees(
+                        st.session_state.menu_activites["df"],
+                        st.session_state.menu_activites["index_df"],
+                        st.session_state.menu_activites["df_display"],
+                        st.session_state.menu_activites["nom_activite"],
+                    )
 
-            if st.session_state.menu_activite["menu"] == "menu_activites_programmees":
+                elif st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
+                    menu_activites_non_programmees(
+                        st.session_state.menu_activites["df"],
+                        st.session_state.menu_activites["index_df"],
+                        st.session_state.menu_activites["df_display"],
+                        st.session_state.menu_activites["nom_activite"],
+                    )
+
+                afficher_editeur_activite(df)
+    else:
+        with st.sidebar.expander("Activités programmées"):
+            if "menu_activites_programmees" in st.session_state and isinstance(st.session_state.menu_activites_programmees, dict):
                 menu_activites_programmees(
-                    st.session_state.menu_activite["df"],
-                    st.session_state.menu_activite["index_df"],
-                    st.session_state.menu_activite["df_display"],
-                    st.session_state.menu_activite["nom_activite"],
+                    st.session_state.menu_activites_programmees["df"],
+                    st.session_state.menu_activites_programmees["index_df"],
+                    st.session_state.menu_activites_programmees["df_display"],
+                    st.session_state.menu_activites_programmees["nom_activite"],
                 )
 
-            elif st.session_state.menu_activite["menu"] == "menu_activites_non_programmees":
+        with st.sidebar.expander("Activités non programmées"):
+            if "menu_activites_non_programmees" in st.session_state and isinstance(st.session_state.menu_activites_non_programmees, dict):
                 menu_activites_non_programmees(
-                    st.session_state.menu_activite["df"],
-                    st.session_state.menu_activite["index_df"],
-                    st.session_state.menu_activite["df_display"],
-                    st.session_state.menu_activite["nom_activite"],
+                    st.session_state.menu_activites_non_programmees["df"],
+                    st.session_state.menu_activites_non_programmees["index_df"],
+                    st.session_state.menu_activites_non_programmees["df_display"],
+                    st.session_state.menu_activites_non_programmees["nom_activite"],
                 )
-
-            afficher_editeur_activite(df)
-
-            # Affichage de l'activité sélectionnée
-            # label = f"{ st.session_state.menu_activite["nom_activite"]}" 
-            # label = label + " <span style='color:red'>(Réservé)</span></p>" if est_reserve(st.session_state.menu_activite["df"].loc[st.session_state.menu_activite["index_df"]]) else label
-            # label = f'<p style="font-size: 0.88rem">{label}</p>'
-            # st.markdown(label, unsafe_allow_html=True)
 
     with st.sidebar.expander("Créneaux disponibles"):
         if "menu_creneaux_disponibles" in st.session_state and isinstance(st.session_state.menu_creneaux_disponibles, dict):
             menu_creneaux_disponibles(
                 st.session_state.menu_creneaux_disponibles["df"],
-                st.session_state.menu_creneaux_disponibles["date_ref"],
+                st.session_state.menu_creneaux_disponibles["date"],
+                st.session_state.menu_creneaux_disponibles["creneau"],
                 st.session_state.menu_creneaux_disponibles["activite"],
             )
-
-    with st.sidebar.expander("ℹ️ À propos"):
-        afficher_aide()
 
 def main():
     
@@ -3202,6 +3351,9 @@ def main():
         # Met à jour les données calculées
         maj_donnees_calculees(df)
 
+        # Affichage des infos générales
+        afficher_infos_generales(df)
+        
         # Affichage des activités programmées
         afficher_activites_programmees(df)
 
