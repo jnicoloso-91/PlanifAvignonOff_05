@@ -3086,10 +3086,10 @@ def menu_creneaux_disponibles(df, date, creneau, activite):
         st.rerun()
 
     # Affichage du créneau sélectionné et de l'activité séléctionnées dans le créneau
-    st_info("Le", f"{int(date)}", label_separe=True)
-    st_info("Entre", creneau['Activité avant'], label_separe=True)
-    st_info("Et", creneau['Activité après'], label_separe=True)
-    st_info("Activité sélectionnée", activite['Activite'], label_separe=True)
+    st_info("Le", f"{int(date)}")
+    st_info(f"Entre {creneau['Debut']}", creneau['Activité avant'])
+    st_info(f"Et {creneau['Fin']}", creneau['Activité après'])
+    st_info(f"A {activite['Debut']}", activite['Activite'])
     
 
     # Gestion du bouton Programmer
