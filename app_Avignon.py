@@ -526,13 +526,6 @@ def st_info_avec_label(label, info_text, color="blue", afficher_label=True, labe
 
 # Indique si val est un float valide
 def est_float_valide(val):
-    # try:
-    #     # Convertit implicitement val en float, lève une exception si pas convertible
-    #     f = float(val)
-    #     # Vérifie qu'il n'est pas NaN (math.isnan accepte aussi np.nan)
-    #     return not math.isnan(f)
-    # except (TypeError, ValueError):
-    #     return False
     return (isinstance(val, float) or isinstance(val, int) or  isinstance(val, np.float64) or isinstance(val, np.int64)) and not math.isnan(val)
     
 # Renvoie val sous la forme "10h00" si datetime ou time, "" si None, str(val).strip() sinon
@@ -2302,6 +2295,9 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
         valeur_courante = None
         if colonne_df != "Lien de recherche":
             valeur_courante = row[colonne_df]
+            if colonne_df in ["Date", "Priorite"]:
+                if est_float_valide(valeur_courante):
+                    valeur_courante = int(valeur_courante)
         else:
             liens_activites = st.session_state.get("liens_activites")
             if isinstance(liens_activites, dict):
