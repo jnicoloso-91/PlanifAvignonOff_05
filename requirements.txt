@@ -9,3 +9,4 @@ google-auth
 google-api-python-client
 gspread_dataframe
 dropbox
+streamlit-javascript
