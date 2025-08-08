@@ -3471,10 +3471,10 @@ def menu_creneaux_disponibles(df, date, creneau, activite):
         debut_activite = ""
         nom_activite = ""
 
-    st_info_error_avec_label("Le", f"{date}", key="creneaux_le")
-    st_info_error_avec_label(f"Entre {debut_creneau}", activite_avant, key="creneaux_entre")
-    st_info_error_avec_label(f"Et {fin_creneau}", activite_apres, key="creneaux_et")
-    st_info_error_avec_label(f"A {debut_activite}", nom_activite, key="creneaux_a")
+    st_info_error_avec_label("Le", f"{date}")
+    st_info_error_avec_label(f"Entre {debut_creneau}", activite_avant)
+    st_info_error_avec_label(f"Et {fin_creneau}", activite_apres)
+    st_info_error_avec_label(f"A {debut_activite}", nom_activite)
     
 
     # Gestion du bouton Programmer
