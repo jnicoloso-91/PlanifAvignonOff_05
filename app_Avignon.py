@@ -167,6 +167,7 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
 
         sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
         # sheet_names = [f"data", f"links", f"meta", f"adrs"] # pour debugger en local 
+
         gsheets = {}
 
         for name in sheet_names:
@@ -210,6 +211,7 @@ def charger_contexte_depuis_gsheet():
                 worksheet = gsheets["adrs"]
                 ca = get_as_dataframe(worksheet, evaluate_formulas=True)
 
+                df = nettoyer_donnees(df)
                 initialiser_etat_contexte(df, wb, fn, lnk, ca)
                 undo_redo_init(verify=False)
             else:
@@ -560,15 +562,6 @@ def injecter_css_pour_primary_buttons(type_css):
     </style>
     """, unsafe_allow_html=True)
 
-# Palette "façon Streamlit"
-VARIANTS = {
-    "info":    {"bg": "#dbeafe", "border": "#3b82f6", "text": "#0b1220"},
-    "error":   {"bg": "#fee2e2", "border": "#ef4444", "text": "#0b1220"},
-    "warning": {"bg": "#fef3c7", "border": "#f59e0b", "text": "#0b1220"},
-    "success": {"bg": "#dcfce7", "border": "#22c55e", "text": "#0b1220"},
-    "neutral": {"bg": "#f3f4f6", "border": "#9ca3af", "text": "#0b1220"},
-}
-
 # Affiche l'équivalent d'un st.info ou st.error avec un label
 # Si key est fourni, un bouton clickable de type primary est utilisé 
 # Ce bouton doit être stylé avec un CSS ciblant les boutons de type primary et injecté par l'appelant pour être coloré correctement
@@ -600,6 +593,13 @@ def st_info_error_avec_label(label, info_text, key=None, color="blue", afficher_
     else:
         info_text = f"**{label}:** {info_text}" if afficher_label else info_text
         return st_info_error_ou_bouton(label, info_text, key, color)
+
+# Cast en int sûr
+def safe_int(val, default=None):
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
 
 # Indique si val est un float valide
 def est_float_valide(val):
@@ -1105,6 +1105,8 @@ def afficher_aide():
                 <li>La période programmation: elle est automatiquement déduite des activités renseignées dans le fichier chargé, mais peut être modifiée en cours d'édition. Par défaut l'application recherche les dates de début et de fin du festival de l'année courante.</li>
                 <li>Les paramètres de l'application comprennant:
                         <ul>
+                        <li>la marge entre activités</li>
+                        <li>la durée des pauses repas et café</li>
                         <li>le nom de l'application d'itinéraire (Google Maps, Apple, etc.)</li>
                         <li>la ville de recherche par défaut pour la recherche d'itinéraire</li>
                         <li>la possibilité de choisir si les menus de gestion des activités sont dans la barre latérale ou la page principale.</li>
@@ -1228,13 +1230,62 @@ def afficher_periode_a_programmer(df):
 def afficher_parametres():
     with st.expander("Paramètres"):
 
-        # Application itinéraire
+        # Marge entre activités et durée des pauses
+        if "MARGE" not in st.session_state:
+            st.session_state.MARGE = MARGE
 
-        # Récupération de la plateforme 
+        minutes = st.slider(
+            "Marge entre activités (minutes)",
+            min_value=0,
+            max_value=120,
+            value=int(st.session_state.MARGE.total_seconds() // 60),
+            step=5,
+            help="Cette marge s'applique au calcul des activités programmables dans un créneau donnée. Pour les pauses café elle ne s'applique qu'à l'activité suivante ou la précédente mais pas aux deux.",
+        )
+        nouvelle_marge = datetime.timedelta(minutes=minutes)
+        if st.session_state.MARGE != nouvelle_marge:
+            st.session_state.MARGE = nouvelle_marge  
+            forcer_reaffichage_df("creneaux_disponibles")
+            st.rerun()   
+
+        if "DUREE_REPAS" not in st.session_state:
+            st.session_state.DUREE_REPAS = DUREE_REPAS
+
+        minutes = st.slider(
+            "Durée des pauses repas (minutes)",
+            min_value=0,
+            max_value=120,
+            value=int(st.session_state.DUREE_REPAS.total_seconds() // 60),
+            step=5,
+            help="Durée appliquée à la programmation des pauses repas.",
+        )
+        nouvelle_duree = datetime.timedelta(minutes=minutes)
+        if st.session_state.DUREE_REPAS != nouvelle_duree:
+            st.session_state.DUREE_REPAS = nouvelle_duree  
+            forcer_reaffichage_df("creneaux_disponibles")
+            st.rerun()   
+
+        if "DUREE_CAFE" not in st.session_state:
+            st.session_state.DUREE_CAFE = DUREE_CAFE
+
+        minutes = st.slider(
+            "Durée des pauses café (minutes)",
+            min_value=0,
+            max_value=120,
+            value=int(st.session_state.DUREE_CAFE.total_seconds() // 60),
+            step=5,
+            help="Durée appliquée à la programmation des pauses café.",
+        )
+        nouvelle_duree = datetime.timedelta(minutes=minutes)
+        if st.session_state.DUREE_CAFE != nouvelle_duree:
+            st.session_state.DUREE_CAFE = nouvelle_duree  
+            forcer_reaffichage_df("creneaux_disponibles")
+            st.rerun()   
+
+        # Application itinéraire
         platform = get_platform()
 
         if platform is not None:
-            
             # Proposer le lien adapté
             if platform == "iOS":
                 options = ["Apple Maps", "Google Maps App", "Google Maps Web"]
@@ -1242,15 +1293,16 @@ def afficher_parametres():
                 options = ["Google Maps App", "Google Maps Web"]
             else:
                 options = ["Google Maps Web"]
-
+        
         if "itineraire_app" not in st.session_state:
             # Valeur par défaut pour l'application itinéraire
             st.session_state.itineraire_app = "Google Maps Web"
-        st.session_state.itineraire_app = st.selectbox("Application itinéraire", 
-                                                       options=options, 
-                                                       index=options.index(st.session_state.itineraire_app), 
-                                                       key="itineraire_app_selectbox", 
-                                                       help="Sélectionnez l'application à utiliser pour la recherche d'itinéraire. Si vous utilisez un téléphone mobile, vous pouvez chosir les applications Google Maps ou Apple Maps, ou bien Google Maps Web. Si vous utilisez un ordinateur, seul Google Maps Web est proposé.")
+        st.selectbox("Application itinéraire", 
+                    options=options, 
+                    index=options.index(st.session_state.itineraire_app), 
+                    key="itineraire_app", 
+                    help="Sélectionnez l'application à utiliser pour la recherche d'itinéraire. Si vous utilisez un téléphone mobile, vous pouvez chosir les applications Google Maps ou Apple Maps, ou bien Google Maps Web. Si vous utilisez un ordinateur, seul Google Maps Web est proposé.")
+
         # Ville par défaut
         if "city_default" not in st.session_state:
             st.session_state.city_default = "Avignon"
@@ -1301,6 +1353,9 @@ def nettoyer_donnees(df):
             # Suppression des lignes presque vides i.e. ne contenant que des NaN ou des ""
             df = df[~df.apply(lambda row: all(pd.isna(x) or str(x).strip() == "" for x in row), axis=1)].reset_index(drop=True)
 
+            # Transformation de la colonne Date en entiers
+            df["Date"] = pd.to_numeric(df["Date"], errors="coerce").astype("Int64")
+
             # Nettoyage Heure (transforme les datetime, time et None en str mais ne garantit pas le format HHhMM, voir heure_parse et est_heure_valide pour cela)
             df["Debut"] = df["Debut"].apply(heure_str)
 
@@ -1322,7 +1377,10 @@ def nettoyer_donnees(df):
             df["Priorite"] = pd.to_numeric(df["Priorite"], errors="coerce").astype("Int64")
 
             # Valide le contexte si pas d'exception dans le traitement précédent
-            del st.session_state["contexte_invalide"]
+            if "contexte_invalide" in st.session_state:
+                del st.session_state["contexte_invalide"]
+
+        return df
             
     except Exception as e:
         st.error(f"Erreur lors du décodage du fichier : {e}")
@@ -2825,7 +2883,14 @@ def get_creneaux(df, activites_programmees, traiter_pauses):
             "__index": row.name
         }
     
-    hash_val  = hash_df(df, colonnes_a_garder=[col for col in df.columns if col not in ["Debut_dt", "Duree_dt"]], params=traiter_pauses)
+    params_to_hash = [
+        traiter_pauses, 
+        st.session_state.get("MARGE", MARGE).total_seconds(), 
+        st.session_state.get("DUREE_REPAS", DUREE_REPAS).total_seconds(), 
+        st.session_state.get("DUREE_CAFE", DUREE_CAFE).total_seconds()
+    ]
+
+    hash_val  = hash_df(df, colonnes_a_garder=[col for col in df.columns if col not in ["Debut_dt", "Duree_dt"]], params=params_to_hash)
     hash_key = "creneaux__hash"
     key = "creneaux"
     
@@ -2937,7 +3002,7 @@ def get_activites_programmables_avant(df, activites_programmees, ligne_ref, trai
         h_debut = datetime.datetime.combine(BASE_DATE, row["Debut_dt"].time())
         h_fin = h_debut + row["Duree_dt"]
         # Le spectacle doit commencer après debut_min et finir avant fin_max
-        if h_debut >= debut_min + MARGE and h_fin <= fin_max - MARGE and est_hors_relache(row["Relache"], date_ref):
+        if h_debut >= debut_min + st.session_state.MARGE and h_fin <= fin_max - st.session_state.MARGE and est_hors_relache(row["Relache"], date_ref):
             nouvelle_ligne = row.drop(labels=["Date", "Debut_dt", "Duree_dt"]).to_dict()
             nouvelle_ligne["__type_activite"] = "ActiviteExistante"
             nouvelle_ligne["__index"] = row.name
@@ -2968,7 +3033,7 @@ def get_activites_programmables_apres(df, activites_programmees, ligne_ref, trai
         h_debut = datetime.datetime.combine(BASE_DATE, row["Debut_dt"].time())
         h_fin = h_debut + row["Duree_dt"]
         # Le spectacle doit commencer après debut_min et finir avant fin_max
-        if h_debut >= debut_min + MARGE and h_fin <= fin_max - MARGE and est_hors_relache(row["Relache"], date_ref):
+        if h_debut >= debut_min + st.session_state.MARGE and h_fin <= fin_max - st.session_state.MARGE and est_hors_relache(row["Relache"], date_ref):
             nouvelle_ligne = row.drop(labels=["Date", "Debut_dt", "Duree_dt"]).to_dict()
             nouvelle_ligne["__type_activite"] = "ActiviteExistante"
             nouvelle_ligne["__index"] = row.name
@@ -2989,27 +3054,27 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
     def ajouter_pause_repas(proposables, date_ref, debut_min, fin_max, pause_debut_min, pause_debut_max, type_repas):
         if not pause_deja_existante(activites_programmees, date_ref, type_repas):
             if type_creneau == "Avant":
-                h_dej = min(max(fin_max - DUREE_REPAS - MARGE, 
+                h_dej = min(max(fin_max - st.session_state.DUREE_REPAS - st.session_state.MARGE, 
                     datetime.datetime.combine(BASE_DATE, pause_debut_min)), 
                     datetime.datetime.combine(BASE_DATE, pause_debut_max))
-                if h_dej - MARGE >= debut_min and h_dej + MARGE <= fin_max:
+                if h_dej - st.session_state.MARGE >= debut_min and h_dej + st.session_state.MARGE <= fin_max:
                     nouvelle_ligne = completer_ligne({
                         "Debut": h_dej.strftime('%Hh%M'),
-                        "Fin": (h_dej + DUREE_REPAS).strftime('%Hh%M'),
-                        "Duree": duree_str(DUREE_REPAS),
+                        "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
+                        "Duree": duree_str(st.session_state.DUREE_REPAS),
                         "Activite": f"Pause {type_repas}",
                         "__type_activite": type_repas
                     })
                     proposables.append(nouvelle_ligne)
             elif type_creneau == "Après":
-                h_dej = min(max(debut_min + MARGE, 
+                h_dej = min(max(debut_min + st.session_state.MARGE, 
                     datetime.datetime.combine(BASE_DATE, pause_debut_min)), 
                     datetime.datetime.combine(BASE_DATE, pause_debut_max))
-                if h_dej - MARGE >= debut_min and h_dej + MARGE <= fin_max:
+                if h_dej - st.session_state.MARGE >= debut_min and h_dej + st.session_state.MARGE <= fin_max:
                     nouvelle_ligne = completer_ligne({
                         "Debut": h_dej.strftime('%Hh%M'),
-                        "Fin": (h_dej + DUREE_REPAS).strftime('%Hh%M'),
-                        "Duree": duree_str(DUREE_REPAS),
+                        "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
+                        "Duree": duree_str(st.session_state.DUREE_REPAS),
                         "Activite": f"Pause {type_repas}",
                         "__type_activite": type_repas
                     })
@@ -3021,26 +3086,26 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
             if type_creneau == "Avant":
                 i = activites_programmees.index.get_loc(ligne_ref.name)  
                 Lieu_ref_prev = activites_programmees.iloc[i - 1]["Lieu"] if i > 0 else None
-                h_cafe = fin_max - DUREE_CAFE
+                h_cafe = fin_max - st.session_state.DUREE_CAFE
                 if not pd.isna(Lieu_ref_prev) and Lieu_ref == Lieu_ref_prev: 
                     # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle précédent 
                     if h_cafe >= debut_min: 
                         nouvelle_ligne = completer_ligne({
                             "Debut": h_cafe.strftime('%Hh%M'),
-                            "Fin": (h_cafe + DUREE_CAFE).strftime('%Hh%M'),
-                            "Duree": duree_str(DUREE_CAFE),
+                            "Fin": (h_cafe + st.session_state.DUREE_CAFE).strftime('%Hh%M'),
+                            "Duree": duree_str(st.session_state.DUREE_CAFE),
                             "Activite": f"Pause café",
                             "__type_activite": "café"
                         })
                         proposables.append(nouvelle_ligne)
                 else: 
                     # Dans ce cas on tient compte de la marge avec le spectacle précédent sauf si debut_min = 0h00
-                    marge_cafe = MARGE if debut_min != datetime.datetime.combine(BASE_DATE, datetime.time(0, 0)) else datetime.timedelta(minutes=0) 
+                    marge_cafe = st.session_state.MARGE if debut_min != datetime.datetime.combine(BASE_DATE, datetime.time(0, 0)) else datetime.timedelta(minutes=0) 
                     if h_cafe >= debut_min + marge_cafe:
                         nouvelle_ligne = completer_ligne({
                             "Debut": h_cafe.strftime('%Hh%M'),
-                            "Fin": (h_cafe + DUREE_CAFE).strftime('%Hh%M'),
-                            "Duree": duree_str(DUREE_CAFE),
+                            "Fin": (h_cafe + st.session_state.DUREE_CAFE).strftime('%Hh%M'),
+                            "Duree": duree_str(st.session_state.DUREE_CAFE),
                             "Activite": "Pause café",
                             "__type_activite": "café"
                         })
@@ -3051,23 +3116,23 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                 h_cafe = debut_min
                 if not pd.isna(Lieu_ref_suiv) and Lieu_ref == Lieu_ref_suiv: 
                     # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle suivant 
-                    if h_cafe + DUREE_CAFE <= fin_max: 
+                    if h_cafe + st.session_state.DUREE_CAFE <= fin_max: 
                         nouvelle_ligne = completer_ligne({
                             "Debut": h_cafe.strftime('%Hh%M'),
-                            "Fin": (h_cafe + DUREE_CAFE).strftime('%Hh%M'),
-                            "Duree": duree_str(DUREE_CAFE),
+                            "Fin": (h_cafe + st.session_state.DUREE_CAFE).strftime('%Hh%M'),
+                            "Duree": duree_str(st.session_state.DUREE_CAFE),
                             "Activite": "Pause café",
                             "__type_activite": "café"
                         })
                         proposables.append(nouvelle_ligne)
                 else: 
                     # Dans ce cas on tient compte de la marge avec le spectacle suivant sauf si fin_max = 23h59
-                    marge_cafe = MARGE if fin_max != datetime.datetime.combine(BASE_DATE, datetime.time(23, 59)) else datetime.timedelta(minutes=0)
-                    if h_cafe + DUREE_CAFE <= fin_max - marge_cafe:
+                    marge_cafe = st.session_state.MARGE if fin_max != datetime.datetime.combine(BASE_DATE, datetime.time(23, 59)) else datetime.timedelta(minutes=0)
+                    if h_cafe + st.session_state.DUREE_CAFE <= fin_max - marge_cafe:
                         nouvelle_ligne = completer_ligne({
                             "Debut": h_cafe.strftime('%Hh%M'),
-                            "Fin": (h_cafe + DUREE_CAFE).strftime('%Hh%M'),
-                            "Duree": duree_str(DUREE_CAFE),
+                            "Fin": (h_cafe + st.session_state.DUREE_CAFE).strftime('%Hh%M'),
+                            "Duree": duree_str(st.session_state.DUREE_CAFE),
                             "Activite": "Pause café",
                             "__type_activite": "café"
                         })
@@ -3260,21 +3325,21 @@ def programmer_activite_non_programmee(df, date_ref, activite):
         index = len(df)  # Ajouter à la fin du DataFrame
         df.at[index, "Date"] = date_ref
         df.at[index, "Debut"] = activite["Debut"]
-        df.at[index, "Duree"] = formatter_timedelta(DUREE_REPAS)
+        df.at[index, "Duree"] = formatter_timedelta(st.session_state.DUREE_REPAS)
         df.at[index, "Activite"] = "Pause déjeuner"
     elif type_activite == "dîner":
         # Pour les pauses, on ne programme pas d'heure spécifique
         index = len(df)  # Ajouter à la fin du DataFrame
         df.at[index, "Date"] = date_ref
         df.at[index, "Debut"] = activite["Debut"]
-        df.at[index, "Duree"] = formatter_timedelta(DUREE_REPAS)
+        df.at[index, "Duree"] = formatter_timedelta(st.session_state.DUREE_REPAS)
         df.at[index, "Activite"] = "Pause dîner"
     elif type_activite == "café":
         # Pour les pauses, on ne programme pas d'heure spécifique
         index = len(df)  # Ajouter à la fin du DataFrame
         df.at[index, "Date"] = date_ref
         df.at[index, "Debut"] = activite["Debut"]
-        df.at[index, "Duree"] = formatter_timedelta(DUREE_CAFE)
+        df.at[index, "Duree"] = formatter_timedelta(st.session_state.DUREE_CAFE)
         df.at[index, "Activite"] = "Pause café"
 
     st.session_state.activites_programmees_selected_row = index
@@ -3312,14 +3377,14 @@ def get_jours_possibles(df, activites_programmees, idx_activite):
                 premiere_activite_du_jour = activites_programmes_du_jour.iloc[0]
                 borne_inf = datetime.datetime.combine(BASE_DATE, datetime.time.min)  # 00h00
                 borne_sup = premiere_activite_du_jour["Debut_dt"]
-                if debut > borne_inf + MARGE and fin < borne_sup - MARGE:
+                if debut > borne_inf + st.session_state.MARGE and fin < borne_sup - st.session_state.MARGE:
                     jours_possibles.append(jour)
                     continue  # on prend le premier créneau dispo du jour
 
                 # Ensuite, créneaux entre chaque activité programmée
                 for _, ligne in activites_programmes_du_jour.iterrows():
                     borne_inf, borne_sup, _ = get_creneau_bounds_apres(activites_programmes_du_jour, ligne)
-                    if debut > borne_inf + MARGE and fin < borne_sup - MARGE:
+                    if debut > borne_inf + st.session_state.MARGE and fin < borne_sup - st.session_state.MARGE:
                         jours_possibles.append(jour)
                         break  # jour validé, on passe au suivant
             else: # jour libre
@@ -3445,24 +3510,25 @@ def afficher_creneaux_disponibles(df):
                     label = f"Activités programmables sur le créneau du {int(date_ref)} entre [{choix_creneau["Debut"]}-{choix_creneau["Fin"]}]"
                     activite = afficher_df(label, proposables, hide=["__type_activite", "__index"], key="activites_programmables_dans_creneau_selectionne")
 
-                st.session_state.menu_creneaux_disponibles = {
-                    "df": df,
-                    "date": date_ref,
-                    "creneau": choix_creneau,
-                    "activite": activite,
-                }
+                    st.session_state.menu_creneaux_disponibles = {
+                        "df": df,
+                        "date": date_ref,
+                        "creneau": choix_creneau,
+                        "activite": activite,
+                    }
 
-                if not st.session_state.get("sidebar_menus"):
-                    with st.expander("Contrôles"):
-                        menu_creneaux_disponibles(df, date_ref, choix_creneau, activite)
+                    if not st.session_state.get("sidebar_menus"):
+                        with st.expander("Contrôles"):
+                            menu_creneaux_disponibles(df, date_ref, choix_creneau, activite)
+                    
+                    return
 
-    else:
-        st.session_state.menu_creneaux_disponibles = {
-            "df": df,
-            "date": None,
-            "creneau": None,
-            "activite": None,
-        }
+    st.session_state.menu_creneaux_disponibles = {
+        "df": df,
+        "date": None,
+        "creneau": None,
+        "activite": None,
+    }
 
 # Menu de gestion des créneaux disponibles
 def menu_creneaux_disponibles(df, date, creneau, activite):
@@ -3615,7 +3681,7 @@ def charger_contexte_depuis_fichier():
                 lnk = get_liens_activites(wb)
                 sheetnames = wb.sheetnames
                 ca = pd.read_excel(fd, sheet_name=sheetnames[1]) if len(sheetnames) > 1 else None
-                nettoyer_donnees(df)
+                df = nettoyer_donnees(df)
                 if "contexte_invalide" not in st.session_state:
                     initialiser_etat_contexte(df, wb, fd.name, lnk, ca)
                     undo_redo_init(verify=False)
