@@ -76,7 +76,7 @@ PALETTE_COULEURS_JOURS = {
 
 # AgGrid uodate_on
 AGGRID_UPDATE_ON_MENU_ACTIVITE_DOUBLE = ["modelChanged", "selectionChanged"]
-AGGRID_UPDATE_ON_MENU_ACTIVITE_UNIQUE = ["modelChanged", "selectionChanged", "headerFocused"] 
+AGGRID_UPDATE_ON_MENU_ACTIVITE_UNIQUE = ["modelChanged", "selectionChanged"] #, "headerFocused"] 
 MENU_ACTIVITE_UNIQUE = True
 
 LABEL_BOUTON_NOUVEAU = "Nouveau"
