@@ -23,7 +23,7 @@ import time
 from streamlit_javascript import st_javascript
 
 # Debug
-DEBUG_TRACE_MODE = True
+DEBUG_TRACE_MODE = False
 DEBUG_TRACE_TYPE = ["event"]
 def debug_trace(trace, trace_type=["all"]):
     trace_type_requested = [s.lower() for s in DEBUG_TRACE_TYPE]
