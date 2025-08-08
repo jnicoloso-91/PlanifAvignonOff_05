@@ -3705,7 +3705,7 @@ def initialiser_page():
 # Affiche le nom d'activité
 def afficher_nom_activite(df, index_df, nom_activite=None, afficher_label=True):
 
-    afficher_label = False if st.session_state.sidebar_menus else afficher_label
+    afficher_label = False if not st.session_state.sidebar_menus else afficher_label
     
     if index_df is not None:
         row = df.loc[index_df]
@@ -3731,7 +3731,7 @@ def afficher_nom_activite_clickable(df, index_df, nom_activite=None, afficher_la
 
     hit = False
     key = "nom_activite_clickable" if st.session_state.sidebar_menus else None
-    afficher_label = False if st.session_state.sidebar_menus else afficher_label
+    afficher_label = False if not st.session_state.sidebar_menus else afficher_label
 
     if index_df is not None:
         row = df.loc[index_df]
