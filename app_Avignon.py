@@ -21,6 +21,8 @@ import json
 import numpy as np
 import time
 from streamlit_javascript import st_javascript
+import unicodedata
+from urllib.parse import quote_plus
 
 # Debug
 DEBUG_TRACE_MODE = False
@@ -44,6 +46,7 @@ MAX_HISTORIQUE = 20
 
 COLONNES_ATTENDUES = ["Date", "Debut", "Fin", "Duree", "Activite", "Lieu", "Relache", "Reserve", "Priorite", "Commentaire"]
 COLONNES_ATTENDUES_ACCENTUEES = ["Date", "Début", "Fin", "Durée", "Activité", "Lieu", "Relâche", "Réservé", "Priorité", "Commentaire"]
+COLONNES_ATTENDUES_CARNET_ADRESSES = ["Nom", "Adresse"]
 
 RENOMMAGE_COLONNES = {
     "Debut": "Début",
@@ -162,8 +165,8 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
             st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
             st.stop()    
 
-        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
-        # sheet_names = [f"data", f"links", f"meta"] # pour debugger en local 
+        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
+        # sheet_names = [f"data", f"links", f"meta", f"adrs"] # pour debugger en local 
         gsheets = {}
 
         for name in sheet_names:
@@ -171,7 +174,7 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
                 ws = sh.worksheet(name)
             except gspread.WorksheetNotFound:
                 ws = sh.add_worksheet(title=name, rows=1000, cols=20)
-            gsheets[name.split("_")[0]] = ws  # 'data', 'links', 'meta'
+            gsheets[name.split("_")[0]] = ws  # 'data', 'links', 'meta', 'adrs'
 
     return gsheets
 
@@ -204,7 +207,10 @@ def charger_contexte_depuis_gsheet():
                 if fp is None or str(fp).strip() == "":
                     wb = download_excel_from_dropbox(fp)
 
-                initialiser_etat_contexte(df, wb, fn, lnk)
+                worksheet = gsheets["adrs"]
+                ca = get_as_dataframe(worksheet, evaluate_formulas=True)
+
+                initialiser_etat_contexte(df, wb, fn, lnk, ca)
                 undo_redo_init(verify=False)
             else:
                 initialiser_nouveau_contexte(avec_sauvegarde=False)
@@ -262,7 +268,7 @@ def sauvegarder_row_ds_gsheet(df, index_df):
             pass
 
 # 📤 Sauvegarde l'ensemble des infos persistées dans la Google Sheet
-def sauvegarder_contexte_ds_gsheet(df: pd.DataFrame, lnk, fd=None):
+def sauvegarder_contexte_ds_gsheet(df: pd.DataFrame, lnk, fd=None, ca=None):
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
         try:
             gsheets = st.session_state.gsheets
@@ -285,6 +291,10 @@ def sauvegarder_contexte_ds_gsheet(df: pd.DataFrame, lnk, fd=None):
             else:
                 worksheet.update_acell("A1", "")
                 worksheet.update_acell("A2", "")
+
+            worksheet = gsheets["adrs"]
+            worksheet.clear()
+            set_with_dataframe(worksheet, ca)
 
         except Exception as e:
             pass
@@ -1074,8 +1084,16 @@ def afficher_aide():
             <ul style="margin-top: 0em">
                 <li>Menu Fichier: permet de charger un contexte à partir d'un fichier, initialiser un nouveau contexte, sauvegarder le contexte courant dans un fichier téléchargeable.</li>
                 <li>Menu Edition: permet de défaire, refaire une opération.</li>
-                <li>Menu Activités programmées: permet sur l'activité programmée courante de rechercher de l'information sur le net (via un lien éditable dans les propriétés), supprimer cette activité (si elles est non réservée), la déprogrammer, la reprogrammer et éditer ses propriétés.</li>
-                <li>Menu Activités non programmées: permet de créer une nouvelle activité et sur l'activité non programmée courante de rechercher de l'informations sur le net, supprimer et programmer cette activité, éditer ses propriétés.</li>
+                <li>Menu Activités: permet sur l'activité séléctionnée dans les tableaux d'activites programmées et non programmées (vous pouvez passer de l'activité sélectionnée dans l'un ou l'autre des tableaux en cliquant sur le champ affichant l'activité courante) de:
+                        <ul>
+                        <li>rechercher de l'information sur le Web (via un lien Web éditable dans les propriétés),</li> 
+                        <li>rechercher un itinaire, sur la base du lieu enregistré pour l'activité (l'application d'itinéraire et la ville de recherche par défaut sont réglables dans la section Paramètres et un carnet d'adresses avec colonnes Nom et Adresse peut être enregistré dans la feuille 2 du fichier Excel d'entrée),</li>
+                        <li>supprimer l'activité (si elle n'est pas réservée),</li> 
+                        <li>déprogrammer l'activité (si elle est déjà programmée sans être réservée),</li>
+                        <li>programmer / reprogrammer l'activité (si elle n'est pas réservée et que d'autres dates de programmation sont possibles)</li>
+                        <li>éditer les propriétés l'activité.</li>
+                        </ul>
+                </li>
                 <li>Menu créneau disponible: présente le créneau sélectionné dans la table des créneaux disponibles, l'activité sélectionnée dans la table des activités programmables sur ce créneau et permet de programmer ladite activité sur le créneau choisi.</li>
             </ul>
                         
@@ -1085,6 +1103,12 @@ def afficher_aide():
                 <li>Une rubrique présentant les incohérences dans le fichier chargé (notamment les chevauchements de programmation en tenant compte des marges entre activités). 
                     Cette rubrique est mise à jour au fil de l'eau.</li>
                 <li>La période programmation: elle est automatiquement déduite des activités renseignées dans le fichier chargé, mais peut être modifiée en cours d'édition. Par défaut l'application recherche les dates de début et de fin du festival de l'année courante.</li>
+                <li>Les paramètres de l'application comprennant:
+                        <ul>
+                        <li>Le nom de l'application d'itinéraire (Google Maps, Apple, etc.)</li>
+                        <li>La ville de recherche par défaut pour la recherche d'itinéraire.</li>
+                        </ul>
+                </li>
             </ul>
                         
             <p>A la première utilisation l'application propose à l'utilisateur de créer un espace personnel dans lequel est automatiquement sauvegardé le contexte de travail (l'adresse de cet espace est : adresse de l'application/?user_id=id utilisateur).
@@ -1095,7 +1119,7 @@ def afficher_aide():
         with st.expander("Format des données"):
             st.markdown("""
             <div style='font-size: 14px;'>
-            <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir les colonnes suivantes:</p>
+            <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir en feuille 1 les colonnes suivantes:</p>
             <ul style="margin-top: 0em; margin-bottom: 2em">
             <li>Date : Date de l'activité (entier)</li>
             <li>Début : Heure de début de l'activité (format HHhMM)</li>
@@ -1107,7 +1131,10 @@ def afficher_aide():
             <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
             </ul>
 
-            <p style="margin-bottom: 0.2em">📥Un modèle Excel est disponible <a href="https://github.com/jnicoloso-91/PlanifAvignon-05/raw/main/Mod%C3%A8le%20Excel.xlsx" download>
+            <p>En feuille 2 peut être fourni un carnet d'adresses des lieux d'activités utilisé pour la recherche d'itinéraire. 
+            Il doit comprendre au moins une colonne Nom et une colonne Adresse.</p>
+
+            <p>📥Un modèle Excel est disponible <a href="https://github.com/jnicoloso-91/PlanifAvignon-05/raw/main/Mod%C3%A8le%20Excel.xlsx" download>
             ici
             </a></p>
             <p>ℹ️ Si le téléchargement ne démarre pas, faites un clic droit → "Enregistrer le lien sous...".</p>
@@ -1195,6 +1222,42 @@ def afficher_periode_a_programmer(df):
                 st.session_state.periode_a_programmer_debut = st.date_input("Début", value=st.session_state.periode_a_programmer_debut, format="DD/MM/YYYY")
             with col2:
                 st.session_state.periode_a_programmer_fin = st.date_input("Fin", value=st.session_state.periode_a_programmer_fin, format="DD/MM/YYYY")
+
+# Affichage des paramètres
+def afficher_parametres():
+    with st.expander("Paramètres"):
+
+        # Application itinéraire
+
+        # Récupération de la plateforme 
+        platform = get_platform()
+
+        if platform is not None:
+            
+            # Proposer le lien adapté
+            if platform == "iOS":
+                options = ["Apple Maps", "Google Maps App", "Google Maps Web"]
+            elif platform == "Android":
+                options = ["Google Maps App", "Google Maps Web"]
+            else:
+                options = ["Google Maps Web"]
+
+        if "itineraire_app" not in st.session_state:
+            # Valeur par défaut pour l'application itinéraire
+            st.session_state.itineraire_app = "Google Maps Web"
+        st.session_state.itineraire_app = st.selectbox("Application itinéraire", 
+                                                       options=options, 
+                                                       index=options.index(st.session_state.itineraire_app), 
+                                                       key="itineraire_app_selectbox", 
+                                                       help="Sélectionnez l'application à utiliser pour la recherche d'itinéraire. Si vous utilisez un téléphone mobile, vous pouvez chosir les applications Google Maps ou Apple Maps, ou bien Google Maps Web. Si vous utilisez un ordinateur, seul Google Maps Web est proposé.")
+        # Ville par défaut
+        if "city_default" not in st.session_state:
+            st.session_state.city_default = "Avignon"
+        st.session_state.city_default = st.text_input("Ville par défaut pour la recherche d'itinéraire",
+                                                      value=st.session_state.city_default,
+                                                      key="city_default_input",
+                                                      help="Si vide, la ville du lieu de l'activité est utilisée.")
+
 
 # Met à jour les données calculées
 def maj_donnees_calculees(df):
@@ -1488,7 +1551,7 @@ def get_activites_non_programmees(df):
     # )].sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
 
 # Affiche le bouton de recharche sur le web
-def afficher_bouton_recherche_web(nom_activite, disabled=False):    
+def afficher_bouton_web(nom_activite, disabled=False):    
 
     #Retour si nom activité vide
     if pd.isna(nom_activite):
@@ -1541,31 +1604,167 @@ def get_platform():
     st.session_state["platform"] = platform
     st.rerun()   
 
-# Affiche le bouton de recharche d'itinéraire
-def afficher_bouton_recherche_itineraire(adresse, disabled=False):  
+from difflib import SequenceMatcher
 
-    # Correction adresse
-    adresse = adresse if isinstance(adresse, str) else ""
-    adresse = adresse + " Avignon" if adresse != "" and not "avignon" in adresse.lower()  else adresse
-    adresse = adresse.replace(' ', '+')
+def _normalize(txt: str) -> str:
+    if not isinstance(txt, str):
+        return ""
+    # minuscules + sans accents + espaces compactés
+    t = unicodedata.normalize("NFD", txt).encode("ascii", "ignore").decode("ascii")
+    t = re.sub(r"\s+", " ", t.strip().lower())
+    return t
 
-    # Récupération de la plateforme 
-    platform = get_platform()
+def _best_match_row(carnet_df: pd.DataFrame, key_norm: str):
+    """
+    Retourne l'index de la meilleure ligne matchée dans carnet_df
+    selon l'ordre: égalité stricte > contains > fuzzy.
+    Renvoie None si aucun candidat crédible.
+    """
+    if carnet_df.empty:
+        return None
 
-    placeholder = st.empty()
+    # Prépare colonne normalisée
+    if "_Nom_norm" not in carnet_df.columns:
+        carnet_df["_Nom_norm"] = carnet_df["Nom"].astype(str).apply(_normalize)
 
-    if platform is not None:
-        
-        # Proposer le lien adapté
-        if platform == "iOS":
-            url = f"http://maps.apple.com/?daddr={adresse}"
-        elif platform == "Android":
-            url = f"https://maps.google.com/?q={adresse}"
+    noms = carnet_df["_Nom_norm"]
+
+    # 1) égalité stricte
+    exact = carnet_df.index[noms == key_norm]
+    if len(exact):
+        return exact[0]
+
+    # 2) contains (key dans nom)
+    contains_idx = [i for i, n in noms.items() if key_norm in n]
+    if contains_idx:
+        # si plusieurs, prend le plus proche via ratio fuzzy
+        if len(contains_idx) == 1:
+            return contains_idx[0]
+        best = max(contains_idx, key=lambda i: SequenceMatcher(None, key_norm, noms[i]).ratio())
+        return best
+
+    # 3) fuzzy global (utile si fautes de frappe)
+    # on prend les candidats avec ratio >= 0.75 et choisit le meilleur
+    scored = [(i, SequenceMatcher(None, key_norm, n).ratio()) for i, n in noms.items()]
+    scored = [x for x in scored if x[1] >= 0.75]
+    if scored:
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return scored[0][0]
+
+    return None
+
+@st.cache_data(show_spinner=False)
+def prepare_carnet(carnet_df: pd.DataFrame) -> pd.DataFrame:
+    """Ajoute une colonne normalisée (une seule fois, puis cache)."""
+    df = carnet_df.copy()
+    if "Nom" in df.columns:
+        df["_Nom_norm"] = df["Nom"].astype(str).map(_normalize)
+    else:
+        df["_Nom_norm"] = ""
+    return df
+
+def resolve_address_fast(lieu: str, carnet_df: pd.DataFrame | None, city_default="Avignon"):
+    """
+    1) Cherche dans le carnet par égalité puis 'contains' (normalisé, sans accents).
+    2) Si rien -> renvoie 'lieu, <city>'.
+    Retourne (addr_humaine, addr_enc).
+    """
+    lieu = lieu if isinstance(lieu, str) else ""
+    lieu = lieu.strip()
+    key = _normalize(lieu)
+
+    addr = ""
+    if carnet_df is not None and {"Nom","Adresse"}.issubset(carnet_df.columns):
+        df = prepare_carnet(carnet_df)
+
+        # match exact (rapide)
+        hit = df.loc[df["_Nom_norm"].eq(key)]
+        if hit.empty and key:
+            # contains (vectorisé)
+            hit = df.loc[df["_Nom_norm"].str.contains(re.escape(key), na=False)]
+
+        if not hit.empty:
+            val = hit.iloc[0]["Adresse"]
+            if pd.notna(val):
+                addr = str(val).strip()
+
+    if not addr:
+        # fallback toujours: lieu + ville
+        addr = f"{lieu}, {city_default}" if lieu else city_default
+
+    return addr, quote_plus(addr)
+
+def resolve_address(lieu: str, carnet_df: pd.DataFrame | None = None, default_city="Avignon"):
+    """
+    Retourne (addr_humaine, addr_enc) en essayant d'abord le carnet (Nom -> Adresse)
+    avec recherche accent-insensible, partielle, et fuzzy.
+    Si pas trouvé, ajoute toujours ", <city>" au lieu.
+    """
+    lieu = lieu if isinstance(lieu, str) else ""
+    saisie = lieu.strip()
+    key = _normalize(saisie)
+
+    addr = ""
+
+    if carnet_df is not None and {"Nom", "Adresse"}.issubset(carnet_df.columns):
+        try:
+            row_idx = _best_match_row(carnet_df, key)
+            if row_idx is not None:
+                val = carnet_df.loc[row_idx, "Adresse"]
+                if pd.notna(val):
+                    addr = str(val).strip()
+        except Exception:
+            pass  # pas de blocage si carnet mal formé
+
+    # Fallback : toujours ajouter la ville si rien trouvé
+    if not addr:
+        if saisie:
+            addr = f"{saisie}, {default_city}"
         else:
-            # url = f"https://www.google.com/maps/search/?api=1&query={adresse}"
-            url = f"https://www.google.com/maps/dir/?api=1&destination={adresse}"
+            addr = default_city
 
-        placeholder.link_button(LABEL_BOUTON_CHERCHER_ITINERAIRE, url, use_container_width=CENTRER_BOUTONS, disabled=disabled or adresse == "")    
+    addr_enc = quote_plus(addr) if addr else ""
+    return addr, addr_enc
+
+# Affiche le bouton de recherche d'itinéraire
+def afficher_bouton_itineraire(lieu, disabled=False):  
+
+    # Bouton désactivé si lieu vide ou None
+    if pd.isna(lieu) or not str(lieu).strip():
+        st.link_button(
+            LABEL_BOUTON_CHERCHER_ITINERAIRE,
+            "#",  # pas de lien cliquable
+            use_container_width=CENTRER_BOUTONS,
+            disabled=True
+        )
+        return
+    
+     # Résolution depuis carnet + fallback
+    addr_human, addr_enc = resolve_address_fast(lieu, st.session_state.carnet_adresses, city_default=st.session_state.city_default)
+    itineraire_app = st.session_state.get("itineraire_app", "Google Maps Web")
+    platform = get_platform()  
+
+    if itineraire_app == "Apple Maps" and platform == "iOS":
+        url = f"http://maps.apple.com/?daddr={addr_enc}"
+
+    elif itineraire_app == "Google Maps App":
+        if platform == "iOS":
+            url = f"comgooglemaps://?daddr={addr_enc}"
+        elif platform == "Android":
+            url = f"geo:0,0?q={addr_enc}"
+        else:
+            # Sur desktop, on retombe sur la version web
+            url = f"https://www.google.com/maps/dir/?api=1&destination={addr_enc}"
+
+    else:  # Google Maps Web
+        url = f"https://www.google.com/maps/dir/?api=1&destination={addr_enc}"
+
+    st.link_button(
+        LABEL_BOUTON_CHERCHER_ITINERAIRE,
+        url,
+        use_container_width=CENTRER_BOUTONS,
+        disabled=disabled or not addr_enc
+    )
 
 # Indique si une activité donnée par son descripteur dans le df est réservée
 def est_reserve(ligne_df):
@@ -1972,10 +2171,10 @@ def menu_activites_programmees(df, index_df, df_display, nom_activite):
         afficher_nom_activite(df, index_df, nom_activite)
 
     # Affichage du contrôle recherche sur le Web
-    afficher_bouton_recherche_web(nom_activite, disabled=boutons_disabled or est_pause_str(nom_activite))
+    afficher_bouton_web(nom_activite, disabled=boutons_disabled or est_pause_str(nom_activite))
 
     # Affichage du contrôle recherche itinéraire
-    afficher_bouton_recherche_itineraire(df.loc[index_df, "Lieu"] if pd.notna(index_df) and len(df) > 0 else "")
+    afficher_bouton_itineraire(df.loc[index_df, "Lieu"] if pd.notna(index_df) and len(df) > 0 else "")
 
     # Affichage contrôle Supprimer
     if st.button(LABEL_BOUTON_SUPPRIMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled or activite_reservee, key="SupprimerActiviteProgrammee"):
@@ -2321,10 +2520,10 @@ def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
         afficher_nom_activite(df, index_df, nom_activite)
 
     # Affichage du contrôle recherche sur le Web
-    afficher_bouton_recherche_web(nom_activite, disabled=boutons_disabled or est_pause_str(nom_activite))
+    afficher_bouton_web(nom_activite, disabled=boutons_disabled or est_pause_str(nom_activite))
 
     # Affichage du contrôle recherche itinéraire
-    afficher_bouton_recherche_itineraire(df.loc[index_df, "Lieu"] if pd.notna(index_df) and len(df) > 0 else "")
+    afficher_bouton_itineraire(df.loc[index_df, "Lieu"] if pd.notna(index_df) and len(df) > 0 else "")
 
     # Affichage contrôle Supprimer
     if st.button(LABEL_BOUTON_SUPPRIMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled, key="SupprimerActiviteNonProgrammee"):
@@ -2407,7 +2606,7 @@ def afficher_editeur_activite(df, index_df=None, modale=False, key="editeur_acti
             colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt"]]
 
         # Ajout de l'hyperlien aux infos éditables
-        colonnes_editables.append("Lien de recherche")
+        colonnes_editables.append("lien Web")
 
         # Traitement de l'accentuation
         colonnes_editables_avec_accents = [RENOMMAGE_COLONNES.get(col, col) for col in colonnes_editables]
@@ -2420,7 +2619,7 @@ def afficher_editeur_activite(df, index_df=None, modale=False, key="editeur_acti
         colonne_df = RENOMMAGE_COLONNES_INVERSE[colonne] if colonne in RENOMMAGE_COLONNES_INVERSE else colonne
 
         valeur_courante = None
-        if colonne_df != "Lien de recherche":
+        if colonne_df != "lien Web":
             valeur_courante = row[colonne_df]
             if colonne_df in ["Date", "Priorite"]:
                 if est_float_valide(valeur_courante):
@@ -2439,7 +2638,7 @@ def afficher_editeur_activite(df, index_df=None, modale=False, key="editeur_acti
         with col1:
             if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS, key=key+"_validation"):
                 st.session_state.editeur_activite_erreur = None
-                if colonne_df == "Lien de recherche":
+                if colonne_df == "lien Web":
                     undo_redo_save()
                     if "liens_activites" not in st.session_state:
                         st.session_state.liens_activites = {}
@@ -3297,11 +3496,12 @@ def forcer_reaffichage_activites_non_programmees():
         st.session_state.aggrid_activites_non_programmees_forcer_reaffichage = True
 
 # Initialisation des variables d'état du contexte après chargement des données du contexte
-def initialiser_etat_contexte(df, wb, fn, lnk):
+def initialiser_etat_contexte(df, wb, fn, lnk, ca):
     st.session_state.df = df
     st.session_state.wb = wb
     st.session_state.fn = fn
     st.session_state.liens_activites = lnk
+    st.session_state.carnet_adresses = ca
     st.session_state.nouveau_fichier = True
     st.session_state.compteur_activite = 0
     st.session_state.menu_activites = None
@@ -3386,13 +3586,15 @@ def charger_contexte_depuis_fichier():
                 df = pd.read_excel(fd)
                 wb = load_workbook(fd)
                 lnk = get_liens_activites(wb)
+                sheetnames = wb.sheetnames
+                ca = pd.read_excel(fd, sheet_name=sheetnames[1]) if len(sheetnames) > 1 else None
                 nettoyer_donnees(df)
                 if "contexte_invalide" not in st.session_state:
-                    initialiser_etat_contexte(df, wb, fd.name, lnk)
+                    initialiser_etat_contexte(df, wb, fd.name, lnk, ca)
                     undo_redo_init(verify=False)
-                    sauvegarder_contexte_ds_gsheet(df, lnk, fd)
+                    sauvegarder_contexte_ds_gsheet(df, lnk, fd, ca)
             except Exception as e:
-                st.error(f"Erreur lors du chargement du fichier : {e}")
+                st.sidebar.error(f"Erreur de chargement du fichier : {e}")
                 st.session_state.contexte_invalide = True
 
     # Chargement du fichier Excel contenant les activités à programmer
@@ -3418,13 +3620,14 @@ def initialiser_nouveau_contexte(avec_sauvegarde=True):
     wb = None
     fn = "planning_avignon.xlsx"
     lnk = {}
+    ca = pd.DataFrame(columns=COLONNES_ATTENDUES_CARNET_ADRESSES)
     
     df["Date"] = pd.to_numeric(df["Date"], errors="coerce").astype("Int64")
     df["Priorite"] = pd.to_numeric(df["Priorite"], errors="coerce").astype("Int64")
 
-    initialiser_etat_contexte(df, wb, fn, lnk)
+    initialiser_etat_contexte(df, wb, fn, lnk, ca)
     if avec_sauvegarde:
-        sauvegarder_contexte_ds_gsheet(df, lnk)
+        sauvegarder_contexte_ds_gsheet(df, lnk, ca)
     maj_donnees_calculees(df)
 
 # Création d'un nouveau contexte
@@ -3462,6 +3665,9 @@ def afficher_infos_generales(df):
 
         # Choix de la période à programmer
         afficher_periode_a_programmer(df)
+
+        # Affichage des paramètres
+        afficher_parametres()
 
 # Initialisation de la page HTML
 def initialiser_page():
