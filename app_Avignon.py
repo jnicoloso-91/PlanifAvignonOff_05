@@ -96,6 +96,14 @@ LABEL_BOUTON_EDITER = "Editer"
 
 CENTRER_BOUTONS = True
 
+# 🎨 Palette de styles pour les boutons colorés
+PALETTE_COULEUR_PRIMARY_BUTTONS = {
+    "info":    {"bg": "#dbeafe", "text": "#0b1220"},
+    "error":   {"bg": "#fee2e2", "text": "#0b1220"},
+    "warning": {"bg": "#fef3c7", "text": "#0b1220"},
+    "success": {"bg": "#dcfce7", "text": "#0b1220"},
+}
+
 ######################
 # User Sheet Manager #
 ######################
@@ -108,7 +116,9 @@ def get_user_id():
         st.session_state["user_id"] = user_id_from_url
 
     if "user_id" not in st.session_state:
+
         afficher_titre("Bienvenue sur le planificateur Avignon Off 👋")
+
         st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
         if "new_user_id" not in st.session_state:     
             st.session_state["new_user_id"] = str(uuid.uuid4())[:8]
@@ -379,7 +389,8 @@ def undo_redo_save():
         "df": st.session_state.df.copy(deep=True),
         "liens": st.session_state.liens_activites.copy(),
         "activites_programmees_selected_row": st.session_state.activites_programmees_selected_row,
-        "activites_non_programmees_selected_row": st.session_state.activites_non_programmees_selected_row
+        "activites_non_programmees_selected_row": st.session_state.activites_non_programmees_selected_row,
+        "menu_activites": st.session_state.menu_activites
     }
     st.session_state.historique_undo.append(snapshot)
     st.session_state.historique_redo.clear()
@@ -391,7 +402,8 @@ def undo_redo_undo():
             "df": st.session_state.df.copy(deep=True),
             "liens": st.session_state.liens_activites.copy(),
             "activites_programmees_selected_row": st.session_state.activites_programmees_selected_row,
-            "activites_non_programmees_selected_row": st.session_state.activites_non_programmees_selected_row
+            "activites_non_programmees_selected_row": st.session_state.activites_non_programmees_selected_row,
+            "menu_activites": st.session_state.menu_activites
         }
         st.session_state.historique_redo.append(current)
         
@@ -400,6 +412,7 @@ def undo_redo_undo():
         st.session_state.liens_activites = snapshot["liens"]
         st.session_state.activites_programmees_selected_row = snapshot["activites_programmees_selected_row"]
         st.session_state.activites_non_programmees_selected_row = snapshot["activites_non_programmees_selected_row"]
+        st.session_state.menu_activites = snapshot["menu_activites"]
         forcer_reaffichage_activites_programmees()
         forcer_reaffichage_activites_non_programmees()
         forcer_reaffichage_df("creneaux_disponibles")
@@ -422,6 +435,7 @@ def undo_redo_redo():
         st.session_state.liens_activites = snapshot["liens"]
         st.session_state.activites_programmees_selected_row = snapshot["activites_programmees_selected_row"]
         st.session_state.activites_non_programmees_selected_row = snapshot["activites_non_programmees_selected_row"]
+        st.session_state.menu_activites = snapshot["menu_activites"]
         forcer_reaffichage_activites_programmees()
         forcer_reaffichage_activites_non_programmees()
         forcer_reaffichage_df("creneaux_disponibles")
@@ -514,6 +528,28 @@ def mode_mobile():
 
 import streamlit as st
 
+# Injecte le CSS permettent de colorer les primary buttons selon les styles de PALETTE_COULEUR_PRIMARY_BUTTONS ("info", "error", etc.) 
+def injecter_css_pour_primary_buttons(type_css):
+    palette = PALETTE_COULEUR_PRIMARY_BUTTONS.get(type_css, PALETTE_COULEUR_PRIMARY_BUTTONS["info"])
+    st.markdown(f"""
+    <style>
+    button[data-testid="stBaseButton-primary"]{{
+    background-color: {palette["bg"]} !important;   /* fond info */
+    color: #0b1220 !important;
+    border: none !important;                /* supprime toutes les bordures */
+    outline: none !important;
+    box-shadow: none !important;
+    text-align: left !important;
+    width: 100% !important;
+    padding: 0.9em 1em !important;
+    border-radius: 0.5em !important;
+    white-space: normal !important;
+    line-height: 1.4 !important;
+    cursor: pointer !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
 # Palette "façon Streamlit"
 VARIANTS = {
     "info":    {"bg": "#dbeafe", "border": "#3b82f6", "text": "#0b1220"},
@@ -523,67 +559,21 @@ VARIANTS = {
     "neutral": {"bg": "#f3f4f6", "border": "#9ca3af", "text": "#0b1220"},
 }
 
-def clickable_box(
-    label: str,
-    key: str,
-    on_click=None,
-    args=(),
-    kwargs=None,
-    *,
-    variant: str = "info",
-    bg: str | None = None,
-    border: str | None = None,
-    text_color: str | None = None,
-    disabled: bool = False,
-):
-    """
-    Rend un bouton 100% largeur stylé comme st.info/st.error.
-    - variant : 'info' | 'error' | 'warning' | 'success' | 'neutral'
-    - ou surcharges directes bg / border / text_color
-    - on_click : fonction Python à appeler au clic (optionnel)
-    Retourne True si cliqué (si on_click non fourni).
-    """
-    kwargs = kwargs or {}
-    palette = VARIANTS.get(variant, VARIANTS["info"]).copy()
-    if bg:        palette["bg"] = bg
-    if border:    palette["border"] = border
-    if text_color:palette["text"] = text_color
-
-    # Le bouton (l'id HTML = key)
-    clicked = st.button(label, key=key, disabled=disabled, use_container_width=True, on_click=on_click, args=args, kwargs=kwargs) if on_click \
-        else st.button(label, key=key, disabled=disabled, use_container_width=True)
-
-    # CSS ciblé sur CE bouton uniquement
-    st.markdown(f"""
-    <style>
-    div.stButton > button#{key} {{
-        background-color: {palette["bg"]} !important;
-        color: {palette["text"]} !important;
-        border: none !important;
-        width: 100% !important;
-        text-align: left !important;
-        padding: 0.9em 1em !important;
-        border-radius: 0.5em !important;
-        border-left: 6px solid {palette["border"]} !important;
-        font-weight: 400 !important;
-        white-space: normal !important;      /* autorise le retour à la ligne */
-        line-height: 1.4 !important;
-        box-shadow: none !important;
-        cursor: pointer !important;
-    }}
-    div.stButton > button#{key}:hover {{
-        filter: brightness(0.97);
-    }}
-    div.stButton > button#{key}:disabled {{
-        opacity: 0.6 !important;
-        cursor: not-allowed !important;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-
-    return clicked
-
-def st_info_avec_label(label, info_text, key, color="blue", afficher_label=True, label_separe=True):
+# Affiche l'équivalent d'un st.info ou st.error avec un label
+# Si key est fourni, un bouton clickable de type primary est utilisé 
+# Ce bouton doit être stylé avec un CSS ciblant les boutons de type primary et injecté par l'appelant pour être coloré correctement
+# Mais attention tous les boutons de type primary seront alors stylés de la même manière 
+def st_info_error_avec_label(label, info_text, key=None, color="blue", afficher_label=True, label_separe=True):
+    
+    def st_info_error_ou_bouton(label, info_text, key, color):
+        if key:
+            return st.button(info_text, key=key, type="primary", use_container_width=True)
+        else:
+            if color.lower() == "red":
+                st.error(info_text) 
+            else:
+                st.info(info_text
+                               )
     if label_separe:
         if afficher_label:
             st.markdown(f"""
@@ -596,16 +586,10 @@ def st_info_avec_label(label, info_text, key, color="blue", afficher_label=True,
             </div>
             """, unsafe_allow_html=True)
 
-        if color.lower() == "red":
-            return clickable_box(info_text, key, variant="error") 
-        else:
-            return clickable_box(info_text, key, variant="info")
+        return st_info_error_ou_bouton(label, info_text, key, color)
     else:
         info_text = f"**{label}:** {info_text}" if afficher_label else info_text
-        if color.lower() == "red":
-            return clickable_box(info_text, key, variant="error")  
-        else:
-            return clickable_box(info_text, key, variant="info")
+        return st_info_error_ou_bouton(label, info_text, key, color)
 
 # Indique si val est un float valide
 def est_float_valide(val):
@@ -1962,7 +1946,7 @@ def afficher_activites_programmees(df):
         st.session_state.aggrid_activites_programmees_gerer_modification_cellule = True
 
         # # Affichage de l'activité sélectionnée
-        # afficher_nom_activite(nom_activite)
+        # afficher_nom_activite(df, index_df, nom_activite)
     
     elif not MENU_ACTIVITE_UNIQUE:
         if len(df_display) == 0:
@@ -1982,7 +1966,10 @@ def menu_activites_programmees(df, index_df, df_display, nom_activite):
     jours_possibles = get_jours_possibles(df, get_activites_programmees(df), index_df)
 
     # Affichage du label d'activité
-    afficher_nom_activite(df, index_df, nom_activite)
+    if MENU_ACTIVITE_UNIQUE:
+        afficher_nom_activite_clickable(df, index_df, nom_activite)
+    else:
+        afficher_nom_activite(df, index_df, nom_activite)
 
     # Affichage du contrôle recherche sur le Web
     afficher_bouton_recherche_web(nom_activite, disabled=boutons_disabled or est_pause_str(nom_activite))
@@ -2300,7 +2287,7 @@ def afficher_activites_non_programmees(df):
         st.session_state.aggrid_activites_non_programmees_gerer_modification_cellule = True
 
         # # Affichage de l'activité sélectionnée
-        # afficher_nom_activite(nom_activite)
+        # afficher_nom_activite(df, index_df, nom_activite)
 
     elif len(df_display) == 0:
         if MENU_ACTIVITE_UNIQUE:
@@ -2328,7 +2315,10 @@ def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
     jours_possibles = get_jours_possibles(df, get_activites_programmees(df), index_df)
 
     # Affichage du label d'activité
-    afficher_nom_activite(df, index_df, nom_activite)
+    if MENU_ACTIVITE_UNIQUE:
+        afficher_nom_activite_clickable(df, index_df, nom_activite)
+    else:
+        afficher_nom_activite(df, index_df, nom_activite)
 
     # Affichage du contrôle recherche sur le Web
     afficher_bouton_recherche_web(nom_activite, disabled=boutons_disabled or est_pause_str(nom_activite))
@@ -2394,7 +2384,7 @@ def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
 # Affichage de l'éditeur d'activité en mode modal
 @st.dialog("Editeur d'activité")
 def show_dialog_editeur_activite(df, index_df):
-    afficher_nom_activite(df, index_df, key="editeur_activite_nom_activite", afficher_label=False)
+    afficher_nom_activite(df, index_df, afficher_label=False)
     afficher_editeur_activite(df, index_df, modale=True)
 
 # Affichage de l'éditeur d'activité
@@ -3282,10 +3272,10 @@ def menu_creneaux_disponibles(df, date, creneau, activite):
         debut_activite = ""
         nom_activite = ""
 
-    st_info_avec_label("Le", f"{date}", key="creneaux_le")
-    st_info_avec_label(f"Entre {debut_creneau}", activite_avant, key="creneaux_entre")
-    st_info_avec_label(f"Et {fin_creneau}", activite_apres, key="creneaux_et")
-    st_info_avec_label(f"A {debut_activite}", nom_activite, key="creneaux_a")
+    st_info_error_avec_label("Le", f"{date}", key="creneaux_le")
+    st_info_error_avec_label(f"Entre {debut_creneau}", activite_avant, key="creneaux_entre")
+    st_info_error_avec_label(f"Et {fin_creneau}", activite_apres, key="creneaux_et")
+    st_info_error_avec_label(f"A {debut_activite}", nom_activite, key="creneaux_a")
     
 
     # Gestion du bouton Programmer
@@ -3479,9 +3469,8 @@ def initialiser_page():
     # Evite la surbrillance rose pâle des lignes qui ont le focus sans être sélectionnées dans les AgGrid
     patch_aggrid_css()
 
-# Affiche le label d'activité
-def afficher_nom_activite(df, index_df, key="menu_activite_nom_activite", nom_activite=None, afficher_label=True):
-    hit = False
+# Affiche le nom d'activité
+def afficher_nom_activite(df, index_df, nom_activite=None, afficher_label=True):
     if index_df is not None:
         row = df.loc[index_df]
         if nom_activite == None:
@@ -3489,45 +3478,77 @@ def afficher_nom_activite(df, index_df, key="menu_activite_nom_activite", nom_ac
         if est_activite_programmee(row):
             label_activite = f"Le {int(row["Date"])} de {row["Debut"]} à {row["Fin"]}"
             if est_reserve(row):
-                hit = st_info_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label, color="red")
+                st_info_error_avec_label(label_activite, nom_activite, afficher_label=afficher_label, color="red")
             else:
-                hit = st_info_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label)
+                st_info_error_avec_label(label_activite, nom_activite, afficher_label=afficher_label)
         else:
             label_activite = f"De {row["Debut"]} à {row["Fin"]}"
-            hit = st_info_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label)
+            st_info_error_avec_label(label_activite, nom_activite, afficher_label=afficher_label)
     else:
         if nom_activite == None:
             nom_activite = ""
         label_activite = "De ..h.. à ..h.."
-        hit = st_info_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label)
+        st_info_error_avec_label(label_activite, nom_activite, afficher_label=afficher_label)
     
-    if MENU_ACTIVITE_UNIQUE:
-        if hit:
-            if est_activite_programmee(df.loc[index_df]):
-                new_index_df = st.session_state.activites_non_programmees_selected_row
-                if new_index_df is not None:
-                    new_df_display = st.session_state.activites_non_programmees_df_display
-                    new_nom_activite = df.loc[new_index_df, "Activite"] 
-                    st.session_state.menu_activites = {
-                        "menu": "menu_activites_non_programmees",
-                        "df": df,
-                        "index_df": new_index_df,
-                        "df_display": new_df_display,
-                        "nom_activite": new_nom_activite
-                    }
+# Affiche un nom d'activité clickable qui switche le menu d'activités alternatif (sert en mode MODE_ACTIVITE_UNIQUE)
+def afficher_nom_activite_clickable(df, index_df, nom_activite=None, afficher_label=True):
+
+    hit = False
+    key = "nom_activite_clickable"
+
+    if index_df is not None:
+        row = df.loc[index_df]
+        activite_reserve = est_reserve(row)
+
+        # Injecte le CSS permettent de styler le primary button affiché par st_info_error_avec_label avec param key 
+        injecter_css_pour_primary_buttons("error" if activite_reserve else "info")
+
+        if nom_activite == None:
+            nom_activite = row["Activite"].strip()
+        if est_activite_programmee(row):
+            label_activite = f"Le {int(row["Date"])} de {row["Debut"]} à {row["Fin"]}"
+            if activite_reserve:
+                hit = st_info_error_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label, color="red")
             else:
-                new_index_df = st.session_state.activites_programmees_selected_row
-                if new_index_df is not None:
-                    new_df_display = st.session_state.activites_programmees_df_display
-                    new_nom_activite = df.loc[new_index_df, "Activite"] 
-                    st.session_state.menu_activites = {
-                        "menu": "menu_activites_programmees",
-                        "df": df,
-                        "index_df": new_index_df,
-                        "df_display": new_df_display,
-                        "nom_activite": new_nom_activite
-                    }
-            st.rerun()
+                hit = st_info_error_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label)
+        else:
+            label_activite = f"De {row["Debut"]} à {row["Fin"]}"
+            hit = st_info_error_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label)
+    else:
+        if nom_activite == None:
+            nom_activite = ""
+        label_activite = "De ..h.. à ..h.."
+
+        # Injecte le CSS permettent de styler le primary button affiché par st_info_error_avec_label avec param key 
+        injecter_css_pour_primary_buttons("info")
+        hit = st_info_error_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label)
+    
+    if hit:
+        if est_activite_programmee(df.loc[index_df]):
+            new_index_df = st.session_state.activites_non_programmees_selected_row
+            if new_index_df is not None:
+                new_df_display = st.session_state.activites_non_programmees_df_display
+                new_nom_activite = df.loc[new_index_df, "Activite"] 
+                st.session_state.menu_activites = {
+                    "menu": "menu_activites_non_programmees",
+                    "df": df,
+                    "index_df": new_index_df,
+                    "df_display": new_df_display,
+                    "nom_activite": new_nom_activite
+                }
+        else:
+            new_index_df = st.session_state.activites_programmees_selected_row
+            if new_index_df is not None:
+                new_df_display = st.session_state.activites_programmees_df_display
+                new_nom_activite = df.loc[new_index_df, "Activite"] 
+                st.session_state.menu_activites = {
+                    "menu": "menu_activites_programmees",
+                    "df": df,
+                    "index_df": new_index_df,
+                    "df_display": new_df_display,
+                    "nom_activite": new_nom_activite
+                }
+        st.rerun()
 
 # Affichage de la la sidebar min avec menus fichier et edition 
 # (le reste est affiché dans d'affichage de données en fonction du contexte)
