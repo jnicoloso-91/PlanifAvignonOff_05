@@ -1857,7 +1857,7 @@ def afficher_activites_programmees(df):
                     st.session_state.activites_programmees_selected_row = index_df
                     st.session_state.editeur_activite_courante_idx = index_df
                     
-                    time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
+                    # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
 
                     # Mise à jour du menu activité géré par afficher_sidebar()
                     if st.session_state.forcage_menu_activites_enabled and st.session_state.forcer_menu_activites_non_programmees:
@@ -1876,7 +1876,7 @@ def afficher_activites_programmees(df):
                 st.session_state.activites_programmees_selected_row = index_df
                 st.session_state.editeur_activite_courante_idx = index_df
 
-            time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
+            # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
 
             # Mise à jour du menu activité géré par afficher_sidebar()
             st.session_state.menu_activites_programmees = {
@@ -2211,7 +2211,7 @@ def afficher_activites_non_programmees(df):
                     st.session_state.activites_non_programmees_selected_row = index_df
                     st.session_state.editeur_activite_courante_idx = index_df
 
-                    time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
+                    # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
 
                     # Mise à jour du menu activité géré par afficher_sidebar()
                     if st.session_state.forcage_menu_activites_enabled and st.session_state.forcer_menu_activites_programmees:
@@ -2230,7 +2230,7 @@ def afficher_activites_non_programmees(df):
                 st.session_state.activites_non_programmees_selected_row = index_df
                 st.session_state.editeur_activite_courante_idx = index_df
 
-            time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
+            # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
 
             # Mise à jour du menu activité géré par afficher_sidebar()
             st.session_state.menu_activites_non_programmees = {
