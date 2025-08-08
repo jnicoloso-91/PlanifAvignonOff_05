@@ -26,7 +26,7 @@ from urllib.parse import quote_plus
 
 # Debug
 DEBUG_TRACE_MODE = False
-DEBUG_TRACE_TYPE = ["event"]
+DEBUG_TRACE_TYPE = ["all"]
 def debug_trace(trace, trace_type=["all"]):
     trace_type_requested = [s.lower() for s in DEBUG_TRACE_TYPE]
     trace_type = [s.lower() for s in trace_type]
@@ -1105,8 +1105,9 @@ def afficher_aide():
                 <li>La période programmation: elle est automatiquement déduite des activités renseignées dans le fichier chargé, mais peut être modifiée en cours d'édition. Par défaut l'application recherche les dates de début et de fin du festival de l'année courante.</li>
                 <li>Les paramètres de l'application comprennant:
                         <ul>
-                        <li>Le nom de l'application d'itinéraire (Google Maps, Apple, etc.)</li>
-                        <li>La ville de recherche par défaut pour la recherche d'itinéraire.</li>
+                        <li>le nom de l'application d'itinéraire (Google Maps, Apple, etc.)</li>
+                        <li>la ville de recherche par défaut pour la recherche d'itinéraire</li>
+                        <li>la possibilité de choisir si les menus de gestion des activités sont dans la barre latérale ou la page principale.</li>
                         </ul>
                 </li>
             </ul>
@@ -1257,6 +1258,23 @@ def afficher_parametres():
                                                       value=st.session_state.city_default,
                                                       key="city_default_input",
                                                       help="Si vide, la ville du lieu de l'activité est utilisée.")
+        
+        # 
+        options = {"Oui": True, "Non": False}
+        
+        # Valeur par défaut si absente
+        if "sidebar_menus" not in st.session_state:
+            st.session_state.sidebar_menus = True
+
+        choix = st.selectbox(
+            "Menus activités dans barre latérale :",
+            options=list(options.keys()),
+            index=0 if st.session_state.sidebar_menus else 1,
+            key="sidebar_menus_select"
+        )
+
+        # Mise à jour dans session_state
+        st.session_state.sidebar_menus = options[choix]
 
 
 # Met à jour les données calculées
@@ -2002,6 +2020,10 @@ def afficher_activites_programmees(df):
 
     # Pas d'event aggrid à traiter si event_type is None (i.e. le script python est appelé pour autre chose qu'un event aggrid)
     if event_type is None:
+        if not st.session_state.get("sidebar_menus"):
+            if len(df_display) == 0:
+                with st.expander("Contrôles"):
+                    menu_activites_programmees(df, None, df_display, "")
         return
 
     debug_trace(f"PROG {event_type}", trace_type=["gen", "event"])
@@ -2144,9 +2166,10 @@ def afficher_activites_programmees(df):
                                         st.rerun()
         st.session_state.aggrid_activites_programmees_gerer_modification_cellule = True
 
-        # # Affichage de l'activité sélectionnée
-        # afficher_nom_activite(df, index_df, nom_activite)
-    
+        if not st.session_state.get("sidebar_menus"):
+            with st.expander("Contrôles"):
+                menu_activites_programmees(df, index_df, df_display, nom_activite)
+
     elif not MENU_ACTIVITE_UNIQUE:
         if len(df_display) == 0:
             st.session_state.menu_activites_programmees = {
@@ -2236,14 +2259,9 @@ def menu_activites_programmees(df, index_df, df_display, nom_activite):
     if st.button(LABEL_BOUTON_EDITER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled, key="menu_activites_programmees_bouton_editeur"):
         show_dialog_editeur_activite(df, index_df)
                                
-    if MENU_ACTIVITE_UNIQUE:
+    if  MENU_ACTIVITE_UNIQUE and st.session_state.sidebar_menus:
         # Affichage contrôle Ajouter
         afficher_bouton_nouvelle_activite(df, key="ajouter_activites_programmees")
-
-        # # Reset des flags de forçage du menu à afficher utilisés dans les boutons
-        # st.session_state.forcage_menu_activites_enabled = False
-        # st.session_state.forcer_menu_activites_programmees  = False
-        # st.session_state.forcer_menu_activites_non_programmees  = False
     
 # Affiche les activités non programmées dans un tableau
 def afficher_activites_non_programmees(df):
@@ -2356,8 +2374,12 @@ def afficher_activites_non_programmees(df):
 
     # Pas d'event aggrid à traiter si event_type is None (i.e. le script python est appelé pour autre chose qu'un event aggrid)
     if event_type is None:
+        if not st.session_state.sidebar_menus:
+            if len(df_display) == 0:
+                with st.expander("Contrôles"):
+                    menu_activites_non_programmees(df, None, df_display, "")
         return
-
+    
     debug_trace(f"NONPROG {event_type}", trace_type=["gen", "event"])
 
     # Récupération de la ligne sélectionnée
@@ -2485,8 +2507,9 @@ def afficher_activites_non_programmees(df):
                                         st.rerun()
         st.session_state.aggrid_activites_non_programmees_gerer_modification_cellule = True
 
-        # # Affichage de l'activité sélectionnée
-        # afficher_nom_activite(df, index_df, nom_activite)
+        if not st.session_state.get("sidebar_menus"):
+            with st.expander("Contrôles"):
+                menu_activites_non_programmees(df, index_df, df_display, nom_activite)
 
     elif len(df_display) == 0:
         if MENU_ACTIVITE_UNIQUE:
@@ -3428,6 +3451,11 @@ def afficher_creneaux_disponibles(df):
                     "creneau": choix_creneau,
                     "activite": activite,
                 }
+
+                if not st.session_state.get("sidebar_menus"):
+                    with st.expander("Contrôles"):
+                        menu_creneaux_disponibles(df, date_ref, choix_creneau, activite)
+
     else:
         st.session_state.menu_creneaux_disponibles = {
             "df": df,
@@ -3435,7 +3463,6 @@ def afficher_creneaux_disponibles(df):
             "creneau": None,
             "activite": None,
         }
-
 
 # Menu de gestion des créneaux disponibles
 def menu_creneaux_disponibles(df, date, creneau, activite):
@@ -3453,29 +3480,29 @@ def menu_creneaux_disponibles(df, date, creneau, activite):
     # Affichage du créneau sélectionné et de l'activité séléctionnées dans le créneau
     date = int(date) if est_float_valide(date) else ""
 
-    if creneau is not None and not creneau.empty:
-        debut_creneau = creneau['Debut'] 
-        activite_avant = creneau['Activité avant']
-        fin_creneau = creneau['Fin'] 
-        activite_apres = creneau['Activité après'] 
-    else:
-        debut_creneau = ""
-        activite_avant = ""
-        fin_creneau = ""
-        activite_apres = ""
+    if st.session_state.sidebar_menus:
+        if creneau is not None and not creneau.empty:
+            debut_creneau = creneau['Debut'] 
+            activite_avant = creneau['Activité avant']
+            fin_creneau = creneau['Fin'] 
+            activite_apres = creneau['Activité après'] 
+        else:
+            debut_creneau = ""
+            activite_avant = ""
+            fin_creneau = ""
+            activite_apres = ""
 
-    if activite is not None and not activite.empty:
-        debut_activite = activite['Debut']
-        nom_activite = activite['Activite']
-    else:
-        debut_activite = ""
-        nom_activite = ""
+        if activite is not None and not activite.empty:
+            debut_activite = activite['Debut']
+            nom_activite = activite['Activite']
+        else:
+            debut_activite = ""
+            nom_activite = ""
 
-    st_info_error_avec_label("Le", f"{date}")
-    st_info_error_avec_label(f"Entre {debut_creneau}", activite_avant)
-    st_info_error_avec_label(f"Et {fin_creneau}", activite_apres)
-    st_info_error_avec_label(f"A {debut_activite}", nom_activite)
-    
+        st_info_error_avec_label("Le", f"{date}")
+        st_info_error_avec_label(f"Entre {debut_creneau}", activite_avant)
+        st_info_error_avec_label(f"Et {fin_creneau}", activite_apres)
+        st_info_error_avec_label(f"A {debut_activite}", nom_activite)
 
     # Gestion du bouton Programmer
     if st.button(LABEL_BOUTON_PROGRAMMER, use_container_width=CENTRER_BOUTONS, disabled=activite is None, key="AjouterAuPlanningParCréneau"):
@@ -3677,6 +3704,9 @@ def initialiser_page():
 
 # Affiche le nom d'activité
 def afficher_nom_activite(df, index_df, nom_activite=None, afficher_label=True):
+
+    afficher_label = False if st.session_state.sidebar_menus else afficher_label
+    
     if index_df is not None:
         row = df.loc[index_df]
         if nom_activite == None:
@@ -3700,7 +3730,8 @@ def afficher_nom_activite(df, index_df, nom_activite=None, afficher_label=True):
 def afficher_nom_activite_clickable(df, index_df, nom_activite=None, afficher_label=True):
 
     hit = False
-    key = "nom_activite_clickable"
+    key = "nom_activite_clickable" if st.session_state.sidebar_menus else None
+    afficher_label = False if st.session_state.sidebar_menus else afficher_label
 
     if index_df is not None:
         row = df.loc[index_df]
@@ -3769,6 +3800,9 @@ def afficher_sidebar(df):
     with st.sidebar.expander("Edition"):
         afficher_controles_edition()
 
+    if not st.session_state.get("sidebar_menus"):
+        return
+    
     if MENU_ACTIVITE_UNIQUE:
         with st.sidebar.expander("Activités"):
             if "menu_activites" in st.session_state and isinstance(st.session_state.menu_activites, dict):
