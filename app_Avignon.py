@@ -165,8 +165,8 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
             st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
             st.stop()    
 
-        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"] # Utilisation nominale en mode multiuser avec hébergement streamlit share
-        # sheet_names = [f"data", f"links", f"meta", f"adrs"] # pour debugger en local 
+        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     # Utilisation nominale en mode multiuser avec hébergement streamlit share
+        # sheet_names = [f"data", f"links", f"meta", f"adrs"]                                           # Pour debugger en local 
 
         gsheets = {}
 
@@ -222,7 +222,7 @@ def charger_contexte_depuis_gsheet():
                 st.session_state.DUREE_CAFE = to_timedelta(worksheet.acell("A5").value, default=DUREE_CAFE)
                 st.session_state.itineraire_app = worksheet.acell("A6").value
                 st.session_state.city_default = worksheet.acell("A7").value
-                st.session_state.sidebar_menus = str(worksheet.acell("A8").value).strip().lower() == "True"
+                st.session_state.sidebar_menus = str(worksheet.acell("A8").value).strip().lower() == "true"
 
                 worksheet = gsheets["adrs"]
                 ca = get_as_dataframe(worksheet, evaluate_formulas=True)
@@ -286,18 +286,24 @@ def sauvegarder_row_ds_gsheet(df, index_df):
             pass
 
 # 📤 Sauvegarde des params dans la Google Sheet
-def sauvegarder_params_ds_gsheet():
+def sauvegarder_param_ds_gsheet(param):
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
         try:
             gsheets = st.session_state.gsheets
 
             worksheet = gsheets["meta"]
-            worksheet.update_acell("A3", int(st.session_state.MARGE.total_seconds() // 60))
-            worksheet.update_acell("A4", int(st.session_state.DUREE_REPAS.total_seconds() // 60))
-            worksheet.update_acell("A5", int(st.session_state.DUREE_CAFE.total_seconds() // 60))
-            worksheet.update_acell("A6", st.session_state.itineraire_app)
-            worksheet.update_acell("A7", st.session_state.city_default)
-            worksheet.update_acell("A8", str(st.session_state.sidebar_menus))
+            if param == "MARGE":
+                worksheet.update_acell("A3", int(st.session_state.MARGE.total_seconds() // 60))
+            elif param == "DUREE_REPAS":
+                worksheet.update_acell("A4", int(st.session_state.DUREE_REPAS.total_seconds() // 60))
+            elif param == "DUREE_CAFE":
+                worksheet.update_acell("A5", int(st.session_state.DUREE_CAFE.total_seconds() // 60))
+            elif param == "itineraire_app":
+                worksheet.update_acell("A6", st.session_state.itineraire_app)
+            elif param == "city_default":
+                worksheet.update_acell("A7", st.session_state.city_default)
+            elif param == "sidebar_menus":
+                worksheet.update_acell("A8", str(st.session_state.sidebar_menus))
 
         except Exception as e:
             pass
@@ -1273,6 +1279,7 @@ def afficher_parametres():
         # Marge entre activités et durée des pauses
         if "MARGE" not in st.session_state:
             st.session_state.MARGE = MARGE
+            sauvegarder_param_ds_gsheet("MARGE")
 
         minutes = st.slider(
             "Marge entre activités (minutes)",
@@ -1286,11 +1293,12 @@ def afficher_parametres():
         if st.session_state.MARGE != nouvelle_marge:
             st.session_state.MARGE = nouvelle_marge  
             forcer_reaffichage_df("creneaux_disponibles")
-            sauvegarder_params_ds_gsheet()
+            sauvegarder_param_ds_gsheet("MARGE")
             st.rerun()   
 
         if "DUREE_REPAS" not in st.session_state:
             st.session_state.DUREE_REPAS = DUREE_REPAS
+            sauvegarder_param_ds_gsheet("DUREE_REPAS")
 
         minutes = st.slider(
             "Durée des pauses repas (minutes)",
@@ -1304,11 +1312,12 @@ def afficher_parametres():
         if st.session_state.DUREE_REPAS != nouvelle_duree:
             st.session_state.DUREE_REPAS = nouvelle_duree  
             forcer_reaffichage_df("creneaux_disponibles")
-            sauvegarder_params_ds_gsheet()
+            sauvegarder_param_ds_gsheet("DUREE_REPAS")
             st.rerun()   
 
         if "DUREE_CAFE" not in st.session_state:
             st.session_state.DUREE_CAFE = DUREE_CAFE
+            sauvegarder_param_ds_gsheet("DUREE_CAFE")
 
         minutes = st.slider(
             "Durée des pauses café (minutes)",
@@ -1322,7 +1331,7 @@ def afficher_parametres():
         if st.session_state.DUREE_CAFE != nouvelle_duree:
             st.session_state.DUREE_CAFE = nouvelle_duree  
             forcer_reaffichage_df("creneaux_disponibles")
-            sauvegarder_params_ds_gsheet()
+            sauvegarder_param_ds_gsheet("DUREE_CAFE")
             st.rerun()   
 
         # Application itinéraire
@@ -1338,42 +1347,50 @@ def afficher_parametres():
         
         if "itineraire_app" not in st.session_state or st.session_state.itineraire_app not in options:
             st.session_state.itineraire_app = "Google Maps Web"
-        itineraire_app_cur = st.session_state.itineraire_app
-        st.selectbox("Application itinéraire", 
+            sauvegarder_param_ds_gsheet("itineraire_app")
+        
+        index = options.index(st.session_state.itineraire_app) if "itineraire_app_selectbox" not in st.session_state else options.index(st.session_state.itineraire_app_selectbox)
+        choix = st.selectbox("Application itinéraire", 
                     options=options, 
-                    index=options.index(st.session_state.itineraire_app), 
-                    key="itineraire_app", 
+                    index=index, 
+                    key="itineraire_app_selectbox", 
                     help="Sélectionnez l'application à utiliser pour la recherche d'itinéraire. Si vous utilisez un téléphone mobile, vous pouvez chosir les applications Google Maps ou Apple Maps, ou bien Google Maps Web. Si vous utilisez un ordinateur, seul Google Maps Web est proposé.")
-        if st.session_state.itineraire_app != itineraire_app_cur:
-            sauvegarder_params_ds_gsheet()
+        if st.session_state.itineraire_app != choix:
+            st.session_state.itineraire_app = choix
+            sauvegarder_param_ds_gsheet("itineraire_app")
 
         # Ville par défaut
         if "city_default" not in st.session_state:
             st.session_state.city_default = "Avignon"
+            sauvegarder_param_ds_gsheet("city_default")
+
         city_default_cur = st.session_state.city_default
         st.session_state.city_default = st.text_input("Ville par défaut pour la recherche d'itinéraire",
                                                       value=st.session_state.city_default,
                                                       key="city_default_input",
                                                       help="Si vide, la ville du lieu de l'activité est utilisée.")
         if st.session_state.city_default != city_default_cur:
-            sauvegarder_params_ds_gsheet()
+            sauvegarder_param_ds_gsheet("city_default")
 
         # Menus activités dans la barre latérale ou dans la page principale
         options = {"Oui": True, "Non": False}
         
         if "sidebar_menus" not in st.session_state:
             st.session_state.sidebar_menus = True
+            sauvegarder_param_ds_gsheet("sidebar_menus")
 
+        index = (0 if st.session_state.sidebar_menus else 1) if "sidebar_menus_selectbox" not in st.session_state else (0 if st.session_state.sidebar_menus_selectbox == "Oui" else 1)
         choix = st.selectbox(
             "Menus activités dans barre latérale :",
             options=list(options.keys()),
-            index=0 if st.session_state.sidebar_menus else 1,
-            key="sidebar_menus_select"
+            index=index,
+            key="sidebar_menus_selectbox",
         )
 
         if st.session_state.sidebar_menus != options[choix]:
             st.session_state.sidebar_menus = options[choix]
-            sauvegarder_params_ds_gsheet()
+            print("sidebar_menus apres", st.session_state.sidebar_menus)
+            sauvegarder_param_ds_gsheet("sidebar_menus")
 
 
 # Met à jour les données calculées
