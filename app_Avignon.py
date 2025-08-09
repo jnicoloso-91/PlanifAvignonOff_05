@@ -26,7 +26,7 @@ from urllib.parse import quote_plus
 
 # Debug
 DEBUG_TRACE_MODE = False
-DEBUG_TRACE_TYPE = ["all"]
+DEBUG_TRACE_TYPE = ["event"]
 def debug_trace(trace, trace_type=["all"]):
     trace_type_requested = [s.lower() for s in DEBUG_TRACE_TYPE]
     trace_type = [s.lower() for s in trace_type]
@@ -443,12 +443,18 @@ def undo_redo_init(verify=True):
 
 # Sauvegarde du contexte courant
 def undo_redo_save():
+    
+    df_copy = st.session_state.df.copy(deep=True)
+    liens_copy = st.session_state.liens_activites.copy()
+    menu_activites_copy = st.session_state.menu_activites.copy()
+    menu_activites_copy["df"] = df_copy
+
     snapshot = {
-        "df": st.session_state.df.copy(deep=True),
-        "liens": st.session_state.liens_activites.copy(),
+        "df": df_copy,
+        "liens": liens_copy,
         "activites_programmees_selected_row": st.session_state.activites_programmees_selected_row,
         "activites_non_programmees_selected_row": st.session_state.activites_non_programmees_selected_row,
-        "menu_activites": st.session_state.menu_activites
+        "menu_activites": menu_activites_copy,
     }
     st.session_state.historique_undo.append(snapshot)
     st.session_state.historique_redo.clear()
@@ -456,12 +462,18 @@ def undo_redo_save():
 # Undo
 def undo_redo_undo():
     if st.session_state.historique_undo:
+    
+        df_copy = st.session_state.df.copy(deep=True)
+        liens_copy = st.session_state.liens_activites.copy()
+        menu_activites_copy = st.session_state.menu_activites.copy()
+        menu_activites_copy["df"] = df_copy
+
         current = {
-            "df": st.session_state.df.copy(deep=True),
-            "liens": st.session_state.liens_activites.copy(),
+            "df": df_copy,
+            "liens": liens_copy,
             "activites_programmees_selected_row": st.session_state.activites_programmees_selected_row,
             "activites_non_programmees_selected_row": st.session_state.activites_non_programmees_selected_row,
-            "menu_activites": st.session_state.menu_activites
+            "menu_activites": menu_activites_copy,
         }
         st.session_state.historique_redo.append(current)
         
@@ -480,11 +492,17 @@ def undo_redo_undo():
 # Redo
 def undo_redo_redo():
     if st.session_state.historique_redo:
+        df_copy = st.session_state.df.copy(deep=True)
+        liens_copy = st.session_state.liens_activites.copy()
+        menu_activites_copy = st.session_state.menu_activites.copy()
+        menu_activites_copy["df"] = df_copy
+
         current = {
-            "df": st.session_state.df.copy(deep=True),
-            "liens": st.session_state.liens_activites.copy(),
+            "df": df_copy,
+            "liens": liens_copy,
             "activites_programmees_selected_row": st.session_state.activites_programmees_selected_row,
-            "activites_non_programmees_selected_row": st.session_state.activites_non_programmees_selected_row
+            "activites_non_programmees_selected_row": st.session_state.activites_non_programmees_selected_row,
+            "menu_activites": menu_activites_copy,
         }
         st.session_state.historique_undo.append(current)
         
@@ -2140,15 +2158,24 @@ def afficher_activites_programmees(df):
     event_data = response.get("event_data")
     event_type = event_data["type"] if isinstance(event_data, dict) else None
 
+    debug_trace(f"PROG {event_type}", trace_type=["gen", "event"])
+
     # Pas d'event aggrid à traiter si event_type is None (i.e. le script python est appelé pour autre chose qu'un event aggrid)
     if event_type is None:
-        if not st.session_state.get("sidebar_menus"):
-            if len(df_display) == 0:
+        if len(df_display) == 0:
+            if st.session_state.sidebar_menus:
+                if st.session_state.menu_activites["menu"] == "menu_activites_programmees":
+                    st.session_state.menu_activites = {
+                        "menu": "menu_activites_programmees",
+                        "df": df,
+                        "index_df": None,
+                        "df_display": df_display,
+                        "nom_activite": ""
+                    }
+            else:
                 with st.expander("Contrôles"):
                     menu_activites_programmees(df, None, df_display, "")
         return
-
-    debug_trace(f"PROG {event_type}", trace_type=["gen", "event"])
 
     # Récupération de la ligne sélectionnée courante
     selected_rows = response["selected_rows"]
@@ -2213,6 +2240,17 @@ def afficher_activites_programmees(df):
                             "df_display": df_display,
                             "nom_activite": nom_activite
                         }
+                else:
+                    if st.session_state.forcer_maj_menu_activites_programmees:
+                        # Mise à jour du menu activité géré par afficher_sidebar()
+                        st.session_state.menu_activites = {
+                            "menu": "menu_activites_programmees",
+                            "df": df,
+                            "index_df": index_df,
+                            "df_display": df_display,
+                            "nom_activite": nom_activite
+                        }
+                        st.session_state.forcer_maj_menu_activites_programmees = False
 
         else:
             if index_df != st.session_state.activites_programmees_selected_row:
@@ -2292,15 +2330,16 @@ def afficher_activites_programmees(df):
             with st.expander("Contrôles"):
                 menu_activites_programmees(df, index_df, df_display, nom_activite)
 
-    elif not MENU_ACTIVITE_UNIQUE:
-        if len(df_display) == 0:
-            st.session_state.menu_activites_programmees = {
-                "menu": "menu_activites_programmees",
-                "df": df,
-                "index_df": None,
-                "df_display": df_display,
-                "nom_activite": ""
-            }
+    elif len(df_display) == 0:
+        if st.session_state.get("sidebar_menus"):
+            if not MENU_ACTIVITE_UNIQUE:
+                st.session_state.menu_activites_programmees = {
+                    "menu": "menu_activites_programmees",
+                    "df": df,
+                    "index_df": None,
+                    "df_display": df_display,
+                    "nom_activite": ""
+                }
     
 # Menu activité à afficher dans la sidebar si click dans aggrid d'activités programmées         }
 def menu_activites_programmees(df, index_df, df_display, nom_activite):
@@ -2494,16 +2533,25 @@ def afficher_activites_non_programmees(df):
     event_data = response.get("event_data")
     event_type = event_data["type"] if isinstance(event_data, dict) else None
 
+    debug_trace(f"NONPROG {event_type}", trace_type=["gen", "event"])
+
     # Pas d'event aggrid à traiter si event_type is None (i.e. le script python est appelé pour autre chose qu'un event aggrid)
     if event_type is None:
-        if not st.session_state.sidebar_menus:
-            if len(df_display) == 0:
+        if len(df_display) == 0:
+            if st.session_state.sidebar_menus:
+                if st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
+                    st.session_state.menu_activites = {
+                        "menu": "menu_activites_non_programmees",
+                        "df": df,
+                        "index_df": None,
+                        "df_display": df_display,
+                        "nom_activite": ""
+                    }
+            else:
                 with st.expander("Contrôles"):
                     menu_activites_non_programmees(df, None, df_display, "")
         return
     
-    debug_trace(f"NONPROG {event_type}", trace_type=["gen", "event"])
-
     # Récupération de la ligne sélectionnée
     selected_rows = response["selected_rows"]
     if st.session_state.aggrid_activites_non_programmees_forcer_reaffichage == True:
@@ -2560,6 +2608,7 @@ def afficher_activites_non_programmees(df):
                     if st.session_state.forcage_menu_activites_enabled and st.session_state.forcer_menu_activites_programmees:
                         st.session_state.forcer_menu_activites_programmees = False
                     else:
+                        # Mise à jour du menu activité géré par afficher_sidebar()
                         st.session_state.menu_activites = {
                             "menu": "menu_activites_non_programmees",
                             "df": df,
@@ -2567,6 +2616,17 @@ def afficher_activites_non_programmees(df):
                             "df_display": df_display,
                             "nom_activite": nom_activite
                         }
+                else:
+                    if st.session_state.forcer_maj_menu_activites_non_programmees:
+                        # Mise à jour du menu activité géré par afficher_sidebar()
+                        st.session_state.menu_activites = {
+                            "menu": "menu_activites_non_programmees",
+                            "df": df,
+                            "index_df": index_df,
+                            "df_display": df_display,
+                            "nom_activite": nom_activite
+                        }
+                        st.session_state.forcer_maj_menu_activites_non_programmees = False
 
         else:
             if index_df != st.session_state.activites_non_programmees_selected_row:
@@ -2634,23 +2694,24 @@ def afficher_activites_non_programmees(df):
                 menu_activites_non_programmees(df, index_df, df_display, nom_activite)
 
     elif len(df_display) == 0:
-        if MENU_ACTIVITE_UNIQUE:
-            if st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
-                st.session_state.menu_activites = {
+        if st.session_state.get("sidebar_menus"):
+            if MENU_ACTIVITE_UNIQUE:
+                if st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
+                    st.session_state.menu_activites = {
+                        "menu": "menu_activites_non_programmees",
+                        "df": df,
+                        "index_df": None,
+                        "df_display": df_display,
+                        "nom_activite": ""
+                    }
+            else:
+                st.session_state.menu_activites_non_programmees = {
                     "menu": "menu_activites_non_programmees",
                     "df": df,
                     "index_df": None,
                     "df_display": df_display,
                     "nom_activite": ""
                 }
-        else:
-            st.session_state.menu_activites_non_programmees = {
-                "menu": "menu_activites_non_programmees",
-                "df": df,
-                "index_df": None,
-                "df_display": df_display,
-                "nom_activite": ""
-            }
 
 # Menu activité à afficher dans la sidebar si click dans aggrid d'activités non programmées         }
 def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
@@ -2674,6 +2735,7 @@ def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
     if st.button(LABEL_BOUTON_SUPPRIMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled, key="SupprimerActiviteNonProgrammee"):
         undo_redo_save()
         st.session_state.activites_non_programmees_selected_row = ligne_voisine_index(df_display, index_df)
+        st.session_state.forcer_maj_menu_activites_non_programmees = True
         supprimer_activite(df, index_df)
         forcer_reaffichage_activites_non_programmees()
         forcer_reaffichage_df("activites_programmable_dans_creneau_selectionne")
@@ -3675,6 +3737,8 @@ def initialiser_etat_contexte(df, wb, fn, lnk, ca):
     st.session_state.forcage_menu_activites_enabled = False
     st.session_state.forcer_menu_activites_programmees = False
     st.session_state.forcer_menu_activites_non_programmees = False
+    st.session_state.forcer_maj_menu_activites_programmees = False
+    st.session_state.forcer_maj_menu_activites_non_programmees = False
     initialiser_periode_a_programmer(df)
 
     forcer_reaffichage_activites_programmees()
@@ -3750,6 +3814,7 @@ def charger_contexte_depuis_fichier():
                     initialiser_etat_contexte(df, wb, fd.name, lnk, ca)
                     undo_redo_init(verify=False)
                     sauvegarder_contexte_ds_gsheet(df, lnk, fd, ca)
+                    st.session_state.forcer_maj_menu_activites_non_programmees = True
             except Exception as e:
                 st.sidebar.error(f"Erreur de chargement du fichier : {e}")
                 st.session_state.contexte_invalide = True
