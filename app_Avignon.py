@@ -223,6 +223,12 @@ def charger_contexte_depuis_gsheet():
                 st.session_state.itineraire_app = worksheet.acell("A6").value
                 st.session_state.city_default = worksheet.acell("A7").value
                 st.session_state.sidebar_menus = str(worksheet.acell("A8").value).strip().lower() == "true"
+                val = worksheet.acell("A9").value
+                if val is not None and str(val).strip() != "":
+                    st.session_state.periode_a_programmer_debut = datetime.date.fromisoformat(val)
+                val = worksheet.acell("A10").value
+                if val is not None and str(val).strip() != "":
+                    st.session_state.periode_a_programmer_fin = datetime.date.fromisoformat(val)
 
                 worksheet = gsheets["adrs"]
                 ca = get_as_dataframe(worksheet, evaluate_formulas=True)
@@ -304,6 +310,10 @@ def sauvegarder_param_ds_gsheet(param):
                 worksheet.update_acell("A7", st.session_state.city_default)
             elif param == "sidebar_menus":
                 worksheet.update_acell("A8", str(st.session_state.sidebar_menus))
+            elif param == "periode_a_programmer_debut":
+                worksheet.update_acell("A9", st.session_state.periode_a_programmer_debut.isoformat())
+            elif param == "periode_a_programmer_fin":
+                worksheet.update_acell("A10", st.session_state.periode_a_programmer_fin.isoformat())
 
         except Exception as e:
             pass
@@ -339,6 +349,8 @@ def sauvegarder_contexte_ds_gsheet(df: pd.DataFrame, lnk, fd=None, ca=None):
             worksheet.update_acell("A6", st.session_state.itineraire_app)
             worksheet.update_acell("A7", st.session_state.city_default)
             worksheet.update_acell("A8", str(st.session_state.sidebar_menus))
+            worksheet.update_acell("A9", st.session_state.periode_a_programmer_debut.isoformat())
+            worksheet.update_acell("A10", st.session_state.periode_a_programmer_fin.isoformat())
 
             worksheet = gsheets["adrs"]
             worksheet.clear()
@@ -878,7 +890,7 @@ def forcer_reaffichage_df(key):
         st.session_state[session_state_forcer_reaffichage] = True
 
 # Affichage d'un dataframe
-def afficher_df(label, df, hide=[], key="affichage_df", colorisation=False):
+def afficher_df(label, df, hide=[], key="affichage_df", colorisation=False, hide_label=False):
 
     # Calcul de la hauteur de l'aggrid
     nb_lignes = len(df)
@@ -941,7 +953,9 @@ def afficher_df(label, df, hide=[], key="affichage_df", colorisation=False):
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
 
-    st.markdown(f"{label}")
+    if not hide_label:
+        st.markdown(f"{label}")
+
     response = AgGrid(
         df,
         gridOptions=grid_options,
@@ -1286,9 +1300,19 @@ def afficher_periode_a_programmer(df):
         with st.expander("Période de programmation"):
             col1, col2 = st.columns(2)
             with col1:
-                st.session_state.periode_a_programmer_debut = st.date_input("Début", value=st.session_state.periode_a_programmer_debut, format="DD/MM/YYYY")
+                debut = st.date_input("Début", value=st.session_state.periode_a_programmer_debut, format="DD/MM/YYYY")
+                if debut != st.session_state.periode_a_programmer_debut:
+                    st.session_state.periode_a_programmer_debut = debut
+                    forcer_reaffichage_df("creneaux_disponibles")
+                    sauvegarder_param_ds_gsheet("periode_a_programmer_debut")
+                    st.rerun()
             with col2:
-                st.session_state.periode_a_programmer_fin = st.date_input("Fin", value=st.session_state.periode_a_programmer_fin, format="DD/MM/YYYY")
+                fin = st.date_input("Fin", value=st.session_state.periode_a_programmer_fin, format="DD/MM/YYYY")
+                if fin != st.session_state.periode_a_programmer_fin:
+                    st.session_state.periode_a_programmer_fin = fin
+                    forcer_reaffichage_df("creneaux_disponibles")
+                    sauvegarder_param_ds_gsheet("periode_a_programmer_fin")
+                    st.rerun()
 
 # Affichage des paramètres
 def afficher_parametres():
@@ -2377,8 +2401,7 @@ def menu_activites_programmees(df, index_df, df_display, nom_activite):
 
         if MENU_ACTIVITE_UNIQUE:
             # Bascule du menu activité sur le menu_activites_non_programmees
-            st.session_state.forcage_menu_activites_enabled = True
-            st.session_state.forcer_menu_activites_non_programmees = True
+            forcer_menu_activites_non_programmees()
             st.session_state.menu_activites = {
                 "menu": "menu_activites_non_programmees",
                 "df": df,
@@ -2752,8 +2775,7 @@ def menu_activites_non_programmees(df, index_df, df_display, nom_activite):
 
             if MENU_ACTIVITE_UNIQUE:
                 # Bascule du menu activité sur le menu_activites_programmees
-                st.session_state.forcage_menu_activites_enabled = True
-                st.session_state.forcer_menu_activites_programmees = True
+                forcer_menu_activites_programmees()
                 st.session_state.menu_activites = {
                     "menu": "menu_activites_programmees",
                     "df": df,
@@ -3129,7 +3151,7 @@ def get_activites_programmables_avant(df, activites_programmees, ligne_ref, trai
         h_fin = h_debut + row["Duree_dt"]
         # Le spectacle doit commencer après debut_min et finir avant fin_max
         if h_debut >= debut_min + st.session_state.MARGE and h_fin <= fin_max - st.session_state.MARGE and est_hors_relache(row["Relache"], date_ref):
-            nouvelle_ligne = row.drop(labels=["Date", "Debut_dt", "Duree_dt"]).to_dict()
+            nouvelle_ligne = row.drop(labels=["Debut_dt", "Duree_dt"]).to_dict()
             nouvelle_ligne["__type_activite"] = "ActiviteExistante"
             nouvelle_ligne["__index"] = row.name
             proposables.append(nouvelle_ligne)
@@ -3160,7 +3182,7 @@ def get_activites_programmables_apres(df, activites_programmees, ligne_ref, trai
         h_fin = h_debut + row["Duree_dt"]
         # Le spectacle doit commencer après debut_min et finir avant fin_max
         if h_debut >= debut_min + st.session_state.MARGE and h_fin <= fin_max - st.session_state.MARGE and est_hors_relache(row["Relache"], date_ref):
-            nouvelle_ligne = row.drop(labels=["Date", "Debut_dt", "Duree_dt"]).to_dict()
+            nouvelle_ligne = row.drop(labels=["Debut_dt", "Duree_dt"]).to_dict()
             nouvelle_ligne["__type_activite"] = "ActiviteExistante"
             nouvelle_ligne["__index"] = row.name
             proposables.append(nouvelle_ligne)
@@ -3469,6 +3491,7 @@ def programmer_activite_non_programmee(df, date_ref, activite):
         df.at[index, "Activite"] = "Pause café"
 
     st.session_state.activites_programmees_selected_row = index
+
     forcer_reaffichage_activites_programmees()
     forcer_reaffichage_df("creneaux_disponibles")
     # st.session_state.activites_non_programmees_selected_row = ligne_voisine_index(st.session_state.activites_non_programmees_df_display, index)
@@ -3613,8 +3636,19 @@ def afficher_creneaux_disponibles(df):
 
         if not creneaux.empty:
             st.markdown("##### Créneaux disponibles")
+
+            # Gestion du flag de traitement des pauses
+            if "traiter_pauses" not in st.session_state: 
+                st.session_state.traiter_pauses = False
+            traiter_pauses = st.checkbox("Tenir compte des pauses", value=False)  
+            if traiter_pauses != st.session_state.traiter_pauses:
+                st.session_state.traiter_pauses = traiter_pauses
+                forcer_reaffichage_df("creneaux_disponibles")
+                st.session_state.creneaux_disponibles_choix_activite = None
+                st.rerun()
+
             choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
-            choix_creneau = afficher_df("Créneaux disponibles", creneaux, hide=["__type_creneau", "__index"], key="creneaux_disponibles")
+            choix_creneau = afficher_df("Créneaux disponibles", creneaux, hide=["__type_creneau", "__index"], key="creneaux_disponibles", hide_label=True)
             if choix_creneau is not None:
                 if choix_creneau_pred is not None and choix_creneau_pred.to_dict() != choix_creneau.to_dict():
                     forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
@@ -3633,6 +3667,7 @@ def afficher_creneaux_disponibles(df):
 
                 if proposables:
                     proposables = pd.DataFrame(proposables).sort_values(by=["Debut"], ascending=[True]) if proposables else pd.DataFrame(proposables)
+                    proposables["Date"] = date_ref
                     label = f"Activités programmables sur le créneau du {int(date_ref)} entre [{choix_creneau["Debut"]}-{choix_creneau["Fin"]}]"
                     activite = afficher_df(label, proposables, hide=["__type_activite", "__index"], key="activites_programmables_dans_creneau_selectionne")
 
@@ -3643,10 +3678,30 @@ def afficher_creneaux_disponibles(df):
                         "activite": activite,
                     }
 
-                    if not st.session_state.get("sidebar_menus"):
-                        with st.expander("Contrôles"):
-                            menu_creneaux_disponibles(df, date_ref, choix_creneau, activite)
+                    # if not st.session_state.get("sidebar_menus"):
+                    #     with st.expander("Contrôles"):
+                    #         menu_creneaux_disponibles(df, date_ref, choix_creneau, activite)
                     
+                    # Gestion du bouton Programmer
+                    if st.button(LABEL_BOUTON_PROGRAMMER, disabled=activite is None, key="PagePrincipaleProgrammerParCréneau"):
+
+                        if MENU_ACTIVITE_UNIQUE:
+                            # Bascule du menu activité sur le menu_activites_programmees
+                            forcer_menu_activites_programmees()
+                            st.session_state.menu_activites = {
+                                "menu": "menu_activites_programmees",
+                                "df": df,
+                                "index_df": idx,
+                                "df_display": st.session_state.activites_programmees_df_display,
+                                "nom_activite": activite["Activite"],
+                            }
+
+                        programmer_activite_non_programmee(df, date_ref, activite)
+                    else:
+                        if MENU_ACTIVITE_UNIQUE:
+                            if st.session_state.forcage_menu_activites_enabled:
+                                if st.session_state.activites_programmees_selected_row == st.session_state.menu_activites["index_df"]:
+                                    st.session_state.forcage_menu_activites_enabled = False
                     return
 
     st.session_state.menu_creneaux_disponibles = {
@@ -3697,7 +3752,7 @@ def menu_creneaux_disponibles(df, date, creneau, activite):
         st_info_error_avec_label(f"A {debut_activite}", nom_activite)
 
     # Gestion du bouton Programmer
-    if st.button(LABEL_BOUTON_PROGRAMMER, use_container_width=CENTRER_BOUTONS, disabled=activite is None, key="AjouterAuPlanningParCréneau"):
+    if st.button(LABEL_BOUTON_PROGRAMMER, use_container_width=CENTRER_BOUTONS, disabled=activite is None, key="MenuCreneauxDisposProgrammerParCreneau"):
         programmer_activite_non_programmee(df, date, activite)
 
 # Force le reaffichage de l'agrid des activités programmées
@@ -3713,6 +3768,16 @@ def forcer_reaffichage_activites_non_programmees():
         st.session_state.aggrid_activites_non_programmees_reset_counter += 1 
     if "aggrid_activites_non_programmees_forcer_reaffichage" in st.session_state:
         st.session_state.aggrid_activites_non_programmees_forcer_reaffichage = True
+
+# Force le reaffichage du menu des activités programmées
+def forcer_menu_activites_programmees():
+    st.session_state.forcage_menu_activites_enabled = True
+    st.session_state.forcer_menu_activites_programmees = True
+
+# Force le reaffichage du menu des activités non programmées
+def forcer_menu_activites_non_programmees():
+    st.session_state.forcage_menu_activites_enabled = True
+    st.session_state.forcer_menu_activites_non_programmees = True
 
 # Initialisation des variables d'état du contexte après chargement des données du contexte
 def initialiser_etat_contexte(df, wb, fn, lnk, ca):
@@ -3781,7 +3846,6 @@ def afficher_bouton_nouvelle_activite(df, disabled=False, key="ajouter_activite"
         st.session_state.editeur_activite_courante_idx = new_idx
         
         if MENU_ACTIVITE_UNIQUE:
-            # st.session_state.forcer_menu_activites_non_programmees = True
             # Bascule du menu activité sur le menu_activites_non_programmees
             st.session_state.menu_activites = {
                 "menu": "menu_activites_non_programmees",
@@ -3999,7 +4063,7 @@ def afficher_sidebar(df):
         return
     
     if MENU_ACTIVITE_UNIQUE:
-        with st.sidebar.expander("Activités"):
+        with st.sidebar.expander("Activités", expanded=True):
             if "menu_activites" in st.session_state and isinstance(st.session_state.menu_activites, dict):
                 if st.session_state.menu_activites["menu"] == "menu_activites_programmees":
                     menu_activites_programmees(
@@ -4036,14 +4100,14 @@ def afficher_sidebar(df):
                     st.session_state.menu_activites_non_programmees["nom_activite"],
                 )
 
-    with st.sidebar.expander("Créneaux disponibles"):
-        if "menu_creneaux_disponibles" in st.session_state and isinstance(st.session_state.menu_creneaux_disponibles, dict):
-            menu_creneaux_disponibles(
-                st.session_state.menu_creneaux_disponibles["df"],
-                st.session_state.menu_creneaux_disponibles["date"],
-                st.session_state.menu_creneaux_disponibles["creneau"],
-                st.session_state.menu_creneaux_disponibles["activite"],
-            )
+    # with st.sidebar.expander("Créneaux disponibles"):
+    #     if "menu_creneaux_disponibles" in st.session_state and isinstance(st.session_state.menu_creneaux_disponibles, dict):
+    #         menu_creneaux_disponibles(
+    #             st.session_state.menu_creneaux_disponibles["df"],
+    #             st.session_state.menu_creneaux_disponibles["date"],
+    #             st.session_state.menu_creneaux_disponibles["creneau"],
+    #             st.session_state.menu_creneaux_disponibles["activite"],
+    #         )
 
 def main():
     
