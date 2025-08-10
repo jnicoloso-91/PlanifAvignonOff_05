@@ -2388,8 +2388,10 @@ def menu_activites_programmees(df, index_df, df_display, nom_activite):
     if st.button(LABEL_BOUTON_SUPPRIMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled or activite_reservee, key="SupprimerActiviteProgrammee"):
         undo_redo_save()
         st.session_state.activites_programmees_selected_row = ligne_voisine_index(df_display, index_df)
+        st.session_state.forcer_maj_menu_activites_programmees = True
         supprimer_activite(df, index_df)
         forcer_reaffichage_activites_programmees()
+        forcer_reaffichage_df("creneaux_disponibles")
         sauvegarder_row_ds_gsheet(df, index_df)
         st.rerun()
 
