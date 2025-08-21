@@ -1934,7 +1934,6 @@ def verifier_coherence(df):
         
         except Exception as e:
             print(e)
-            return contenu
 
     with st.expander("Cohérence des données"):
         st.markdown(get_log_verifier_coherence(df), unsafe_allow_html=True)
