@@ -23,7 +23,7 @@ import time
 from streamlit_javascript import st_javascript
 import unicodedata
 from urllib.parse import quote_plus
-import pkg_resources
+# import pkg_resources
 
 # Debug
 DEBUG_TRACE_MODE = False
@@ -71,17 +71,6 @@ RENOMMAGE_COLONNES_INVERSE = {
     "Activité": "Activite",
 }
 
-# Palette de couleurs
-PALETTE_COULEURS_JOURS = {
-    1: "#fce5cd",   2: "#fff2cc",   3: "#d9ead3",   4: "#cfe2f3",   5: "#ead1dc",
-    6: "#f4cccc",   7: "#fff2cc",   8: "#d0e0e3",   9: "#f9cb9c",  10: "#d9d2e9",
-    11: "#c9daf8",  12: "#d0e0e3",  13: "#f6b26b",  14: "#ffe599",  15: "#b6d7a8",
-    16: "#a2c4c9",  17: "#b4a7d6",  18: "#a4c2f4",  19: "#d5a6bd",  20: "#e6b8af",
-    21: "#fce5cd",  22: "#fff2cc",  23: "#d9ead3",  24: "#cfe2f3",  25: "#ead1dc",
-    26: "#f4cccc",  27: "#d9d2e9",  28: "#b6d7a8",  29: "#d5a6bd",  30: "#f6b26b",
-    31: "#d0e0e3"
-}
-
 # AgGrid uodate_on
 AGGRID_UPDATE_ON_MENU_ACTIVITE_DOUBLE = ["cellValueChanged", "selectionChanged"]
 AGGRID_UPDATE_ON_MENU_ACTIVITE_UNIQUE = ["cellValueChanged", "selectionChanged"] 
@@ -111,6 +100,20 @@ PALETTE_COULEUR_PRIMARY_BUTTONS = {
     "warning": {"bg": "#fef3c7", "text": "#0b1220"},
     "success": {"bg": "#dcfce7", "text": "#0b1220"},
 }
+
+# Palette de couleurs jours
+PALETTE_COULEURS_JOURS = {
+    1: "#fce5cd",   2: "#fff2cc",   3: "#d9ead3",   4: "#cfe2f3",   5: "#ead1dc",
+    6: "#f4cccc",   7: "#fff2cc",   8: "#d0e0e3",   9: "#f9cb9c",  10: "#d9d2e9",
+    11: "#c9daf8",  12: "#d0e0e3",  13: "#f6b26b",  14: "#ffe599",  15: "#b6d7a8",
+    16: "#a2c4c9",  17: "#b4a7d6",  18: "#a4c2f4",  19: "#d5a6bd",  20: "#e6b8af",
+    21: "#fce5cd",  22: "#fff2cc",  23: "#d9ead3",  24: "#cfe2f3",  25: "#ead1dc",
+    26: "#f4cccc",  27: "#d9d2e9",  28: "#b6d7a8",  29: "#d5a6bd",  30: "#f6b26b",
+    31: "#d0e0e3"
+}
+
+# Couleur des activités programmables
+COULEUR_ACTIVITE_PROGRAMMABLE = "#d2fdd2"  # ("#ccffcc" autre vert clair  "#cfe2f3" bleu clair)
 
 CRITICAL_VARS = [
     "periode_a_programmer_debut",
@@ -947,7 +950,7 @@ def forcer_reaffichage_df(key):
         st.session_state[session_state_forcer_reaffichage] = True
 
 # Affichage d'un dataframe
-def afficher_df(label, df, hide=[], key="affichage_df", colorisation=False, hide_label=False):
+def afficher_df(label, df, hide=[], key="affichage_df", colorisation=False, hide_label=False, background_color=None):
 
     # Calcul de la hauteur de l'aggrid
     nb_lignes = len(df)
@@ -988,6 +991,16 @@ def afficher_df(label, df, hide=[], key="affichage_df", colorisation=False, hide
                 return null;
             }}
             """))
+    elif background_color is not None:
+        gb.configure_grid_options(getRowStyle=JsCode(f"""
+            function(params) {{
+                return {{
+                    'backgroundColor': '{background_color}'
+                }}
+            }}
+            """)
+        )
+
 
     # Configuration de la sélection
     pre_selected_row = 0  # par défaut
@@ -2306,6 +2319,11 @@ def afficher_activites_programmees():
         gb.configure_column(col, editable=(col not in non_editable_cols))
 
     gb.configure_column(
+        "Date",
+        pinned=JsCode("'left'")
+    )
+
+    gb.configure_column(
         "Début",
         editable=JsCode("function(params) { return params.data.__non_reserve; }")
     )
@@ -2556,6 +2574,10 @@ def afficher_activites_programmees():
                                     undo_redo_save()
                                     st.session_state.activites_programmees_selected_row = ligne_voisine_index(df_display, idx)
                                     st.session_state.activites_non_programmees_selected_row = idx
+
+                                    if MENU_ACTIVITE_UNIQUE:
+                                        st.session_state.forcer_menu_activites_non_programmees = True
+
                                     deprogrammer_activite_programmee(idx)
                                     forcer_reaffichage_activites_programmees()
                                     forcer_reaffichage_activites_non_programmees()
@@ -2732,6 +2754,11 @@ def afficher_activites_non_programmees():
     for col in work_cols:
         gb.configure_column(col, hide=True)
 
+    gb.configure_column(
+        "Date",
+        pinned=JsCode("'left'")
+    )
+
     # Colonnes editables
     non_editable_cols = ["Fin"] + work_cols
     for col in df_display.columns:
@@ -2758,17 +2785,17 @@ def afficher_activites_non_programmees():
         """)
     )
 
-    # Colorisation ('#ccffcc' // vert clair '#cfe2f3'  // bleu clair)
-    gb.configure_grid_options(getRowStyle= JsCode("""
-    function(params) {
-        if (params.data.__options_date !== "[]") {
-            return {
-                'backgroundColor': '#ccffcc' // vert clair
-            }
-        }
-        return null;
-    }
-    """))
+    # Colorisation 
+    gb.configure_grid_options(getRowStyle= JsCode(f"""
+        function(params) {{
+            if (params.data.__options_date !== "[]") {{
+                return {{
+                    'backgroundColor': '{COULEUR_ACTIVITE_PROGRAMMABLE}'
+                }}
+            }}
+            return null;
+        }}
+        """))
 
     # Retaillage largeur colonnes
     gb.configure_default_column(resizable=True)
@@ -2941,10 +2968,14 @@ def afficher_activites_non_programmees():
                             if col == "Date":
                                 if df_modifie.at[i, col] != "":
                                     # Programmation de l'activité à la date choisie
-                                    st.info("Programmation de l'activité à la date choisie")
+                                    jour_choisi = int(df_modifie.at[i, col])
                                     undo_redo_save()
                                     st.session_state.activites_non_programmees_selected_row = ligne_voisine_index(df_display, idx)
                                     st.session_state.activites_programmees_selected_row = idx
+                                    
+                                    if MENU_ACTIVITE_UNIQUE:
+                                        st.session_state.forcer_menu_activites_programmees = True
+
                                     modifier_activite_cell(idx, "Date", int(jour_choisi))
                                     forcer_reaffichage_activites_non_programmees()
                                     forcer_reaffichage_activites_programmees()
@@ -3290,7 +3321,7 @@ def deprogrammer_activite_programmee(idx):
         modifier_df_cell(st.session_state.df, idx, "Date", None)
         set_activites_programmees()
         set_activites_non_programmees()
-    set_creneaux_disponibles
+    set_creneaux_disponibles()
 
 # Création de la liste des créneaux avant/après pour chaque activité programmée 
 # le df des activités programmées est supposé etre trié par jour ("Date") et par heure de début ("Debut")
@@ -3986,7 +4017,7 @@ def afficher_creneaux_disponibles():
                 proposables["Date"] = date_ref
                 st.markdown("##### Activités programmables")
                 st.markdown(f"Sur le créneau du {int(date_ref)} entre [{choix_creneau["Debut"]}-{choix_creneau["Fin"]}]")
-                activite = afficher_df("Activités programmables", proposables, hide=["__type_activite", "__index"], key="activites_programmables_dans_creneau_selectionne", hide_label=True)
+                activite = afficher_df("Activités programmables", proposables, hide=["__type_activite", "__index"], key="activites_programmables_dans_creneau_selectionne", hide_label=True, background_color=COULEUR_ACTIVITE_PROGRAMMABLE)
 
                 st.session_state.menu_creneaux_disponibles = {
                     "date": date_ref,
