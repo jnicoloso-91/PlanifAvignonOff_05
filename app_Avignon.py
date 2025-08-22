@@ -2758,6 +2758,18 @@ def afficher_activites_non_programmees():
         """)
     )
 
+    # Colorisation ('#ccffcc' // vert clair '#cfe2f3'  // bleu clair)
+    gb.configure_grid_options(getRowStyle= JsCode("""
+    function(params) {
+        if (params.data.__options_date !== "[]") {
+            return {
+                'backgroundColor': '#ccffcc' // vert clair
+            }
+        }
+        return null;
+    }
+    """))
+
     # Retaillage largeur colonnes
     gb.configure_default_column(resizable=True)
 
@@ -2930,13 +2942,13 @@ def afficher_activites_non_programmees():
                                 if df_modifie.at[i, col] != "":
                                     # Programmation de l'activité à la date choisie
                                     st.info("Programmation de l'activité à la date choisie")
-                                    jour_choisi = int(df_modifie.at[i, col])
                                     undo_redo_save()
                                     st.session_state.activites_non_programmees_selected_row = ligne_voisine_index(df_display, idx)
                                     st.session_state.activites_programmees_selected_row = idx
-                                    df.at[idx, "Date"] = jour_choisi
+                                    modifier_activite_cell(idx, "Date", int(jour_choisi))
                                     forcer_reaffichage_activites_non_programmees()
                                     forcer_reaffichage_activites_programmees()
+                                    forcer_reaffichage_df("creneaux_disponibles")
                                     sauvegarder_row_ds_gsheet(idx)
                                     st.rerun()
                             else:
