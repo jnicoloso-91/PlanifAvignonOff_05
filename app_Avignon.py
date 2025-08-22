@@ -1205,7 +1205,7 @@ def afficher_titre(title):
     )
 
     # Titre de la page
-    st.markdown(f"### {title}")
+    st.markdown(f"## {title}")
 
 # Affiche l'aide de l'application
 def afficher_aide():
@@ -2439,6 +2439,7 @@ def afficher_activites_programmees():
         else:
             st.session_state.activites_programmees_update_on = AGGRID_UPDATE_ON_MENU_ACTIVITE_DOUBLE
 
+    st.write(f"AgGrid affiché {st.session_state.main_counter}")
     # Affichage
     response = AgGrid(
         df_display,
@@ -3971,8 +3972,9 @@ def afficher_creneaux_disponibles():
             if proposables:
                 proposables = pd.DataFrame(proposables).sort_values(by=["Debut"], ascending=[True]) if proposables else pd.DataFrame(proposables)
                 proposables["Date"] = date_ref
-                label = f"Activités programmables sur le créneau du {int(date_ref)} entre [{choix_creneau["Debut"]}-{choix_creneau["Fin"]}]"
-                activite = afficher_df(label, proposables, hide=["__type_activite", "__index"], key="activites_programmables_dans_creneau_selectionne")
+                st.markdown("##### Activités programmables")
+                st.markdown(f"Sur le créneau du {int(date_ref)} entre [{choix_creneau["Debut"]}-{choix_creneau["Fin"]}]")
+                activite = afficher_df("Activités programmables", proposables, hide=["__type_activite", "__index"], key="activites_programmables_dans_creneau_selectionne", hide_label=True)
 
                 st.session_state.menu_creneaux_disponibles = {
                     "date": date_ref,
