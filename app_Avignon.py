@@ -47,6 +47,9 @@ MAX_HISTORIQUE = 20
 
 COLONNES_ATTENDUES = ["Date", "Debut", "Fin", "Duree", "Activite", "Lieu", "Relache", "Reserve", "Priorite", "Commentaire"]
 COLONNES_ATTENDUES_ACCENTUEES = ["Date", "Début", "Fin", "Durée", "Activité", "Lieu", "Relâche", "Réservé", "Priorité", "Commentaire"]
+COLONNES_TYPE_INT = ["Date", "Priorite"]
+COLONNES_TYPE_STRING = ["Debut", "Fin", "Duree", "Activite", "Lieu"]
+COLONNES_TYPE_OBJECT = ["Relache", "Reserve", "Commentaire"]
 COLONNES_ATTENDUES_CARNET_ADRESSES = ["Nom", "Adresse"]
 
 RENOMMAGE_COLONNES = {
@@ -128,9 +131,6 @@ def get_user_id():
         st.session_state["user_id"] = user_id_from_url
 
     if "user_id" not in st.session_state:
-
-        afficher_titre("Bienvenue sur le planificateur Avignon Off 👋")
-
         st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
         if "new_user_id" not in st.session_state:     
             st.session_state["new_user_id"] = str(uuid.uuid4())[:8]
@@ -161,8 +161,8 @@ def get_gsheet_client():
         creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
         return gspread.authorize(creds)
     except Exception as e:
-            st.error(f"Erreur de connexion à Google Sheets : {e}")
-            return None
+        st.error(f"Erreur de connexion à Google Sheets : {e}")
+        return None
     
 def get_or_create_user_gsheets(user_id, spreadsheet_id):
     gsheets = None
@@ -174,6 +174,9 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
             st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
             st.stop()    
 
+        #-----------------------------------------------------------#
+        # Adapter sheet_names selon fonctionnement local ou hébergé #
+        #-----------------------------------------------------------#
         sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     # Utilisation nominale en mode multiuser avec hébergement streamlit share
         # sheet_names = [f"data", f"links", f"meta", f"adrs"]                                           # Pour debugger en local 
 
@@ -207,56 +210,76 @@ def charger_contexte_depuis_gsheet():
             user_id = get_user_id()
             gsheets = get_or_create_user_gsheets(user_id, spreadsheet_id="1ytYrefEPzdJGy5w36ZAjW_QQTlvfZ17AH69JkiHQzZY")
             st.session_state.gsheets = gsheets
-            worksheet = gsheets["data"]
-            df = get_as_dataframe(worksheet, evaluate_formulas=True)
-            df.dropna(how="all")
-            if len(df) > 0:
 
+            try:
+                worksheet = gsheets["data"]
+                df = get_as_dataframe(worksheet, evaluate_formulas=True)
+                df.dropna(how="all")
+            except Exception as e:
+                print(f"Erreur au chargement du DataFrame depuis la Google Sheet : {e}")
+                df = pd.DataFrame(columns=COLONNES_ATTENDUES)
+                initialiser_dtypes(df)
+
+            try:
                 worksheet = gsheets["links"]
                 rows = worksheet.get_all_values()
                 lnk = {}
                 if len(rows) > 1:
                     data_rows = rows[1:]
                     lnk = {row[0]: row[1] for row in data_rows if len(row) >= 2}
+            except Exception as e:
+                print(f"Erreur au chargement des hyperliens depuis la Google Sheet : {e}")
+                lnk = {}
 
+            try:
                 worksheet = gsheets["meta"]
                 fn  = worksheet.acell("A1").value
                 fp  = worksheet.acell("A2").value
                 if fp is None or str(fp).strip() == "":
                     wb = download_excel_from_dropbox(fp)
+            except Exception as e:
+                print(f"Erreur au chargement du modèle Excel depuis DropBox : {e}")
+                wb = None
 
+            try:
                 st.session_state.MARGE = to_timedelta(worksheet.acell("A3").value, default=MARGE)
                 st.session_state.DUREE_REPAS = to_timedelta(worksheet.acell("A4").value, default=DUREE_REPAS)
                 st.session_state.DUREE_CAFE = to_timedelta(worksheet.acell("A5").value, default=DUREE_CAFE)
                 st.session_state.itineraire_app = worksheet.acell("A6").value
                 st.session_state.city_default = worksheet.acell("A7").value
                 st.session_state.sidebar_menus = str(worksheet.acell("A8").value).strip().lower() == "true"
+            except Exception as e:
+                print(f"Erreur au chargement des paramètres depuis la Google Sheet : {e}")
+
+            try:
                 val = worksheet.acell("A9").value
                 if val is not None and str(val).strip() != "":
-                    st.session_state.periode_a_programmer_debut = datetime.date.fromisoformat(val)
+                    st.session_state.periode_a_programmer_debut = datetime.date.fromisoformat(val.split(" ")[0])
                 val = worksheet.acell("A10").value
                 if val is not None and str(val).strip() != "":
-                    st.session_state.periode_a_programmer_fin = datetime.date.fromisoformat(val)
+                    st.session_state.periode_a_programmer_fin = datetime.date.fromisoformat(val.split(" ")[0])
+            except Exception as e:
+                print(f"Erreur au chargement de la période de programmation depuis la Google Sheet : {e}")
+                initialiser_periode_programmation(df)
 
+            try:
                 worksheet = gsheets["adrs"]
                 ca = get_as_dataframe(worksheet, evaluate_formulas=True)
+            except Exception as e:
+                print(f"Erreur au chargement des paramètres depuis la Google Sheet : {e}")
+                ca = pd.DataFrame(columns=COLONNES_ATTENDUES_CARNET_ADRESSES)
 
-                df = nettoyer_donnees(df)
-                initialiser_etat_contexte(df, wb, fn, lnk, ca)
-                undo_redo_init(verify=False)
-                maj_donnees_calculees()
-                set_activites_programmees()
-                set_activites_non_programmees()
-                set_creneaux_disponibles()
-            else:
-                initialiser_nouveau_contexte(avec_sauvegarde=False)
-                undo_redo_init(verify=False)
-                maj_donnees_calculees()
-                set_activites_programmees()
-                set_activites_non_programmees()
-                set_creneaux_disponibles()
+            df = nettoyer_donnees(df, fn)
+            initialiser_etat_contexte(df, wb, fn, lnk, ca)
+            undo_redo_init(verify=False)
+            maj_donnees_calculees()
+            set_activites_programmees()
+            set_activites_non_programmees()
+            set_creneaux_disponibles()
+
         except Exception as e:
-            print(f"Erreur charger_contexte_depuis_gsheet : {e}")
+            st.error(f"Erreur dans le chargement du contexte depuis la Google Sheet : {e}")
+            st.stop()
 
 # 📤 Sauvegarde le DataFrame dans la Google Sheet
 def sauvegarder_df_ds_gsheet(df: pd.DataFrame):
@@ -327,9 +350,9 @@ def sauvegarder_param_ds_gsheet(param):
             elif param == "sidebar_menus":
                 worksheet.update_acell("A8", str(st.session_state.sidebar_menus))
             elif param == "periode_a_programmer_debut":
-                worksheet.update_acell("A9", st.session_state.periode_a_programmer_debut.isoformat())
+                worksheet.update_acell("A9", to_iso_date(st.session_state.periode_a_programmer_debut))
             elif param == "periode_a_programmer_fin":
-                worksheet.update_acell("A10", st.session_state.periode_a_programmer_fin.isoformat())
+                worksheet.update_acell("A10", to_iso_date(st.session_state.periode_a_programmer_fin))
 
         except Exception as e:
             print(f"Erreur sauvegarder_param_ds_gsheet : {e}")
@@ -364,8 +387,8 @@ def sauvegarder_contexte_ds_gsheet(df: pd.DataFrame, lnk, fd=None, ca=None):
             worksheet.update_acell("A6", st.session_state.itineraire_app)
             worksheet.update_acell("A7", st.session_state.city_default)
             worksheet.update_acell("A8", str(st.session_state.sidebar_menus))
-            worksheet.update_acell("A9", st.session_state.periode_a_programmer_debut.isoformat())
-            worksheet.update_acell("A10", st.session_state.periode_a_programmer_fin.isoformat())
+            worksheet.update_acell("A9", to_iso_date(st.session_state.periode_a_programmer_debut))
+            worksheet.update_acell("A10", to_iso_date(st.session_state.periode_a_programmer_fin))
 
             worksheet = gsheets["adrs"]
             worksheet.clear()
@@ -851,7 +874,16 @@ def formatter_cellule_int(d):
             return d
         return int(d)
     return d
-    
+
+# Renvoie une date ISO (YYYY-MM-DD) pour une val datetime ou datetime.date, sinon renvoie chaine vide
+def to_iso_date(val):
+    if isinstance(val, datetime.datetime):
+        return val.date().isoformat()
+    elif isinstance(val, datetime.date):
+        return val.isoformat()
+    else:
+        return ""
+
 # Renvoie une bitmap encodée en format Base64 à partir d'un fichier
 import base64
 def image_to_base64(path):
@@ -978,7 +1010,7 @@ def afficher_df(label, df, hide=[], key="affichage_df", colorisation=False, hide
     grid_options["suppressMovableColumns"] = True
 
     if not hide_label:
-        st.markdown(f"{label}")
+        st.markdown(f"##### {label}")
 
     response = AgGrid(
         df,
@@ -1091,6 +1123,10 @@ def aggrid_single_selection_list(label, choices, key="aggrid_select", hauteur=20
 
 # Crée un hash des colonnes d'un df et de parametres.
 def hash_df(df: pd.DataFrame, colonnes_a_garder: list=None, colonnes_a_enlever: list=None, params=None):
+    
+    if df is None:
+        return None
+
     # Attention : convertir les colonnes de type datetime en string pour JSON
     if colonnes_a_garder is None:
         df_subset = df
@@ -1109,6 +1145,7 @@ def hash_df(df: pd.DataFrame, colonnes_a_garder: list=None, colonnes_a_enlever: 
     json_data = json.dumps(data, sort_keys=True)
     return hashlib.sha256(json_data.encode()).hexdigest()
 
+# Normalise une val au format iso pour préparation hashage
 def normalize(val):
     # Sérialisation stable pour le state (dates, timedeltas, NaN…)
     if isinstance(val, (datetime.date, datetime.datetime)):
@@ -1121,16 +1158,27 @@ def normalize(val):
         return None
     return val
 
+# Hashage d'une liste de variables d'état du st.session_state
 def hash_state(keys: list) -> str:
     snapshot = {k: normalize(st.session_state.get(k)) for k in keys}
     payload = json.dumps(snapshot, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode()).hexdigest()# Affiche un message d'erreur dans un dialog 
 
+# Equivalent st.error dans une boite de dialogue modale
 @st.dialog("Erreur")
 def show_dialog_error(message):
     st.error(message)
     if st.button("Fermer"):
         st.rerun()
+
+# A utiliser sur les colonnes de travail d'un df_display contenant des listes, series, 
+# car les aggrid exigent des objets JSON serializable. Un JsCode faisant un JSON.parse()
+# permet de dérialiser côté client pour exploitation de la colonne de travail 
+# (voir la colonne __options_date cintenant les menus de jours de programmation possibles).
+def safe_json_dump(val):
+    if isinstance(val, (list, dict)):
+        return json.dumps(val, ensure_ascii=False)
+    return "[]"
 
 ##########################
 # Fonctions applicatives #
@@ -1349,58 +1397,56 @@ def afficher_periode_programmation():
         need_refresh_grids = False
 
         with st.form("periode_programmation_form"):
-            if "periode_a_programmer_debut" in st.session_state and "periode_a_programmer_fin" in st.session_state:
-                dates_valides = get_dates_from_df(st.session_state.df)  # doit renvoyer une série d'int (jours)
-                date_min = int(dates_valides.min()) if not dates_valides.empty else None
-                date_max = int(dates_valides.max()) if not dates_valides.empty else None
+            dates_valides = get_dates_from_df(st.session_state.df)  # doit renvoyer une série d'int (jours)
+            date_min = int(dates_valides.min()) if not dates_valides.empty else None
+            date_max = int(dates_valides.max()) if not dates_valides.empty else None
 
-                base_deb = st.session_state.periode_a_programmer_debut
-                base_fin = st.session_state.periode_a_programmer_fin
+            base_deb = st.session_state.periode_a_programmer_debut
+            base_fin = st.session_state.periode_a_programmer_fin
 
-                deb_kwargs = dict(key="periode_debut_input1", format="DD/MM/YYYY")
-                fin_kwargs = dict(key="periode_fin_input1",   format="DD/MM/YYYY")
+            deb_kwargs = dict(key="periode_debut_input1", format="DD/MM/YYYY")
+            fin_kwargs = dict(key="periode_fin_input1",   format="DD/MM/YYYY")
 
-                st.session_state.setdefault("periode_debut_input1", base_deb)
-                st.session_state.setdefault("periode_fin_input1",   base_fin)
-                deb_kwargs["value"] = base_deb
-                fin_kwargs["value"] = base_fin
+            st.session_state.setdefault("periode_debut_input1", base_deb)
+            st.session_state.setdefault("periode_fin_input1",   base_fin)
+            deb_kwargs["value"] = base_deb
+            fin_kwargs["value"] = base_fin
 
-                if isinstance(date_min, int):
-                    try:
-                        if date_min is not None:
-                            deb_kwargs["max_value"] = base_deb.replace(day=date_min)
-                    except ValueError as e:
-                        print(e)
-                if isinstance(date_max, int):
-                    try:
-                        if date_max is not None:
-                            fin_kwargs["min_value"] = base_fin.replace(day=date_max)
-                    except ValueError as e:
-                        print(e)
-
+            if isinstance(date_min, int):
                 try:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        debut = st.date_input("Début", **deb_kwargs)
-                    with col2:
-                        fin   = st.date_input("Fin", **fin_kwargs)
+                    if date_min is not None:
+                        deb_kwargs["max_value"] = base_deb.replace(day=date_min)
+                except ValueError as e:
+                    print(e)
+            if isinstance(date_max, int):
+                try:
+                    if date_max is not None:
+                        fin_kwargs["min_value"] = base_fin.replace(day=date_max)
+                except ValueError as e:
+                    print(e)
 
-                except Exception as e:
-                    print(f"Erreur dans afficher_periode_programmation : {e}")
+            try:
+                col1, col2 = st.columns(2)
+                with col1:
+                    debut = st.date_input("Début", **deb_kwargs)
+                with col2:
+                    fin   = st.date_input("Fin", **fin_kwargs)
+
+            except Exception as e:
+                print(f"Erreur dans afficher_periode_programmation : {e}")
         
             submitted = st.form_submit_button("Appliquer")
 
         if submitted:
-            if "periode_a_programmer_debut" in st.session_state and "periode_a_programmer_fin" in st.session_state:
-                if debut != st.session_state.periode_a_programmer_debut:
-                    st.session_state.periode_a_programmer_debut = debut
-                    changed_keys.append("periode_a_programmer_debut")
-                    need_refresh_grids = True
+            if debut != st.session_state.periode_a_programmer_debut:
+                st.session_state.periode_a_programmer_debut = debut
+                changed_keys.append("periode_a_programmer_debut")
+                need_refresh_grids = True
 
-                if fin != st.session_state.periode_a_programmer_fin:
-                    st.session_state.periode_a_programmer_fin = fin
-                    changed_keys.append("periode_a_programmer_fin")
-                    need_refresh_grids = True
+            if fin != st.session_state.periode_a_programmer_fin:
+                st.session_state.periode_a_programmer_fin = fin
+                changed_keys.append("periode_a_programmer_fin")
+                need_refresh_grids = True
             
             # Sauvegarde en batch (une seule fois)
             if changed_keys:
@@ -1432,46 +1478,6 @@ def afficher_parametres():
         need_refresh_grids = False
 
         with st.form("params_form"):
-
-            # # Période à programmer
-            # if "periode_a_programmer_debut" in st.session_state and "periode_a_programmer_fin" in st.session_state:
-            #     dates_valides = get_dates_from_df(st.session_state.df)  # doit renvoyer une série d'int (jours)
-            #     date_min = int(dates_valides.min()) if not dates_valides.empty else None
-            #     date_max = int(dates_valides.max()) if not dates_valides.empty else None
-
-            #     base_deb = st.session_state.periode_a_programmer_debut
-            #     base_fin = st.session_state.periode_a_programmer_fin
-
-            #     deb_kwargs = dict(key="periode_debut_input", format="DD/MM/YYYY")
-            #     fin_kwargs = dict(key="periode_fin_input",   format="DD/MM/YYYY")
-
-            #     st.session_state.setdefault("periode_debut_input", base_deb)
-            #     st.session_state.setdefault("periode_fin_input",   base_fin)
-            #     deb_kwargs["value"] = base_deb
-            #     fin_kwargs["value"] = base_fin
-
-            #     if isinstance(date_min, int):
-            #         try:
-            #             if date_min is not None:
-            #                 deb_kwargs["max_value"] = base_deb.replace(day=date_min)
-            #         except ValueError as e:
-            #             print(e)
-            #     if isinstance(date_max, int):
-            #         try:
-            #             if date_max is not None:
-            #                 fin_kwargs["min_value"] = base_fin.replace(day=date_max)
-            #         except ValueError as e:
-            #             print(e)
-
-            #     with st.expander("Période de programmation", expanded=True):
-            #         try:
-            #             col1, col2 = st.columns(2)
-            #             with col1:
-            #                 debut = st.date_input("Début", **deb_kwargs)
-            #             with col2:
-            #                 fin   = st.date_input("Fin",   **fin_kwargs)
-            #         except Exception as e:
-            #             print(f"Erreur dans afficher_parametres : {e}")
 
             # Marge entre activités
             if "MARGE" not in st.session_state:
@@ -1571,18 +1577,6 @@ def afficher_parametres():
 
         if submitted:
 
-            # # Période à programmer
-            # if "periode_a_programmer_debut" in st.session_state and "periode_a_programmer_fin" in st.session_state:
-            #     if debut != st.session_state.periode_a_programmer_debut:
-            #         st.session_state.periode_a_programmer_debut = debut
-            #         ajouter_sans_doublon(changed_keys, "periode_a_programmer_debut")
-            #         need_refresh_grids = True
-
-            #     if fin != st.session_state.periode_a_programmer_fin:
-            #         st.session_state.periode_a_programmer_fin = fin
-            #         ajouter_sans_doublon(changed_keys, "periode_a_programmer_fin")
-            #         need_refresh_grids = True
-
             # MARGE
             new_marge = datetime.timedelta(minutes=st.session_state.param_marge_min)
             if st.session_state.MARGE != new_marge:
@@ -1623,31 +1617,25 @@ def afficher_parametres():
 
             # Ne forcer le réaffichage des grilles qu'une seule fois
             if need_refresh_grids:
+                set_creneaux_disponibles()
                 forcer_reaffichage_df("creneaux_disponibles")
+
+            # Sauvegarde en batch (une seule fois)
+            if changed_keys:
+                for k in changed_keys:
+                    try:
+                        sauvegarder_param_ds_gsheet(k)  # ou une version batch si tu as
+                    except Exception:
+                        pass  # log/ignorer selon besoin
 
             # Pas de st.rerun() nécessaire : submit a déjà provoqué un rerun
             st.toast("Paramètres appliqués.", icon="✅")
-
-        # Sauvegarde en batch (une seule fois)
-        if changed_keys:
-            for k in changed_keys:
-                try:
-                    sauvegarder_param_ds_gsheet(k)  # ou une version batch si tu as
-                except Exception:
-                    pass  # log/ignorer selon besoin
 
 # Met à jour les données calculées d'une ligne
 def maj_donnees_calculees_row(idx):
     try:
         df = st.session_state.df
         if len(df) > 0:
-            if "Debut_dt" not in df.columns:
-                df["Debut_dt"] = pd.NaT
-            if "Duree_dt" not in df.columns:
-                df["Duree_dt"] = pd.NaT
-            if "Fin" not in df.columns:
-                df["Fin"] = ""
-                
             df.at[idx, "Debut_dt"] = heure_parse(df.loc[idx, "Debut"])
             df.at[idx, "Duree_dt"] = duree_parse(df.loc[idx, "Duree"])
             df.at[idx, "Fin"] = calculer_fin_row(df.loc[idx])
@@ -1662,50 +1650,32 @@ def maj_donnees_calculees():
             df["Debut_dt"] = df["Debut"].apply(heure_parse)
             df["Duree_dt"] = df["Duree"].apply(duree_parse)
             df["Fin"] = df.apply(calculer_fin_row, axis=1)    
-        else:
-            df["Debut_dt"] = []
-            df["Duree_dt"] = []
-            df["Fin"] = []
     except:
         pass        
 
 # Nettoie les données du tableau Excel importé
-def nettoyer_donnees(df):
+def nettoyer_donnees(df, fn):
     try:
         # Nettoyage noms de colonnes : suppression espaces et accents
         df.columns = df.columns.str.strip().str.replace("\u202f", " ").str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8")
 
         if not all(col in df.columns for col in COLONNES_ATTENDUES):
-            st.error("Le fichier n'est pas au format Excel ou ne contient pas toutes les colonnes attendues: " + ", ".join(COLONNES_ATTENDUES_ACCENTUEES) + ".")
-        elif (len(df) == 0):
-            st.error("Le fichier est vide")
+            st.session_state.contexte_invalide_message = f"Le fichier {fn} n'est pas au format Excel ou ne contient pas toutes les colonnes attendues: " + ", ".join(COLONNES_ATTENDUES_ACCENTUEES) + "."
         else:
+            initialiser_dtypes(df)
 
-            # Suppression des lignes presque vides i.e. ne contenant que des NaN ou des ""
-            df = df[~df.apply(lambda row: all(pd.isna(x) or str(x).strip() == "" for x in row), axis=1)].reset_index(drop=True)
+            if (len(df) > 0):
+                # Suppression des lignes presque vides i.e. ne contenant que des NaN ou des ""
+                df = df[~df.apply(lambda row: all(pd.isna(x) or str(x).strip() == "" for x in row), axis=1)].reset_index(drop=True)
 
-            # Transformation de la colonne Date en entiers
-            df["Date"] = pd.to_numeric(df["Date"], errors="coerce").astype("Int64")
+                # Nettoyage Heure (transforme les datetime, time et None en str mais ne garantit pas le format HHhMM, voir est_heure_valide pour cela)
+                df["Debut"] = df["Debut"].apply(heure_str).astype("string")
 
-            # Nettoyage Heure (transforme les datetime, time et None en str mais ne garantit pas le format HHhMM, voir heure_parse et est_heure_valide pour cela)
-            df["Debut"] = df["Debut"].apply(heure_str)
+                # Nettoyage Duree (transforme les timedelta et None en str mais ne garantit pas le format HhMM, voir est_duree_valide pour cela)
+                df["Duree"] = df["Duree"].apply(duree_str).astype("string")
 
-            # Nettoyage Duree (transforme les timedelta et None en str mais ne garantit pas le format HhMM, voir duree_parse et est_duree_valide pour cela)
-            df["Duree"] = df["Duree"].apply(duree_str)
-
-            # Force le type de certaines colonnes pour éviter les erreurs de conversion ultérieures
-            colonnes_cibles = {
-                "Debut": "string",
-                "Fin": "string",
-                "Duree": "string",
-                "Activite": "string",
-                "Lieu": "string"
-            }
-            for col, dtype in colonnes_cibles.items():
-                df[col] = df[col].astype(dtype) 
-
-            df["Relache"] = df["Relache"].astype("object").fillna("").astype(str)
-            df["Priorite"] = pd.to_numeric(df["Priorite"], errors="coerce").astype("Int64")
+                # Colonne Relache castée en object avec NaN remplacés par "" et le reste en str
+                df["Relache"] = df["Relache"].astype("object").fillna("").astype(str)
 
             # Valide le contexte si pas d'exception dans le traitement précédent
             if "contexte_invalide" in st.session_state:
@@ -1742,199 +1712,196 @@ def verifier_coherence(df):
     
     # @st.cache_data
     def get_log_verifier_coherence(df):
-        try:
-            erreurs = []
+        # try:
+        erreurs = []
 
-            def est_entier(x):
-                try:
-                    return not pd.isna(x) and str(x).strip() != "" and int(float(x)) == float(x)
-                except Exception:
-                    return False
-            
-            if len(df) <= 0:
-                return
-            
-            # 1. 🔁 Doublons
-            df_valid = df[df["Activite"].notna() & (df["Activite"].astype(str).str.strip() != "")]
-
-            # Création d'une colonne temporaire pour la comparaison
-            df_valid = df[df["Activite"].notna() & (df["Activite"].astype(str).str.strip() != "")]
-            df_valid = df_valid.copy()  # pour éviter SettingWithCopyWarning
-            df_valid["_activite_clean"] = df_valid["Activite"].astype(str).str.strip().str.lower()
-            doublons = df_valid[df_valid.duplicated(subset=["_activite_clean"], keep=False)]
-
-            if not doublons.empty:
-                bloc = []
-                for _, row in doublons.iterrows():
-                    if not est_pause(row):
-                        try:
-                            date_str = str(int(float(row["Date"]))) if pd.notna(row["Date"]) else "Vide"
-                        except (ValueError, TypeError):
-                            date_str = "Vide"
-                        heure_str = str(row["Debut"]).strip() if pd.notna(row["Debut"]) else "Vide"
-                        duree_str = str(row["Duree"]).strip() if pd.notna(row["Duree"]) else "Vide"
-                        
-                        if bloc.empty:
-                            bloc = ["🟠 Doublons d'activités :"]
-
-                        bloc.append(f"{date_str} - {heure_str} - {row['Activite']} ({duree_str})")
-                erreurs.append("\n".join(bloc))
-                
-            # 2. ⛔ Chevauchements
-            chevauchements = []
-            df_sorted = df.sort_values(by=["Date", "Debut_dt"])
-            for i in range(1, len(df_sorted)):
-                r1 = df_sorted.iloc[i - 1]
-                r2 = df_sorted.iloc[i]
-                if r1.isna().all() or r2.isna().all():
-                    continue
-                if pd.notna(r1["Date"]) and pd.notna(r2["Date"]) and r1["Date"] == r2["Date"]:
-                    fin1 = r1["Debut_dt"] + r1["Duree_dt"]
-                    debut2 = r2["Debut_dt"]
-                    if debut2 < fin1:
-                        chevauchements.append((r1, r2))
-            if chevauchements:
-                bloc = ["🔴 Chevauchements:"]
-                for r1, r2 in chevauchements:
-                    bloc.append(
-                        f"{r1['Activite']} ({r1['Debut']} / {r1['Duree']}) chevauche {r2['Activite']} ({r2['Debut']} / {r2['Duree']}) le {r1['Date']}"
-                    )
-                erreurs.append("\n".join(bloc))
-
-            # 3. 🕒 Erreurs de format
-            bloc_format = []
-            for idx, row in df.iterrows():
-                # ignorer si rien n'est programmé
-                if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
-                    continue
-                if row.isna().all():
-                    continue
-
-                # Date : uniquement si non NaN
-                if pd.notna(row["Date"]) and not est_entier(row["Date"]):
-                    bloc_format.append(f"Date invalide à la ligne {idx + 2} : {row['Date']}")
-
-                # Ne tester Heure/Duree que si Spectacle ou Autres est renseigné
-                if str(row["Activite"]).strip() != "":
-                    if not re.match(r"^\d{1,2}h\d{2}$", str(row["Debut"]).strip()):
-                        bloc_format.append(f"Heure invalide à la ligne {idx + 2} : {row['Debut']}")
-                    if not re.match(r"^\d{1,2}h\d{2}$", str(row["Duree"]).strip()):
-                        bloc_format.append(f"Durée invalide à la ligne {idx + 2} : {row['Duree']}")
-                
-                # Test de la colonne Relache
-                if not est_relache_valide(row["Relache"]):
-                    bloc_format.append(f"Relache invalide à la ligne {idx + 2} : {row['Relache']}")
-
-            # 4. 📆 Spectacles un jour de relâche (Date == Relache)
-            bloc_relache = []
-            for idx, row in df.iterrows():
-                # ignorer si rien n'est programmé
-                if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
-                    continue
-                if row.isna().all():
-                    continue
-
-                if (
-                    est_entier(row["Date"]) and
-                    est_entier(row["Relache"]) and
-                    int(float(row["Date"])) == int(float(row["Relache"])) and
-                    str(row["Activite"]).strip() != ""
-                ):
-                    bloc_relache.append(
-                        f"{row['Activite']} prévu le jour de relâche ({int(row['Date'])}) à la ligne {idx + 2}"
-                    )
-            if bloc_relache:
-                erreurs.append("🛑 Spectacles programmés un jour de relâche:\n" + "\n".join(bloc_relache))
-
-            # 5. 🕳️ Heures non renseignées
-            bloc_heure_vide = []
-            for idx, row in df.iterrows():
-                # ignorer si rien n'est programmé
-                if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
-                    continue
-                if row.isna().all():
-                    continue
-
-                if str(row["Activite"]).strip() != "":
-                    if pd.isna(row["Debut"]) or str(row["Debut"]).strip() == "":
-                        bloc_heure_vide.append(f"Heure vide à la ligne {idx + 2}")
-            if bloc_heure_vide:
-                erreurs.append("⚠️ Heures non renseignées:\n" + "\n".join(bloc_heure_vide))
-
-            # 6. 🕓 Heures au format invalide
-            bloc_heure_invalide = []
-            for idx, row in df.iterrows():
-                # ignorer si rien n'est programmé
-                if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
-                    continue
-                if row.isna().all():
-                    continue
-
-                if str(row["Activite"]).strip() != "":
-                    h = row["Debut"]
-                    if pd.notna(h) and str(h).strip() != "":
-                        h_str = str(h).strip().lower()
-                        is_time_like = isinstance(h, (datetime.datetime, datetime.time))
-                        valid_format = bool(re.match(r"^\d{1,2}h\d{2}$", h_str) or re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", h_str))
-                        if not is_time_like and not valid_format:
-                            bloc_heure_invalide.append(f"Heure invalide à la ligne {idx + 2} : {h}")
-            if bloc_heure_invalide:
-                erreurs.append("⛔ Heures mal formatées:\n" + "\n".join(bloc_heure_invalide))
-
-            # 7. 🕳️ Durées non renseignées ou nulles
-            bloc_duree_nulle = []
-            for idx, row in df.iterrows():
-                # ignorer si rien n'est programmé
-                if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
-                    continue
-                if row.isna().all():
-                    continue
-
-                if isinstance(row["Duree_dt"], pd.Timedelta) and row["Duree_dt"] == pd.Timedelta(0):
-                    if pd.isna(row["Duree"]) or str(row["Duree"]).strip() == "":
-                        msg = f"Durée vide à la ligne {idx + 2}"
-                    else:
-                        msg = f"Durée égale à 0 à la ligne {idx + 2} : {row['Duree']}"
-                    bloc_duree_nulle.append(msg)
-            if bloc_duree_nulle:
-                erreurs.append("⚠️ Durées nulles ou vides:\n" + "\n".join(bloc_duree_nulle))
-
-            # 8. ⏱️ Durées au format invalide
-            bloc_duree_invalide = []
-            for idx, row in df.iterrows():
-                # ignorer si rien n'est programmé
-                if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
-                    continue
-                if row.isna().all():
-                    continue
-
-                if str(row["Activite"]).strip() != "":
-                    d = row["Duree"]
-                    if pd.notna(d) and str(d).strip() != "":
-                        d_str = str(d).strip().lower()
-                        is_timedelta = isinstance(d, pd.Timedelta)
-                        valid_format = bool(re.match(r"^\d{1,2}h\d{2}$", d_str) or re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", d_str))
-                        if not is_timedelta and not valid_format:
-                            bloc_duree_invalide.append(f"Durée invalide à la ligne {idx + 2} : {d}")
-            if bloc_duree_invalide:
-                erreurs.append("⛔ Durées mal formatées:\n" + "\n".join(bloc_duree_invalide))
-
-            contenu = "<div style='font-size: 14px;'>"
-            for bloc in erreurs:
-                lignes = bloc.split("\n")
-                if lignes[0].startswith(("🟠", "🔴", "⚠️", "🛑", "⛔")):
-                    contenu += f"<p><strong>{lignes[0]}</strong></p><ul>"
-                    for ligne in lignes[1:]:
-                        contenu += f"<li>{ligne}</li>"
-                    contenu += "</ul>"
-                else:
-                    contenu += f"<p>{bloc}</p>"
-            contenu += "</div>"
-            return contenu
+        def est_entier(x):
+            try:
+                return not pd.isna(x) and str(x).strip() != "" and int(float(x)) == float(x)
+            except Exception:
+                return False
         
-        except Exception as e:
-            print(e)
+        if len(df) <= 0:
+            return
+        
+        # 1. 🔁 Doublons
+        df_valid = df[df["Activite"].notna() & (df["Activite"].astype(str).str.strip() != "")]
+        df_valid = df_valid.copy()  # pour éviter SettingWithCopyWarning
+        df_valid["_activite_clean"] = df_valid["Activite"].astype(str).str.strip().str.lower()
+        doublons = df_valid[df_valid.duplicated(subset=["_activite_clean"], keep=False)]
 
+        if not doublons.empty:
+            bloc = []
+            for _, row in doublons.iterrows():
+                if not est_pause(row):
+                    try:
+                        date_str = str(int(float(row["Date"]))) if pd.notna(row["Date"]) else "Vide"
+                    except (ValueError, TypeError):
+                        date_str = "Vide"
+                    heure_str = str(row["Debut"]).strip() if pd.notna(row["Debut"]) else "Vide"
+                    duree_str = str(row["Duree"]).strip() if pd.notna(row["Duree"]) else "Vide"
+                    
+                    if not bloc:
+                        bloc = ["🟠 Doublons d'activités :"]
+
+                    bloc.append(f"{date_str} - {heure_str} - {row['Activite']} ({duree_str})")
+            erreurs.append("\n".join(bloc))
+            
+        # 2. ⛔ Chevauchements
+        chevauchements = []
+        df_sorted = df.sort_values(by=["Date", "Debut_dt"])
+        for i in range(1, len(df_sorted)):
+            r1 = df_sorted.iloc[i - 1]
+            r2 = df_sorted.iloc[i]
+            if r1.isna().all() or r2.isna().all():
+                continue
+            if pd.notna(r1["Date"]) and pd.notna(r2["Date"]) and r1["Date"] == r2["Date"]:
+                fin1 = r1["Debut_dt"] + r1["Duree_dt"]
+                debut2 = r2["Debut_dt"]
+                if debut2 < fin1:
+                    chevauchements.append((r1, r2))
+        if chevauchements:
+            bloc = ["🔴 Chevauchements:"]
+            for r1, r2 in chevauchements:
+                bloc.append(
+                    f"{r1['Activite']} ({r1['Debut']} / {r1['Duree']}) chevauche {r2['Activite']} ({r2['Debut']} / {r2['Duree']}) le {r1['Date']}"
+                )
+            erreurs.append("\n".join(bloc))
+
+        # 3. 🕒 Erreurs de format
+        bloc_format = []
+        for idx, row in df.iterrows():
+            # ignorer si rien n'est programmé
+            if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
+                continue
+            if row.isna().all():
+                continue
+
+            # Date : uniquement si non NaN
+            if pd.notna(row["Date"]) and not est_entier(row["Date"]):
+                bloc_format.append(f"Date invalide à la ligne {idx + 2} : {row['Date']}")
+
+            # Ne tester Heure/Duree que si Spectacle ou Autres est renseigné
+            if str(row["Activite"]).strip() != "":
+                if not re.match(r"^\d{1,2}h\d{2}$", str(row["Debut"]).strip()):
+                    bloc_format.append(f"Heure invalide à la ligne {idx + 2} : {row['Debut']}")
+                if not re.match(r"^\d{1,2}h\d{2}$", str(row["Duree"]).strip()):
+                    bloc_format.append(f"Durée invalide à la ligne {idx + 2} : {row['Duree']}")
+            
+            # Test de la colonne Relache
+            if not est_relache_valide(row["Relache"]):
+                bloc_format.append(f"Relache invalide à la ligne {idx + 2} : {row['Relache']}")
+
+        # 4. 📆 Spectacles un jour de relâche (Date == Relache)
+        bloc_relache = []
+        for idx, row in df.iterrows():
+            # ignorer si rien n'est programmé
+            if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
+                continue
+            if row.isna().all():
+                continue
+
+            if (
+                est_entier(row["Date"]) and
+                est_entier(row["Relache"]) and
+                int(float(row["Date"])) == int(float(row["Relache"])) and
+                str(row["Activite"]).strip() != ""
+            ):
+                bloc_relache.append(
+                    f"{row['Activite']} prévu le jour de relâche ({int(row['Date'])}) à la ligne {idx + 2}"
+                )
+        if bloc_relache:
+            erreurs.append("🛑 Spectacles programmés un jour de relâche:\n" + "\n".join(bloc_relache))
+
+        # 5. 🕳️ Heures non renseignées
+        bloc_heure_vide = []
+        for idx, row in df.iterrows():
+            # ignorer si rien n'est programmé
+            if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
+                continue
+            if row.isna().all():
+                continue
+
+            if str(row["Activite"]).strip() != "":
+                if pd.isna(row["Debut"]) or str(row["Debut"]).strip() == "":
+                    bloc_heure_vide.append(f"Heure vide à la ligne {idx + 2}")
+        if bloc_heure_vide:
+            erreurs.append("⚠️ Heures non renseignées:\n" + "\n".join(bloc_heure_vide))
+
+        # 6. 🕓 Heures au format invalide
+        bloc_heure_invalide = []
+        for idx, row in df.iterrows():
+            # ignorer si rien n'est programmé
+            if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
+                continue
+            if row.isna().all():
+                continue
+
+            if str(row["Activite"]).strip() != "":
+                h = row["Debut"]
+                if pd.notna(h) and str(h).strip() != "":
+                    h_str = str(h).strip().lower()
+                    is_time_like = isinstance(h, (datetime.datetime, datetime.time))
+                    valid_format = bool(re.match(r"^\d{1,2}h\d{2}$", h_str) or re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", h_str))
+                    if not is_time_like and not valid_format:
+                        bloc_heure_invalide.append(f"Heure invalide à la ligne {idx + 2} : {h}")
+        if bloc_heure_invalide:
+            erreurs.append("⛔ Heures mal formatées:\n" + "\n".join(bloc_heure_invalide))
+
+        # 7. 🕳️ Durées non renseignées ou nulles
+        bloc_duree_nulle = []
+        for idx, row in df.iterrows():
+            # ignorer si rien n'est programmé
+            if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
+                continue
+            if row.isna().all():
+                continue
+
+            if isinstance(row["Duree_dt"], pd.Timedelta) and row["Duree_dt"] == pd.Timedelta(0):
+                if pd.isna(row["Duree"]) or str(row["Duree"]).strip() == "":
+                    msg = f"Durée vide à la ligne {idx + 2}"
+                else:
+                    msg = f"Durée égale à 0 à la ligne {idx + 2} : {row['Duree']}"
+                bloc_duree_nulle.append(msg)
+        if bloc_duree_nulle:
+            erreurs.append("⚠️ Durées nulles ou vides:\n" + "\n".join(bloc_duree_nulle))
+
+        # 8. ⏱️ Durées au format invalide
+        bloc_duree_invalide = []
+        for idx, row in df.iterrows():
+            # ignorer si rien n'est programmé
+            if all(pd.isna(row[col]) or str(row[col]).strip() == "" for col in ["Activite", "Debut", "Duree"]):
+                continue
+            if row.isna().all():
+                continue
+
+            if str(row["Activite"]).strip() != "":
+                d = row["Duree"]
+                if pd.notna(d) and str(d).strip() != "":
+                    d_str = str(d).strip().lower()
+                    is_timedelta = isinstance(d, pd.Timedelta)
+                    valid_format = bool(re.match(r"^\d{1,2}h\d{2}$", d_str) or re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", d_str))
+                    if not is_timedelta and not valid_format:
+                        bloc_duree_invalide.append(f"Durée invalide à la ligne {idx + 2} : {d}")
+        if bloc_duree_invalide:
+            erreurs.append("⛔ Durées mal formatées:\n" + "\n".join(bloc_duree_invalide))
+
+        # except Exception as e:
+        #     print(f"Erreur dans verifier_coherence : {e}")
+
+        contenu = "<div style='font-size: 14px;'>"
+        for bloc in erreurs:
+            lignes = bloc.split("\n")
+            if lignes[0].startswith(("🟠", "🔴", "⚠️", "🛑", "⛔")):
+                contenu += f"<p><strong>{lignes[0]}</strong></p><ul>"
+                for ligne in lignes[1:]:
+                    contenu += f"<li>{ligne}</li>"
+                contenu += "</ul>"
+            else:
+                contenu += f"<p>{bloc}</p>"
+        contenu += "</div>"
+        return contenu
+        
     with st.expander("Cohérence des données"):
         st.markdown(get_log_verifier_coherence(df), unsafe_allow_html=True)
 
@@ -2285,17 +2252,13 @@ def set_activites_programmees():
     df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
     df_display["__index"] = df_display.index
     df_display["__options_date"] = calculer_options_date_activites_programmees(df_display) 
+    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
     df_display["__non_reserve"] = df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
     df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
     df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
     df_display.rename(columns=RENOMMAGE_COLONNES, inplace=True)
     st.session_state.activites_programmees_df_display = df_display
     st.session_state.activites_programmees_df_display_copy = df_display.copy()
-
-def safe_json_dump(val):
-    if isinstance(val, (list, dict)):
-        return json.dumps(val, ensure_ascii=False)
-    return "[]"
 
 # Affiche les activités programmées dans un tableau
 def afficher_activites_programmees():
@@ -2359,70 +2322,19 @@ def afficher_activites_programmees():
         cellEditor="agSelectCellEditor",
         cellEditorParams=JsCode("""
             function(params) {
-                return {
-                    values: params.data.__options_date || []
+                let raw = params.data.__options_date;
+                let values = [];
+
+                try {
+                    values = JSON.parse(raw);
+                } catch (e) {
+                    values = [];
                 }
+
+                return { values: values };
             }
-        """),
+        """)
     )
-
-    # df_display = df_display.copy()
-    # df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
-    
-    # gb.configure_column(
-    #     "Date",
-    #     editable=True,
-    #     cellEditor="agSelectCellEditor",
-    #     cellEditorParams=JsCode("""
-    #         function(params) {
-    #             let raw = params.data.__options_date;
-    #             let values = [];
-
-    #             try {
-    #                 values = JSON.parse(raw);
-    #             } catch (e) {
-    #                 values = [];
-    #             }
-
-    #             return { values: values };
-    #         }
-    #     """)
-    # )
-
-    # gb.configure_column(
-    #     "Date",
-    #     editable=True,
-    #     cellEditor="agSelectCellEditor",
-    #     cellEditorParams=  JsCode("""
-    #         function(params) {
-    #             let raw = params.data.__options_date;
-    #             console.log("RAW:", raw);
-
-    #             // Essai de double parse
-    #             let values = [];
-
-    #             try {
-    #                 let first = JSON.parse(raw);
-    #                 if (typeof first === "string") {
-    #                     // double encodage
-    #                     values = JSON.parse(first);
-    #                 } else {
-    #                     values = first;
-    #                 }
-
-    #                 // on force toutes les valeurs à être des strings
-    #                 values = values.map(v => v === null ? "" : String(v));
-    #             } catch (e) {
-    #                 console.log("Erreur JSON.parse:", e);
-    #                 values = [];
-    #             }
-
-    #             console.log("MENU VALUES:", values);
-    #             return { values: values };
-    #         }
-    #     """)
-    # )
-    # df_display = df_display.drop(columns=["__options_date"])
 
     # Colorisation
     gb.configure_grid_options(getRowStyle=JsCode(f"""
@@ -2770,6 +2682,7 @@ def set_activites_non_programmees():
     df_display = activites_non_programmees.copy()
     df_display["__index"] = df_display.index
     df_display["__options_date"] = calculer_options_date_activites_non_programmees(df_display) 
+    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
     df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
     df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
     df_display.rename(columns=RENOMMAGE_COLONNES, inplace=True)
@@ -2824,21 +2737,6 @@ def afficher_activites_non_programmees():
         gb.configure_column(col, editable=(col not in non_editable_cols))
 
     # Configuration des menus de la colonne Date
-    # gb.configure_column(
-    #     "Date",
-    #     editable=True,
-    #     cellEditor="agSelectCellEditor",
-    #     cellEditorParams=JsCode("""
-    #         function(params) {
-    #             return {
-    #                 values: params.data.__options_date || []
-    #             }
-    #         }
-    #     """),
-    # )
-
-    df_display = df_display.copy()
-    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
     gb.configure_column(
         "Date",
         editable=True,
@@ -2858,7 +2756,6 @@ def afficher_activites_non_programmees():
             }
         """)
     )
-    # df_display = df_display.drop(columns=["__options_date"])
 
     # Retaillage largeur colonnes
     gb.configure_default_column(resizable=True)
@@ -3813,27 +3710,27 @@ def sauvegarder_contexte():
                 st.rerun()
 
     # Version Non Modale
-    if "df" in st.session_state:
-        nom_fichier = st.session_state.fn if "fn" in st.session_state else "planning_avignon.xlsx"
-        
-        df_hash = hash_df(st.session_state.df, colonnes_a_enlever=["Debut_dt", "Duree_dt"])
-        prev_hash = st.session_state.get("__contexte_hash")
-        buffer = st.session_state.get("__contexte_buffer")
+    nom_fichier = st.session_state.get("fn", "planning_avignon.xlsx")
+    
+    df_hash = hash_df(st.session_state.get("df"), colonnes_a_enlever=["Debut_dt", "Duree_dt"])
+    prev_hash = st.session_state.get("__contexte_hash")
+    buffer = st.session_state.get("__contexte_buffer")
 
-        if df_hash != prev_hash or buffer is None:
-            # Le df a changé, on régénère le buffer
-            buffer = serialiser_contexte(st.session_state.df)
-            st.session_state["__contexte_hash"] = df_hash
-            st.session_state["__contexte_buffer"] = buffer
+    if (df_hash != prev_hash or buffer is None) and est_contexte_valide():
+        # Le df a changé, on régénère le buffer
+        buffer = serialiser_contexte(st.session_state.df)
+        st.session_state["__contexte_hash"] = df_hash
+        st.session_state["__contexte_buffer"] = buffer
 
-        # Bouton de téléchargement
-        st.download_button(
-            label=LABEL_BOUTON_SAUVEGARDER,
-            data=st.session_state["__contexte_buffer"],
-            file_name=nom_fichier,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=CENTRER_BOUTONS
-        )
+    # Bouton de téléchargement
+    st.download_button(
+        label=LABEL_BOUTON_SAUVEGARDER,
+        data=st.session_state["__contexte_buffer"],
+        file_name=nom_fichier,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=CENTRER_BOUTONS,
+        disabled=not est_contexte_valide()
+    )
 
 # Programme une activité non programmée à une date donnée
 def programmer_activite_non_programmee(date_ref, activite):
@@ -4243,7 +4140,7 @@ def charger_contexte_depuis_fichier():
                 lnk = get_liens_activites(wb)
                 sheetnames = wb.sheetnames
                 ca = pd.read_excel(fd, sheet_name=sheetnames[1]) if len(sheetnames) > 1 else None
-                df = nettoyer_donnees(df)
+                df = nettoyer_donnees(df, fd.name)
                 if "contexte_invalide" not in st.session_state:
                     initialiser_etat_contexte(df, wb, fd.name, lnk, ca)
                     initialiser_periode_programmation(df)
@@ -4269,13 +4166,23 @@ def charger_contexte_depuis_fichier():
 # Initialisation des types d'un df vide
 def initialiser_dtypes(df):
     for col in df.columns:
-        if col in ["Date", "Priorite"]:
+        if col in COLONNES_TYPE_INT:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
-        else:
-            df[col] = df[col].astype("str")
+        elif col in COLONNES_TYPE_STRING:
+            df[col] = df[col].astype("string")
+        elif col in COLONNES_TYPE_OBJECT:
+            df[col] = df[col].astype("object")
+    if "Debut_dt" not in df.columns:
+        df["Debut_dt"] = pd.Series(dtype="datetime64[ns]")
+    if "Duree_dt" not in df.columns:
+        df["Duree_dt"] = pd.Series(dtype="timedelta64[ns]")
 
 # Initialisation d'un nouveau contexte
 def initialiser_nouveau_contexte(avec_sauvegarde=True):
+
+    if "contexte_invalide" in st.session_state:
+        del st.session_state["contexte_invalide"]
+
     df = pd.DataFrame(columns=COLONNES_ATTENDUES)
     initialiser_dtypes(df)
     wb = None
@@ -4283,13 +4190,10 @@ def initialiser_nouveau_contexte(avec_sauvegarde=True):
     lnk = {}
     ca = pd.DataFrame(columns=COLONNES_ATTENDUES_CARNET_ADRESSES)
     
-    df["Date"] = pd.to_numeric(df["Date"], errors="coerce").astype("Int64")
-    df["Priorite"] = pd.to_numeric(df["Priorite"], errors="coerce").astype("Int64")
-
     initialiser_etat_contexte(df, wb, fn, lnk, ca)
     initialiser_periode_programmation(df)
     if avec_sauvegarde:
-        sauvegarder_contexte_ds_gsheet(df, lnk, ca)
+        sauvegarder_contexte_ds_gsheet(df, lnk, fd=None, ca=ca)
 
 # Création d'un nouveau contexte
 def creer_nouveau_contexte():
@@ -4445,45 +4349,46 @@ def afficher_sidebar():
     if not st.session_state.get("sidebar_menus"):
         return
     
-    if MENU_ACTIVITE_UNIQUE:
-        with st.sidebar.expander("Activités", expanded=True):
-            if "menu_activites" in st.session_state and isinstance(st.session_state.menu_activites, dict):
-                if st.session_state.menu_activites["menu"] == "menu_activites_programmees":
+    if est_contexte_valide():
+        if MENU_ACTIVITE_UNIQUE:
+            with st.sidebar.expander("Activités", expanded=True):
+                if "menu_activites" in st.session_state and isinstance(st.session_state.menu_activites, dict):
+                    if st.session_state.menu_activites["menu"] == "menu_activites_programmees":
+                        menu_activites_programmees(
+                            st.session_state.menu_activites["index_df"]
+                        )
+
+                    elif st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
+                        menu_activites_non_programmees(
+                            st.session_state.menu_activites["index_df"]
+                        )
+            
+            # Désactivation des flags de forçage de menu activités
+            if st.session_state.forcer_menu_activites_programmees and st.session_state.menu_activites["menu"] == "menu_activites_programmees":
+                st.session_state.forcer_menu_activites_programmees = False
+            if st.session_state.forcer_menu_activites_non_programmees and st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
+                st.session_state.forcer_menu_activites_non_programmees = False
+
+        else:
+            with st.sidebar.expander("Activités programmées"):
+                if "menu_activites_programmees" in st.session_state and isinstance(st.session_state.menu_activites_programmees, dict):
                     menu_activites_programmees(
-                        st.session_state.menu_activites["index_df"]
+                        st.session_state.menu_activites_programmees["index_df"]
                     )
 
-                elif st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
+            with st.sidebar.expander("Activités non programmées"):
+                if "menu_activites_non_programmees" in st.session_state and isinstance(st.session_state.menu_activites_non_programmees, dict):
                     menu_activites_non_programmees(
-                        st.session_state.menu_activites["index_df"]
+                        st.session_state.menu_activites_non_programmees["index_df"]
                     )
-        
-        # Désactivation des flags de forçage de menu activités
-        if st.session_state.forcer_menu_activites_programmees and st.session_state.menu_activites["menu"] == "menu_activites_programmees":
-            st.session_state.forcer_menu_activites_programmees = False
-        if st.session_state.forcer_menu_activites_non_programmees and st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
-            st.session_state.forcer_menu_activites_non_programmees = False
 
-    else:
-        with st.sidebar.expander("Activités programmées"):
-            if "menu_activites_programmees" in st.session_state and isinstance(st.session_state.menu_activites_programmees, dict):
-                menu_activites_programmees(
-                    st.session_state.menu_activites_programmees["index_df"]
-                )
-
-        with st.sidebar.expander("Activités non programmées"):
-            if "menu_activites_non_programmees" in st.session_state and isinstance(st.session_state.menu_activites_non_programmees, dict):
-                menu_activites_non_programmees(
-                    st.session_state.menu_activites_non_programmees["index_df"]
-                )
-
-    # with st.sidebar.expander("Créneaux disponibles"):
-    #     if "menu_creneaux_disponibles" in st.session_state and isinstance(st.session_state.menu_creneaux_disponibles, dict):
-    #         menu_creneaux_disponibles(
-    #             st.session_state.menu_creneaux_disponibles["date"],
-    #             st.session_state.menu_creneaux_disponibles["creneau"],
-    #             st.session_state.menu_creneaux_disponibles["activite"]
-    #         )
+        # with st.sidebar.expander("Créneaux disponibles"):
+        #     if "menu_creneaux_disponibles" in st.session_state and isinstance(st.session_state.menu_creneaux_disponibles, dict):
+        #         menu_creneaux_disponibles(
+        #             st.session_state.menu_creneaux_disponibles["date"],
+        #             st.session_state.menu_creneaux_disponibles["creneau"],
+        #             st.session_state.menu_creneaux_disponibles["activite"]
+        #         )
 
 def main():
 
@@ -4491,17 +4396,17 @@ def main():
     st.session_state.main_counter += 1
     debug_trace(f"____________MAIN {st.session_state.main_counter}______________", trace_type=["gen","main"])
     
-    # Gestion du chargement de contexte depuis la Google Sheet en charge de la persistence 
-    debug_trace("charger_contexte_depuis_gsheet", trace_type=["gen"])
-    charger_contexte_depuis_gsheet()
-
     # Configuration de la page HTML
     debug_trace("initialiser_page", trace_type=["gen"])
     initialiser_page()
 
     # Affichage du titre
     debug_trace("afficher_titre", trace_type=["gen"])
-    afficher_titre("Planificateur Avignon Off")
+    afficher_titre("Planificateur Avignon Off 👋")
+
+    # Gestion du chargement de contexte depuis la Google Sheet en charge de la persistence 
+    debug_trace("charger_contexte_depuis_gsheet", trace_type=["gen"])
+    charger_contexte_depuis_gsheet()
 
     # Si le contexte est valide, on le traite
     if est_contexte_valide():
@@ -4520,11 +4425,13 @@ def main():
 
         # Programmation d'une nouvelle activité par créneau
         debug_trace("afficher_creneaux_disponibles", trace_type=["gen"])
-        afficher_creneaux_disponibles()            
+        afficher_creneaux_disponibles()      
+    else:      
+        st.error(st.session_state.get("contexte_invalide_message"))
 
-        # Affichage de la sidebar
-        debug_trace("afficher_sidebar", trace_type=["gen"])
-        afficher_sidebar()
+    # Affichage de la sidebar
+    debug_trace("afficher_sidebar", trace_type=["gen"])
+    afficher_sidebar()
 
 if __name__ == "__main__":
     main()
