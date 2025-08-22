@@ -89,6 +89,7 @@ LABEL_BOUTON_REPROGRAMMER = "Reprogrammer"
 LABEL_BOUTON_DEPROGRAMMER = "Déprogrammer"
 LABEL_BOUTON_VALIDER = "Valider"
 LABEL_BOUTON_ANNULER = "Annuler"
+LABEL_BOUTON_TERMINER = "Terminer"
 LABEL_BOUTON_EDITER = "Editer"
 
 CENTRER_BOUTONS = True
@@ -2523,14 +2524,14 @@ def afficher_activites_programmees():
                     # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
 
                     if not st.session_state.forcer_menu_activites_non_programmees:
-                        st.session_state.editeur_activite_courante_idx = index_df
+                        st.session_state.editeur_activite_idx = index_df
                         st.session_state.menu_activites = {
                             "menu": "menu_activites_programmees",
                             "index_df": index_df
                         }
                 else:
                     if st.session_state.forcer_menu_activites_programmees or st.session_state.forcer_maj_menu_activites_programmees:
-                        st.session_state.editeur_activite_courante_idx = index_df
+                        st.session_state.editeur_activite_idx = index_df
                         st.session_state.menu_activites = {
                             "menu": "menu_activites_programmees",
                             "index_df": index_df
@@ -2540,7 +2541,7 @@ def afficher_activites_programmees():
         else:
             if index_df != st.session_state.activites_programmees_selected_row:
                 st.session_state.activites_programmees_selected_row = index_df
-                st.session_state.editeur_activite_courante_idx = index_df
+                st.session_state.editeur_activite_idx = index_df
 
             # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
 
@@ -2598,7 +2599,7 @@ def afficher_activites_programmees():
                             else:
                                 if (pd.isna(df.at[idx, col_df]) and pd.notna(df_modifie.at[i, col])) or df.at[idx, col_df] != df_modifie.at[i, col]:
                                     # st.session_state.editeur_activites_programmees_utiliser_index_colonne_courante = True
-                                    erreur = affecter_valeur(idx, col_df, df_modifie.at[i, col])
+                                    erreur = affecter_valeur_df(idx, col_df, df_modifie.at[i, col])
                                     if not erreur:
                                         forcer_reaffichage_activites_programmees()
                                         if col in ["Debut", "Duree", "Activité"]:
@@ -2920,14 +2921,14 @@ def afficher_activites_non_programmees():
                     # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
 
                     if not st.session_state.forcer_menu_activites_programmees:
-                        st.session_state.editeur_activite_courante_idx = index_df
+                        st.session_state.editeur_activite_idx = index_df
                         st.session_state.menu_activites = {
                             "menu": "menu_activites_non_programmees",
                             "index_df": index_df
                         }
                 else:
                     if st.session_state.forcer_menu_activites_non_programmees or st.session_state.forcer_maj_menu_activites_non_programmees:
-                        st.session_state.editeur_activite_courante_idx = index_df
+                        st.session_state.editeur_activite_idx = index_df
                         st.session_state.menu_activites = {
                             "menu": "menu_activites_non_programmees",
                             "index_df": index_df
@@ -2937,7 +2938,7 @@ def afficher_activites_non_programmees():
         else:
             if index_df != st.session_state.activites_non_programmees_selected_row:
                 st.session_state.activites_non_programmees_selected_row = index_df
-                st.session_state.editeur_activite_courante_idx = index_df
+                st.session_state.editeur_activite_idx = index_df
 
             # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
 
@@ -2985,7 +2986,7 @@ def afficher_activites_non_programmees():
                             else:
                                 if (pd.isna(df.at[idx, col_df]) and pd.notna(df_modifie.at[i, col])) or df.at[idx, col_df] != df_modifie.at[i, col]:
                                     # st.session_state.editeur_activites_non_programmees_utiliser_index_colonne_courante = True
-                                    erreur = affecter_valeur(idx, col_df, df_modifie.at[i, col])
+                                    erreur = affecter_valeur_df(idx, col_df, df_modifie.at[i, col])
                                     if not erreur:
                                         forcer_reaffichage_activites_non_programmees()
                                         forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
@@ -3083,17 +3084,17 @@ def menu_activites_non_programmees(index_df):
 @st.dialog("Editeur d'activité")
 def show_dialog_editeur_activite(df, index_df):
     afficher_nom_activite(df, index_df, afficher_label=False)
-    afficher_editeur_activite(df, index_df, modale=True)
+    afficher_editeur_activite(df, index_df, modal=True)
 
 # Affichage de l'éditeur d'activité
-def afficher_editeur_activite(df, index_df=None, modale=False, key="editeur_activite"):
+def afficher_editeur_activite(df, index_df=None, modal=False, key="editeur_activite"):
     # Rien à faire sur df vide
     if len(df) <= 0:
         return
     
     if index_df is None:
-        if "editeur_activite_courante_idx" in st.session_state:
-            index_df = st.session_state.editeur_activite_courante_idx 
+        if "editeur_activite_idx" in st.session_state:
+            index_df = st.session_state.editeur_activite_idx 
     
     if index_df is not None:
 
@@ -3110,11 +3111,7 @@ def afficher_editeur_activite(df, index_df=None, modale=False, key="editeur_acti
         # Traitement de l'accentuation
         colonnes_editables_avec_accents = [RENOMMAGE_COLONNES.get(col, col) for col in colonnes_editables]
         
-        if "editeur_activites_index_colonne_courante" not in st.session_state:
-            st.session_state.editeur_activites_index_colonne_courante = 0
-
         colonne = st.selectbox("⚙️ Colonne", colonnes_editables_avec_accents, key=key+"_selectbox_choix_colonne")
-        st.session_state.editeur_activites_index_colonne_courante = colonnes_editables_avec_accents.index(colonne)
         colonne_df = RENOMMAGE_COLONNES_INVERSE[colonne] if colonne in RENOMMAGE_COLONNES_INVERSE else colonne
 
         valeur_courante = None
@@ -3147,43 +3144,42 @@ def afficher_editeur_activite(df, index_df=None, modale=False, key="editeur_acti
                     st.rerun()
                 else:
                     if est_activite_programmee(row):
-                        erreur = affecter_valeur(index_df, colonne_df, nouvelle_valeur)
+                        erreur = affecter_valeur_df(index_df, colonne_df, nouvelle_valeur)
                         if not erreur:
                             forcer_reaffichage_activites_programmees()
                             if colonne_df in ["Debut", "Duree", "Activité"]:
                                 forcer_reaffichage_df("creneaux_disponibles")
-                            st.rerun()
+                            if not modal:
+                                st.rerun()
                         else:
-                            if not modale:
+                            if not modal:
                                 st.session_state.editeur_activite_erreur = erreur
                                 forcer_reaffichage_activites_programmees()
                                 st.rerun()
                     else:
-                        erreur = affecter_valeur(index_df, colonne_df, nouvelle_valeur)
+                        erreur = affecter_valeur_df(index_df, colonne_df, nouvelle_valeur)
                         if not erreur:
                             forcer_reaffichage_activites_non_programmees()
                             forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
-                            st.rerun()
+                            if not modal:
+                                st.rerun()
                         else:
-                            if not modale:
+                            if not modal:
                                 st.session_state.editeur_activite_erreur = erreur
                                 forcer_reaffichage_activites_non_programmees()
                                 st.rerun()
         with col2:
-            if st.button(LABEL_BOUTON_ANNULER, use_container_width=CENTRER_BOUTONS):
+            if st.button(LABEL_BOUTON_TERMINER, use_container_width=CENTRER_BOUTONS):
                 st.rerun()
         
-        if not modale:
-            # Affichage de l'erreur renvoyée par le précédent run
+        if not modal:
+            # Récupération de l'erreur renvoyée par le précédent run
             erreur = st.session_state.get("editeur_activite_erreur") 
+
         if erreur is not None:
             st.error(erreur)
-            
 
-# Affecte une nouvelle valeur à une cellule du df donnée par son index et sa colonne
-def affecter_valeur(index, colonne, nouvelle_valeur, inhiber_gestion_modification_cellule=True):
-    df = st.session_state.df
-    valeur_courante = df.at[index, colonne]
+def valider_valeur(df, colonne, nouvelle_valeur):           
     erreur = None
     if colonne == "Debut" and not est_heure_valide(nouvelle_valeur):
         erreur = "⛔ Format attendu : HHhMM (ex : 10h00)"
@@ -3201,7 +3197,13 @@ def affecter_valeur(index, colonne, nouvelle_valeur, inhiber_gestion_modificatio
                 nouvelle_valeur = float(nouvelle_valeur)
         except:
             erreur = "⛔ Format numérique attendu"
+    return erreur
 
+# Affecte une nouvelle valeur à une cellule du df de base donnée par son index et sa colonne
+def affecter_valeur_df(index, colonne, nouvelle_valeur, inhiber_gestion_modification_cellule=True):
+    df = st.session_state.df
+    valeur_courante = df.at[index, colonne]
+    erreur = valider_valeur(df, colonne, nouvelle_valeur)
     if not erreur:
         if (pd.isna(valeur_courante) and pd.notna(nouvelle_valeur)) or nouvelle_valeur != valeur_courante:
             try:
@@ -3218,6 +3220,18 @@ def affecter_valeur(index, colonne, nouvelle_valeur, inhiber_gestion_modificatio
             
     return erreur
 
+# Affecte une nouvelle valeur à une cellule d'une row d'un df 
+def affecter_valeur_row(df, row, colonne, nouvelle_valeur):
+    valeur_courante = row[colonne]
+    erreur = valider_valeur(df, colonne, nouvelle_valeur)
+    if not erreur:
+        if (pd.isna(valeur_courante) and pd.notna(nouvelle_valeur)) or nouvelle_valeur != valeur_courante:
+            try:
+                row[colonne] = nouvelle_valeur
+            except Exception as e:
+                erreur = f"⛔ {e}"
+
+    return erreur
 
 # Vérifie qu'une valeur est bien Oui Non
 def est_reserve_valide(val):
@@ -4158,7 +4172,7 @@ def afficher_bouton_nouvelle_activite(disabled=False, key="ajouter_activite"):
         set_activites_non_programmees()
         set_creneaux_disponibles()
         st.session_state.activites_non_programmees_selected_row = new_idx
-        st.session_state.editeur_activite_courante_idx = new_idx
+        st.session_state.editeur_activite_idx = new_idx
         
         if MENU_ACTIVITE_UNIQUE:
             # Bascule du menu activité sur le menu_activites_non_programmees
