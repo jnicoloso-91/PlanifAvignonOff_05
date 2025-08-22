@@ -1205,7 +1205,7 @@ def afficher_titre(title):
     )
 
     # Titre de la page
-    st.markdown(f"## {title}")
+    st.markdown(f"### {title}")
 
 # Affiche l'aide de l'application
 def afficher_aide():
@@ -4404,7 +4404,7 @@ def main():
 
     # Affichage du titre
     debug_trace("afficher_titre", trace_type=["gen"])
-    afficher_titre("Planificateur Avignon Off 👋")
+    afficher_titre("Planificateur Avignon Off")
 
     # Gestion du chargement de contexte depuis la Google Sheet en charge de la persistence 
     debug_trace("charger_contexte_depuis_gsheet", trace_type=["gen"])
