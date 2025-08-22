@@ -177,8 +177,8 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
         #-----------------------------------------------------------#
         # Adapter sheet_names selon fonctionnement local ou hébergé #
         #-----------------------------------------------------------#
-        # sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     # Utilisation nominale en mode multiuser avec hébergement streamlit share
-        sheet_names = [f"data", f"links", f"meta", f"adrs"]                                           # Pour debugger en local 
+        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     # Utilisation nominale en mode multiuser avec hébergement streamlit share
+        # sheet_names = [f"data", f"links", f"meta", f"adrs"]                                           # Pour debugger en local 
 
         gsheets = {}
 
@@ -4393,8 +4393,6 @@ def afficher_sidebar():
         #             st.session_state.menu_creneaux_disponibles["creneau"],
         #             st.session_state.menu_creneaux_disponibles["activite"]
         #         )
-
-import st_aggrid
 
 def main():
 
