@@ -4279,19 +4279,21 @@ def afficher_nom_activite_clickable(df, index_df, nom_activite=None, afficher_la
     hit = False
     key = "nom_activite_clickable" if st.session_state.sidebar_menus else None
     afficher_label = False if not st.session_state.sidebar_menus else afficher_label
+    activite_programmee = False
 
     if index_df is not None:
         row = df.loc[index_df]
-        activite_reserve = est_reserve(row)
+        activite_reservee = est_reserve(row)
+        activite_programmee = est_activite_programmee(row)
 
         # Injecte le CSS permettent de styler le primary button affiché par st_info_error_avec_label avec param key 
-        injecter_css_pour_primary_buttons("error" if activite_reserve else "info")
+        injecter_css_pour_primary_buttons("error" if activite_reservee else "info")
 
         if nom_activite == None:
             nom_activite = row["Activite"].strip()
         if est_activite_programmee(row):
             label_activite = f"Le {int(row["Date"])} de {row["Debut"]} à {row["Fin"]}"
-            if activite_reserve:
+            if activite_reservee:
                 hit = st_info_error_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label, color="red")
             else:
                 hit = st_info_error_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label)
@@ -4308,7 +4310,7 @@ def afficher_nom_activite_clickable(df, index_df, nom_activite=None, afficher_la
         hit = st_info_error_avec_label(label_activite, nom_activite, key, afficher_label=afficher_label)
     
     if hit:
-        if est_activite_programmee(df.loc[index_df]):
+        if activite_programmee:
             new_index_df = st.session_state.activites_non_programmees_selected_row
             if new_index_df is not None:
                 new_df_display = st.session_state.activites_non_programmees_df_display
