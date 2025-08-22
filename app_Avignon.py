@@ -26,7 +26,7 @@ from urllib.parse import quote_plus
 
 # Debug
 DEBUG_TRACE_MODE = False
-DEBUG_TRACE_TYPE = ["event", "main"]
+DEBUG_TRACE_TYPE = ["all"]
 
 def debug_trace(trace, trace_type=["all"]):
     trace_type_requested = [s.lower() for s in DEBUG_TRACE_TYPE]
@@ -2353,20 +2353,22 @@ def afficher_activites_programmees():
     )
 
     # Configuration des menus de la colonne 
-    # gb.configure_column(
-    #     "Date",
-    #     editable=True,
-    #     cellEditor="agSelectCellEditor",
-    #     cellEditorParams=JsCode("""
-    #         function(params) {
-    #             return {
-    #                 values: params.data.__options_date || []
-    #             }
-    #         }
-    #     """),
-    # )
+    gb.configure_column(
+        "Date",
+        editable=True,
+        cellEditor="agSelectCellEditor",
+        cellEditorParams=JsCode("""
+            function(params) {
+                return {
+                    values: params.data.__options_date || []
+                }
+            }
+        """),
+    )
 
-    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
+    # df_display = df_display.copy()
+    # df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
+    
     # gb.configure_column(
     #     "Date",
     #     editable=True,
@@ -2382,6 +2384,40 @@ def afficher_activites_programmees():
     #                 values = [];
     #             }
 
+    #             return { values: values };
+    #         }
+    #     """)
+    # )
+
+    # gb.configure_column(
+    #     "Date",
+    #     editable=True,
+    #     cellEditor="agSelectCellEditor",
+    #     cellEditorParams=  JsCode("""
+    #         function(params) {
+    #             let raw = params.data.__options_date;
+    #             console.log("RAW:", raw);
+
+    #             // Essai de double parse
+    #             let values = [];
+
+    #             try {
+    #                 let first = JSON.parse(raw);
+    #                 if (typeof first === "string") {
+    #                     // double encodage
+    #                     values = JSON.parse(first);
+    #                 } else {
+    #                     values = first;
+    #                 }
+
+    #                 // on force toutes les valeurs à être des strings
+    #                 values = values.map(v => v === null ? "" : String(v));
+    #             } catch (e) {
+    #                 console.log("Erreur JSON.parse:", e);
+    #                 values = [];
+    #             }
+
+    #             console.log("MENU VALUES:", values);
     #             return { values: values };
     #         }
     #     """)
@@ -2801,26 +2837,27 @@ def afficher_activites_non_programmees():
     #     """),
     # )
 
+    df_display = df_display.copy()
     df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
-    # gb.configure_column(
-    #     "Date",
-    #     editable=True,
-    #     cellEditor="agSelectCellEditor",
-    #     cellEditorParams=JsCode("""
-    #         function(params) {
-    #             let raw = params.data.__options_date;
-    #             let values = [];
+    gb.configure_column(
+        "Date",
+        editable=True,
+        cellEditor="agSelectCellEditor",
+        cellEditorParams=JsCode("""
+            function(params) {
+                let raw = params.data.__options_date;
+                let values = [];
 
-    #             try {
-    #                 values = JSON.parse(raw);
-    #             } catch (e) {
-    #                 values = [];
-    #             }
+                try {
+                    values = JSON.parse(raw);
+                } catch (e) {
+                    values = [];
+                }
 
-    #             return { values: values };
-    #         }
-    #     """)
-    # )
+                return { values: values };
+            }
+        """)
+    )
     # df_display = df_display.drop(columns=["__options_date"])
 
     # Retaillage largeur colonnes
