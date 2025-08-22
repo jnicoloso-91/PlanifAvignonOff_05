@@ -23,6 +23,7 @@ import time
 from streamlit_javascript import st_javascript
 import unicodedata
 from urllib.parse import quote_plus
+import pkg_resources
 
 # Debug
 DEBUG_TRACE_MODE = False
@@ -4408,10 +4409,8 @@ def main():
     debug_trace("afficher_titre", trace_type=["gen"])
     afficher_titre("Planificateur Avignon Off")
 
-    import pkg_resources
-
-    version = pkg_resources.get_distribution("streamlit-aggrid").version
-    st.write("Version streamlit-aggrid :", version)
+    # version = pkg_resources.get_distribution("streamlit-aggrid").version
+    # st.write("Version streamlit-aggrid :", version)
 
     # Gestion du chargement de contexte depuis la Google Sheet en charge de la persistence 
     debug_trace("charger_contexte_depuis_gsheet", trace_type=["gen"])
