@@ -2440,7 +2440,6 @@ def afficher_activites_programmees():
         else:
             st.session_state.activites_programmees_update_on = AGGRID_UPDATE_ON_MENU_ACTIVITE_DOUBLE
 
-    st.write(f"AgGrid affiché {st.session_state.main_counter}")
     # Affichage
     response = AgGrid(
         df_display,
