@@ -2366,7 +2366,7 @@ def afficher_activites_programmees():
     #     """),
     # )
 
-    # df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
+    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
     # gb.configure_column(
     #     "Date",
     #     editable=True,
@@ -2386,7 +2386,7 @@ def afficher_activites_programmees():
     #         }
     #     """)
     # )
-    df_display = df_display.drop(columns=["__options_date"])
+    # df_display = df_display.drop(columns=["__options_date"])
 
     # Colorisation
     gb.configure_grid_options(getRowStyle=JsCode(f"""
@@ -2801,7 +2801,7 @@ def afficher_activites_non_programmees():
     #     """),
     # )
 
-    # df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
+    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
     # gb.configure_column(
     #     "Date",
     #     editable=True,
@@ -2821,7 +2821,7 @@ def afficher_activites_non_programmees():
     #         }
     #     """)
     # )
-    df_display = df_display.drop(columns=["__options_date"])
+    # df_display = df_display.drop(columns=["__options_date"])
 
     # Retaillage largeur colonnes
     gb.configure_default_column(resizable=True)
