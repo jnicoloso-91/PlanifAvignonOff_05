@@ -25,7 +25,7 @@ import unicodedata
 from urllib.parse import quote_plus
 
 # Debug
-DEBUG_TRACE_MODE = True
+DEBUG_TRACE_MODE = False
 DEBUG_TRACE_TYPE = ["event", "main"]
 
 def debug_trace(trace, trace_type=["all"]):
@@ -174,8 +174,8 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
             st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
             st.stop()    
 
-        # sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     # Utilisation nominale en mode multiuser avec hébergement streamlit share
-        sheet_names = [f"data", f"links", f"meta", f"adrs"]                                           # Pour debugger en local 
+        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     # Utilisation nominale en mode multiuser avec hébergement streamlit share
+        # sheet_names = [f"data", f"links", f"meta", f"adrs"]                                           # Pour debugger en local 
 
         gsheets = {}
 
