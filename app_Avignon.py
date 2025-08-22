@@ -25,7 +25,7 @@ import unicodedata
 from urllib.parse import quote_plus
 
 # Debug
-DEBUG_TRACE_MODE = False
+DEBUG_TRACE_MODE = True
 DEBUG_TRACE_TYPE = ["event", "main"]
 
 def debug_trace(trace, trace_type=["all"]):
@@ -174,8 +174,8 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
             st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
             st.stop()    
 
-        sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     # Utilisation nominale en mode multiuser avec hébergement streamlit share
-        # sheet_names = [f"data", f"links", f"meta", f"adrs"]                                           # Pour debugger en local 
+        # sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     # Utilisation nominale en mode multiuser avec hébergement streamlit share
+        sheet_names = [f"data", f"links", f"meta", f"adrs"]                                           # Pour debugger en local 
 
         gsheets = {}
 
@@ -2292,6 +2292,11 @@ def set_activites_programmees():
     st.session_state.activites_programmees_df_display = df_display
     st.session_state.activites_programmees_df_display_copy = df_display.copy()
 
+def safe_json_dump(val):
+    if isinstance(val, (list, dict)):
+        return json.dumps(val, ensure_ascii=False)
+    return "[]"
+
 # Affiche les activités programmées dans un tableau
 def afficher_activites_programmees():
 
@@ -2347,19 +2352,41 @@ def afficher_activites_programmees():
         editable=JsCode("function(params) { return params.data.__non_reserve; }")
     )
 
-    # Configuration des menus de la colonne Date
-    gb.configure_column(
-        "Date",
-        editable=True,
-        cellEditor="agSelectCellEditor",
-        cellEditorParams=JsCode("""
-            function(params) {
-                return {
-                    values: params.data.__options_date || []
-                }
-            }
-        """),
-    )
+    # Configuration des menus de la colonne 
+    # gb.configure_column(
+    #     "Date",
+    #     editable=True,
+    #     cellEditor="agSelectCellEditor",
+    #     cellEditorParams=JsCode("""
+    #         function(params) {
+    #             return {
+    #                 values: params.data.__options_date || []
+    #             }
+    #         }
+    #     """),
+    # )
+
+    # df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
+    # gb.configure_column(
+    #     "Date",
+    #     editable=True,
+    #     cellEditor="agSelectCellEditor",
+    #     cellEditorParams=JsCode("""
+    #         function(params) {
+    #             let raw = params.data.__options_date;
+    #             let values = [];
+
+    #             try {
+    #                 values = JSON.parse(raw);
+    #             } catch (e) {
+    #                 values = [];
+    #             }
+
+    #             return { values: values };
+    #         }
+    #     """)
+    # )
+    df_display = df_display.drop(columns=["__options_date"])
 
     # Colorisation
     gb.configure_grid_options(getRowStyle=JsCode(f"""
@@ -2761,18 +2788,40 @@ def afficher_activites_non_programmees():
         gb.configure_column(col, editable=(col not in non_editable_cols))
 
     # Configuration des menus de la colonne Date
-    gb.configure_column(
-        "Date",
-        editable=True,
-        cellEditor="agSelectCellEditor",
-        cellEditorParams=JsCode("""
-            function(params) {
-                return {
-                    values: params.data.__options_date || []
-                }
-            }
-        """),
-    )
+    # gb.configure_column(
+    #     "Date",
+    #     editable=True,
+    #     cellEditor="agSelectCellEditor",
+    #     cellEditorParams=JsCode("""
+    #         function(params) {
+    #             return {
+    #                 values: params.data.__options_date || []
+    #             }
+    #         }
+    #     """),
+    # )
+
+    # df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
+    # gb.configure_column(
+    #     "Date",
+    #     editable=True,
+    #     cellEditor="agSelectCellEditor",
+    #     cellEditorParams=JsCode("""
+    #         function(params) {
+    #             let raw = params.data.__options_date;
+    #             let values = [];
+
+    #             try {
+    #                 values = JSON.parse(raw);
+    #             } catch (e) {
+    #                 values = [];
+    #             }
+
+    #             return { values: values };
+    #         }
+    #     """)
+    # )
+    df_display = df_display.drop(columns=["__options_date"])
 
     # Retaillage largeur colonnes
     gb.configure_default_column(resizable=True)
