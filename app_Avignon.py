@@ -113,7 +113,7 @@ PALETTE_COULEURS_JOURS = {
 }
 
 # Couleur des activités programmables
-COULEUR_ACTIVITE_PROGRAMMABLE = "#d2fdd2"  # ("#ccffcc" autre vert clair  "#cfe2f3" bleu clair)
+COULEUR_ACTIVITE_PROGRAMMABLE = "#d9fcd9"  # ("#ccffcc" autre vert clair  "#cfe2f3" bleu clair)
 
 CRITICAL_VARS = [
     "periode_a_programmer_debut",
