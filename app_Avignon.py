@@ -27,7 +27,7 @@ from urllib.parse import quote_plus
 
 # Debug
 DEBUG_TRACE_MODE = False
-DEBUG_TRACE_TYPE = ["all"]
+DEBUG_TRACE_TYPE = ["main", "event"]
 
 def debug_trace(trace, trace_type=["all"]):
     trace_type_requested = [s.lower() for s in DEBUG_TRACE_TYPE]
@@ -211,6 +211,7 @@ def charger_contexte_depuis_gsheet():
             return default
 
     if "gsheets" not in st.session_state:
+
         try:
             user_id = get_user_id()
             gsheets = get_or_create_user_gsheets(user_id, spreadsheet_id="1ytYrefEPzdJGy5w36ZAjW_QQTlvfZ17AH69JkiHQzZY")
@@ -1038,8 +1039,33 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
         selected_row_courante = st.session_state[session_state_selected_row]
         position = trouver_position_ligne(df, selected_row_courante.to_dict())
         pre_selected_row = position if position is not None else pre_selected_row
-    gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
+    gb.configure_selection(selection_mode="single", use_checkbox=False) # , pre_selected_rows=[pre_selected_row]) ) -> inutile en mode immutableData
 
+    # Configuration de la sélection par JsCode rendu nécessaire par le mode immutableData, 
+    # car danc ce cas le paramètre pre_selected_row du gb.configure_selection est inefficient
+    if st.session_state[session_state_forcer_reaffichage] == True:
+        target_idx = str(st.session_state[session_state_selected_row])
+        js_select_by_key = JsCode(f"""
+            function selectRowByKey(params) {{
+                var wanted = {json.dumps(target_idx)};
+                if (wanted === null) return;
+                var api = params.api, found = null;
+                api.forEachNodeAfterFilterAndSort(function(node) {{
+                    if (String(node.data["__index"]) === String(wanted)) {{
+                    found = node;
+                    }}
+                }});
+                if (found) {{
+                    api.deselectAll();
+                    api.ensureIndexVisible(found.rowIndex, 'middle');
+                    found.setSelected(true);
+                }}
+            }}
+        """)
+        gb.configure_grid_options(
+            onRowDataUpdated=js_select_by_key,
+        )
+        
     # Retaillage auto des largeurs de colonnes
     gb.configure_grid_options(onGridReady=JsCode(f"""
         function(params) {{
@@ -1048,6 +1074,16 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
             params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
         }}
     """))
+
+    # Permet de gérer les modifications de df_display dans avoir à redessiner l'aggrid complètement par changement de key
+    if "__index" not in df.columns:
+        df["__index"] = df.index
+        gb.configure_column("__index", hide=True)
+    gb.configure_grid_options(
+        immutableData=True,
+        deltaRowDataMode=True,
+        getRowId=JsCode("function (params) { return params.data.__index; }"),
+    )
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
@@ -1059,11 +1095,12 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
         df,
         gridOptions=grid_options,
         height=height,
-        key=f"{key} {st.session_state[session_state_reset_counter]}",
+        key=f"_{key}",
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
-        allow_unsafe_jscode=True,
-        # fit_columns_on_grid_load=False
+        allow_unsafe_jscode=True
     )
+        # fit_columns_on_grid_load=False
+        # key=f"{key} {st.session_state[session_state_reset_counter]}", -> inutile en mode immutableData=True
 
     selected_rows = response["selected_rows"]
     if st.session_state[session_state_forcer_reaffichage] == True:
@@ -2422,9 +2459,33 @@ def afficher_activites_programmees():
         matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
+    gb.configure_selection(selection_mode="single", use_checkbox=False) # , pre_selected_rows=[pre_selected_row]) -> inutile en mode immutableData
     
-    gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
-    
+    # Configuration de la sélection par JsCode rendu nécessaire par le mode immutableData, 
+    # car danc ce cas le paramètre pre_selected_row du gb.configure_selection est inefficient
+    if st.session_state.aggrid_activites_programmees_forcer_reaffichage == True:
+        target_idx = str(st.session_state["activites_programmees_selected_row"])
+        js_select_by_key = JsCode(f"""
+            function selectRowByKey(params) {{
+                var wanted = {json.dumps(target_idx)};
+                if (wanted === null) return;
+                var api = params.api, found = null;
+                api.forEachNodeAfterFilterAndSort(function(node) {{
+                    if (String(node.data["__index"]) === String(wanted)) {{
+                    found = node;
+                    }}
+                }});
+                if (found) {{
+                    api.deselectAll();
+                    api.ensureIndexVisible(found.rowIndex, 'middle');
+                    found.setSelected(true);
+                }}
+            }}
+        """)
+        gb.configure_grid_options(
+            onRowDataUpdated=js_select_by_key,
+        )
+        
     gb.configure_grid_options(onGridReady=JsCode(f"""
             function(params) {{
                 params.api.sizeColumnsToFit();
@@ -2432,6 +2493,13 @@ def afficher_activites_programmees():
                 params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
             }}
         """)
+    )
+
+    # Permet de gérer les modifications de df_display dans avoir à redessiner l'aggrid complètement par changement de key
+    gb.configure_grid_options(
+        immutableData=True,
+        deltaRowDataMode=True,
+        getRowId=JsCode("function (params) { return params.data.__index; }"),
     )
 
     grid_options = gb.build()
@@ -2445,14 +2513,15 @@ def afficher_activites_programmees():
             st.session_state.activites_programmees_update_on = AGGRID_UPDATE_ON_MENU_ACTIVITE_DOUBLE
     
     # Affichage
-    if st.checkbox("**Activités programmées**", True, key="show_grid_activites_programmees"):
+    with st.expander("**Activités programmées**", expanded=True):
+    # if st.checkbox("**Activités programmées**", True, key="show_grid_activites_programmees"):
         response = AgGrid(
             df_display,
             gridOptions=grid_options,
             allow_unsafe_jscode=True,
             height=height,
             update_on=st.session_state.activites_programmees_update_on,
-            key=f"Activités programmées {st.session_state.aggrid_activites_programmees_reset_counter}",  # clé stable mais changeante après suppression de ligne pour forcer le reaffichage
+            key=f"Activités programmées" # {st.session_state.aggrid_activites_programmees_reset_counter}",  # incrémentation de la clef permet de forcer le reaffichage mais inutile en mode immutableData=True
         )
         
         event_data = response.get("event_data")
@@ -2498,9 +2567,6 @@ def afficher_activites_programmees():
             nom_activite = str(row["Activité"]).strip() if pd.notna(row["Activité"]) else ""
 
             # Gestion du menu activité en fonction du type d'évènement renvoyé
-            event_data = response.get("event_data")
-            event_type = event_data["type"] if isinstance(event_data, dict) else None
-
             if MENU_ACTIVITE_UNIQUE:
                 # Evènement de type "selectionChanged" 
                 if event_type == "selectionChanged":
@@ -2543,7 +2609,7 @@ def afficher_activites_programmees():
                 st.error(erreur)
 
             # Gestion des modifications de cellules
-            if st.session_state.aggrid_activites_programmees_gerer_modification_cellule == True:
+            if event_type == "cellValueChanged" and st.session_state.aggrid_activites_programmees_gerer_modification_cellule == True:
                 if isinstance(response["data"], pd.DataFrame):
                     df_modifie = pd.DataFrame(response["data"])
                     lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.activites_programmees_df_display_copy, columns_to_drop=work_cols)
@@ -2807,9 +2873,33 @@ def afficher_activites_non_programmees():
         matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
+    gb.configure_selection(selection_mode="single", use_checkbox=False) # , pre_selected_rows=[pre_selected_row]) -> inutile en mode immutableData
     
-    gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
-    
+    # Configuration de la sélection par JsCode rendu nécessaire par le mode immutableData, 
+    # car danc ce cas le paramètre pre_selected_row du gb.configure_selection est inefficient
+    if st.session_state.aggrid_activites_non_programmees_forcer_reaffichage == True:
+        target_idx = str(st.session_state["activites_non_programmees_selected_row"])
+        js_select_by_key = JsCode(f"""
+            function selectRowByKey(params) {{
+                var wanted = {json.dumps(target_idx)};
+                if (wanted === null) return;
+                var api = params.api, found = null;
+                api.forEachNodeAfterFilterAndSort(function(node) {{
+                    if (String(node.data["__index"]) === String(wanted)) {{
+                    found = node;
+                    }}
+                }});
+                if (found) {{
+                    api.deselectAll();
+                    api.ensureIndexVisible(found.rowIndex, 'middle');
+                    found.setSelected(true);
+                }}
+            }}
+        """)
+        gb.configure_grid_options(
+            onRowDataUpdated=js_select_by_key,
+        )
+        
     gb.configure_grid_options(onGridReady=JsCode(f"""
             function(params) {{
                 params.api.sizeColumnsToFit();
@@ -2817,6 +2907,13 @@ def afficher_activites_non_programmees():
                 params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
             }}
         """)
+    )
+
+    # Permet de gérer les modifications de df_display dans avoir à redessiner l'aggrid complètement par changement de key
+    gb.configure_grid_options(
+        immutableData=True,
+        deltaRowDataMode=True,
+        getRowId=JsCode("function (params) { return params.data.__index; }"),
     )
 
     grid_options = gb.build()
@@ -2830,14 +2927,15 @@ def afficher_activites_non_programmees():
             st.session_state.activites_non_programmees_update_on = AGGRID_UPDATE_ON_MENU_ACTIVITE_DOUBLE
 
     # Affichage
-    if st.checkbox("**Activités non programmées**", True, key="show_grid_activites_non_programmees"):
+    with st.expander("**Activités non programmées**", expanded=True):
+    # if st.checkbox("**Activités non programmées**", True, key="show_grid_activites_non_programmees"):
         response = AgGrid(
             df_display,
             gridOptions=grid_options,
             allow_unsafe_jscode=True,
             height=height,
             update_on=st.session_state.activites_non_programmees_update_on,
-            key=f"Activités non programmées {st.session_state.aggrid_activites_non_programmees_reset_counter}",  # clé stable mais changeante après suppression de ligne ou modification de cellule pour forcer le reaffichage
+            key=f"Activités non programmées" # {st.session_state.aggrid_activites_non_programmees_reset_counter}",  # incrémentation de la clef permet de forcer le reaffichage mais inutile en mode immutableData=True
         )
 
         event_data = response.get("event_data")
@@ -2883,9 +2981,6 @@ def afficher_activites_non_programmees():
             nom_activite = str(row["Activité"]).strip() if pd.notna(row["Activité"]) else ""
 
             # Gestion du menu activité en fonction du type d'évènement renvoyé
-            event_data = response.get("event_data")
-            event_type = event_data["type"] if isinstance(event_data, dict) else None
-
             if MENU_ACTIVITE_UNIQUE:
                 # Evènement de type "selectionChanged"
                 if event_type == "selectionChanged":
@@ -3309,7 +3404,7 @@ def deprogrammer_activite_programmee(idx):
         modifier_df_cell(st.session_state.df, idx, "Date", None)
         set_activites_programmees()
         set_activites_non_programmees()
-    set_creneaux_disponibles()
+        set_creneaux_disponibles()
 
 # Création de la liste des créneaux avant/après pour chaque activité programmée 
 # le df des activités programmées est supposé etre trié par jour ("Date") et par heure de début ("Debut")
@@ -4004,7 +4099,8 @@ def afficher_creneaux_disponibles():
 
     if not creneaux_disponibles.empty:
         # st.markdown("##### Créneaux disponibles")
-        if st.checkbox("**Créneaux disponibles**", True, key="show_grid_creneaux_disponibles"):
+        # if st.checkbox("**Créneaux disponibles**", True, key="show_grid_creneaux_disponibles"):
+        with st.expander("**Créneaux disponibles**", expanded=True):
 
             st.session_state.creneaux_disponibles_choix_activite = None
 
@@ -4040,11 +4136,19 @@ def afficher_creneaux_disponibles():
 
                 # Choix d'une activité à programmer dans le creneau choisi
                 if type_creneau == "Avant":
-                    ligne_ref = activites_programmees.loc[idx]
+                    try:
+                        ligne_ref = activites_programmees.loc[idx]
+                    except Exception as e:
+                        print(f"Erreur afficher_creneaux_disponibles : {e}")
+                        return
                     proposables = get_activites_programmables_avant(df, activites_programmees, ligne_ref, traiter_pauses)
 
                 elif type_creneau == "Après":
-                    ligne_ref = activites_programmees.loc[idx]
+                    try:
+                        ligne_ref = activites_programmees.loc[idx]
+                    except Exception as e:
+                        print(f"Erreur afficher_creneaux_disponibles : {e}")
+                        return
                     proposables = get_activites_programmables_apres(df, activites_programmees, ligne_ref, traiter_pauses)
 
                 elif type_creneau == "Journée":
@@ -4066,6 +4170,8 @@ def afficher_creneaux_disponibles():
                         key="activites_programmables_dans_creneau_selectionne", 
                         hide_label=True, 
                         background_color=COULEUR_ACTIVITE_PROGRAMMABLE)
+
+                    st.markdown(f"{activite["Activite"]} le {activite["Date"]} à {activite["Debut"]}")
 
                     st.session_state.menu_creneaux_disponibles = {
                         "date": date_ref,
@@ -4510,8 +4616,13 @@ def main():
     debug_trace("charger_contexte_depuis_gsheet", trace_type=["gen"])
     charger_contexte_depuis_gsheet()
 
-    # Si le contexte est valide, on le traite
+   # Si le contexte est valide, on le traite
     if est_contexte_valide():
+
+        # Contournement permettant d'assurer l'existence des  
+        # données calculées au cas ou stremlit les RAZ
+        debug_trace("maj_donnees_calculees", trace_type=["gen"])
+        maj_donnees_calculees()
 
         # Affichage des infos générales
         debug_trace("afficher_infos_generales", trace_type=["gen"])
