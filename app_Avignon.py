@@ -4054,8 +4054,8 @@ def afficher_creneaux_disponibles():
                     proposables = pd.DataFrame(proposables).sort_values(by=["Debut"], ascending=[True]) if proposables else pd.DataFrame(proposables)
                     proposables["Date"] = choix_creneau["Date"] # ou str(date_ref) car col Date au format string dans les df_display !
                     # st.markdown("##### Activités programmables")
-                    st.markdown("**Activités programmables**")
-                    st.markdown(f"Sur le créneau du {int(date_ref)} entre [{choix_creneau["Debut"]}-{choix_creneau["Fin"]}]")
+                    # st.markdown("**Activités programmables**")
+                    st.markdown(f"Activités programmables sur le créneau du {int(date_ref)} entre {choix_creneau["Debut"]} et {choix_creneau["Fin"]}")
 
                     activite = afficher_df(
                         "Activités programmables", 
