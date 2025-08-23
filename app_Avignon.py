@@ -951,7 +951,7 @@ def forcer_reaffichage_df(key):
         st.session_state[session_state_forcer_reaffichage] = True
 
 # Affichage d'un dataframe
-def afficher_df(label, df, hide=[], key="affichage_df", colorisation=False, hide_label=False, background_color=None):
+def afficher_df(label, df, hide=[], fixed_columns=[], fixed_width=50, key="affichage_df", colorisation=False, hide_label=False, background_color=None):
 
     # Calcul de la hauteur de l'aggrid
     nb_lignes = len(df)
@@ -968,9 +968,31 @@ def afficher_df(label, df, hide=[], key="affichage_df", colorisation=False, hide
     session_state_forcer_reaffichage = key + "_forcer_reaffichage"
     if session_state_forcer_reaffichage not in st.session_state:
         st.session_state[session_state_forcer_reaffichage] = False
-   
-    
+       
     gb = GridOptionsBuilder.from_dataframe(df)
+
+    # Configuration par défaut des colonnes
+    gb.configure_default_column(resizable=True)
+
+    # Colonnes à largeur fixe
+    fixed_columns = ["Date", "Debut", "Début", "Fin", "Duree", "Durée"]
+    for col in fixed_columns:
+        if col in df.columns:
+            gb.configure_column(
+                col,
+                filter=False,
+                resize=False,
+                autosize=False,
+                suppressSizeToFit=True,
+                width=fixed_width
+            )
+
+    # Epinglage de la colonne Date
+    if "Date" in df.columns:
+        gb.configure_column(
+            "Date",
+            pinned=JsCode("'left'")
+        )
 
     #Colonnes cachées
     for col in hide:
@@ -1001,7 +1023,6 @@ def afficher_df(label, df, hide=[], key="affichage_df", colorisation=False, hide
             }}
             """)
         )
-
 
     # Configuration de la sélection
     pre_selected_row = 0  # par défaut
@@ -2309,6 +2330,27 @@ def afficher_activites_programmees():
     # Configuration
     gb = GridOptionsBuilder.from_dataframe(df_display)
 
+    # Configuration par défaut des colonnes
+    gb.configure_default_column(resizable=True)
+
+    # Colonnes à largeur fixe
+    colonnes_fixes = ["Date", "Début", "Fin", "Durée"]
+    for col in colonnes_fixes:
+        gb.configure_column(
+            col,
+            filter=False,
+            resize=False,
+            autosize=False,
+            suppressSizeToFit=True,
+            width=50
+        )
+
+    # Epinglage de la colonne Date
+    gb.configure_column(
+        "Date",
+        pinned=JsCode("'left'")
+    )
+
     # Masquage des colonnes de travail
     work_cols = ["__index", "__jour", "__options_date", "__non_reserve"]
     for col in work_cols:
@@ -2318,11 +2360,6 @@ def afficher_activites_programmees():
     non_editable_cols = ["Fin"] + work_cols
     for col in df_display.columns:
         gb.configure_column(col, editable=(col not in non_editable_cols))
-
-    gb.configure_column(
-        "Date",
-        pinned=JsCode("'left'")
-    )
 
     gb.configure_column(
         "Début",
@@ -2368,9 +2405,6 @@ def afficher_activites_programmees():
     }}
     """))
 
-    # Retaillage largeur colonnes
-    gb.configure_default_column(resizable=True)
-
     # Configuration de la sélection
     pre_selected_row = 0  # par défaut
     if "activites_programmees_selected_row" in st.session_state:
@@ -2378,76 +2412,17 @@ def afficher_activites_programmees():
         matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
+    
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
-    js_code = JsCode(f"""
+    
+    gb.configure_grid_options(onGridReady=JsCode(f"""
             function(params) {{
                 params.api.sizeColumnsToFit();
                 params.api.ensureIndexVisible({pre_selected_row}, 'middle');
                 params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
             }}
         """)
-    gb.configure_grid_options(onGridReady=js_code)
-
-    # gb.configure_selection(selection_mode="single", use_checkbox=False)
-    # if st.session_state.aggrid_activites_programmees_forcer_reaffichage == True:
-    #     target_idx = str(st.session_state["activites_programmees_selected_row"])
-    #     js_select_by_key = JsCode(f"""
-    #     function selectRowByKey(params) {{
-    #     var wanted = {json.dumps(target_idx)};
-    #     if (wanted === null) return;
-    #     var api = params.api, found = null;
-    #     api.forEachNodeAfterFilterAndSort(function(node) {{
-    #         if (String(node.data["__index"]) === String(wanted)) {{
-    #         found = node;
-    #         }}
-    #     }});
-    #     if (found) {{
-    #         api.deselectAll();
-    #         api.ensureIndexVisible(found.rowIndex, 'middle');
-    #         found.setSelected(true);
-    #     }}
-    #     }}
-    #     """)
-    #     gb.configure_grid_options(
-    #         onRowDataUpdated=js_select_by_key,
-    #     )
-    # gb.configure_grid_options(
-    #     immutableData=True,
-    #     deltaRowDataMode=True,
-    #     getRowId=JsCode("function (params) { return params.data.__index; }"),
-    # )
-    # gb.configure_default_column(sortable=True)
-    # js_set_sort = JsCode("""
-    # function(params) {
-    #     params.columnApi.applyColumnState({
-    #         state: [
-    #         { colId: 'Date', sort: 'asc', sortIndex: 0 },
-    #         { colId: 'Début', sort: 'asc', sortIndex: 1 }
-    #         ],
-    #         defaultState: { sort: null }
-    #     });
-    # }
-    # """)
-    # js_resort_on_edit = JsCode("""
-    # function(e){
-    #     const api = e.api;
-    #     const sortModel = api.getSortModel();         // [{colId:'Date', sort:'asc'}, ...]
-    #     if (!sortModel || !sortModel.length) return;
-    #     const editedCol = e.column.getColId();
-    #     const editedIsSorted = sortModel.some(s => s.colId === editedCol);
-    #     if (!editedIsSorted) return;
-    #     // re-calcul du tri
-    #     api.refreshClientSideRowModel('sort');
-    #     // garder la ligne visible/selectionnée (facultatif)
-    #     if (e.node){
-    #         api.ensureIndexVisible(e.node.rowIndex, 'middle');
-    #     }
-    # }
-    # """)
-    # gb.configure_grid_options(
-    #     onFirstDataRendered=js_set_sort,
-    #     onCellValueChanged=js_set_sort
-    # )
+    )
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
@@ -2458,7 +2433,7 @@ def afficher_activites_programmees():
             st.session_state.activites_programmees_update_on = AGGRID_UPDATE_ON_MENU_ACTIVITE_UNIQUE  
         else:
             st.session_state.activites_programmees_update_on = AGGRID_UPDATE_ON_MENU_ACTIVITE_DOUBLE
-
+    
     # Affichage
     response = AgGrid(
         df_display,
@@ -2750,15 +2725,31 @@ def afficher_activites_non_programmees():
     # Configuration
     gb = GridOptionsBuilder.from_dataframe(df_display)
 
-    # Masquage des colonnes de travail
-    work_cols = ["__index", "__options_date"]
-    for col in work_cols:
-        gb.configure_column(col, hide=True)
+    # Configuration par défaut des colonnes
+    gb.configure_default_column(resizable=True)
 
+    # Colonnes à largeur fixe
+    colonnes_fixes = ["Date", "Début", "Fin", "Durée"]
+    for col in colonnes_fixes:
+        gb.configure_column(
+            col,
+            filter=False,
+            resize=False,
+            autosize=False,
+            suppressSizeToFit=True,
+            width=50
+        )
+
+    # Epinglage de la colonne Date
     gb.configure_column(
         "Date",
         pinned=JsCode("'left'")
     )
+
+    # Masquage des colonnes de travail
+    work_cols = ["__index", "__options_date"]
+    for col in work_cols:
+        gb.configure_column(col, hide=True)
 
     # Colonnes editables
     non_editable_cols = ["Fin"] + work_cols
@@ -2798,9 +2789,6 @@ def afficher_activites_non_programmees():
         }}
         """))
 
-    # Retaillage largeur colonnes
-    gb.configure_default_column(resizable=True)
-
     # Configuration de la sélection
     pre_selected_row = 0  # par défaut
     if "activites_non_programmees_selected_row" in st.session_state:
@@ -2808,43 +2796,17 @@ def afficher_activites_non_programmees():
         matches = df_display[df_display["__index"].astype(str) == str(valeur_index)]
         if not matches.empty:
             pre_selected_row = df_display.index.get_loc(matches.index[0])
+    
     gb.configure_selection(selection_mode="single", use_checkbox=False, pre_selected_rows=[pre_selected_row])
-    js_code = JsCode(f"""
+    
+    gb.configure_grid_options(onGridReady=JsCode(f"""
             function(params) {{
                 params.api.sizeColumnsToFit();
                 params.api.ensureIndexVisible({pre_selected_row}, 'middle');
                 params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
             }}
         """)
-    gb.configure_grid_options(onGridReady=js_code)
-    # gb.configure_selection(selection_mode="single", use_checkbox=False)
-    # if st.session_state.aggrid_activites_non_programmees_forcer_reaffichage == True:
-    #     target_idx = str(st.session_state["activites_non_programmees_selected_row"])
-    #     js_select_by_key = JsCode(f"""
-    #     function selectRowByKey(params) {{
-    #     var wanted = {json.dumps(target_idx)};
-    #     if (wanted === null) return;
-    #     var api = params.api, found = null;
-    #     api.forEachNodeAfterFilterAndSort(function(node) {{
-    #         if (String(node.data["__index"]) === String(wanted)) {{
-    #         found = node;
-    #         }}
-    #     }});
-    #     if (found) {{
-    #         api.deselectAll();
-    #         api.ensureIndexVisible(found.rowIndex, 'middle');
-    #         found.setSelected(true);
-    #     }}
-    #     }}
-    #     """)
-    #     gb.configure_grid_options(
-    #         onRowDataUpdated=js_select_by_key
-    #     )
-    # gb.configure_grid_options(
-    #     immutableData=True,
-    #     deltaRowDataMode=True,
-    #     getRowId=JsCode("function (params) { return params.data.__index; }"),
-    # )
+    )
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
@@ -4009,7 +3971,17 @@ def afficher_creneaux_disponibles():
 
         # Affichage de la grille des créneaux disponibles
         choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
-        choix_creneau = afficher_df("Créneaux disponibles", creneaux_disponibles, hide=["__type_creneau", "__index"], key="creneaux_disponibles", hide_label=True)
+        
+        choix_creneau = afficher_df(
+            "Créneaux disponibles", 
+            creneaux_disponibles, 
+            fixed_columns=["Date", "Debut", "Fin"], 
+            fixed_width=50, 
+            hide=["__type_creneau", "__index"], 
+            key="creneaux_disponibles", 
+            hide_label=True, 
+            colorisation=True)
+        
         if choix_creneau is not None:
             if choix_creneau_pred is not None and choix_creneau_pred.to_dict() != choix_creneau.to_dict():
                 forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
@@ -4028,10 +4000,19 @@ def afficher_creneaux_disponibles():
 
             if proposables:
                 proposables = pd.DataFrame(proposables).sort_values(by=["Debut"], ascending=[True]) if proposables else pd.DataFrame(proposables)
-                proposables["Date"] = date_ref
+                proposables["Date"] = date_ref.astype("str")
                 st.markdown("##### Activités programmables")
                 st.markdown(f"Sur le créneau du {int(date_ref)} entre [{choix_creneau["Debut"]}-{choix_creneau["Fin"]}]")
-                activite = afficher_df("Activités programmables", proposables, hide=["__type_activite", "__index"], key="activites_programmables_dans_creneau_selectionne", hide_label=True, background_color=COULEUR_ACTIVITE_PROGRAMMABLE)
+
+                activite = afficher_df(
+                    "Activités programmables", 
+                    proposables, 
+                    fixed_columns=["Date", "Debut", "Fin", "Duree"], 
+                    fixed_width=50, 
+                    hide=["__type_activite", "__index"], 
+                    key="activites_programmables_dans_creneau_selectionne", 
+                    hide_label=True, 
+                    background_color=COULEUR_ACTIVITE_PROGRAMMABLE)
 
                 st.session_state.menu_creneaux_disponibles = {
                     "date": date_ref,
