@@ -2344,16 +2344,16 @@ def afficher_activites_programmees():
     gb.configure_default_column(resizable=True)
 
     # Colonnes à largeur fixe
-    colonnes_fixes = {"Date": 50, "Début": 55, "Fin": 55, "Durée": 55}
-    for col, width in colonnes_fixes.items():
-        gb.configure_column(
-            col,
-            filter=False,
-            resize=False,
-            autosize=False,
-            suppressSizeToFit=True,
-            width=width
-        )
+    # colonnes_fixes = {"Date": 50, "Début": 55, "Fin": 55, "Durée": 55}
+    # for col, width in colonnes_fixes.items():
+    #     gb.configure_column(
+    #         col,
+    #         filter=False,
+    #         resize=False,
+    #         autosize=False,
+    #         suppressSizeToFit=True,
+    #         width=width
+    #     )
 
     # Epinglage de la colonne Date
     gb.configure_column(
@@ -2740,16 +2740,16 @@ def afficher_activites_non_programmees():
     gb.configure_default_column(resizable=True)
 
     # Colonnes à largeur fixe
-    colonnes_fixes = {"Date": 50, "Début": 55, "Fin": 55, "Durée": 55}
-    for col, width in colonnes_fixes.items():
-        gb.configure_column(
-            col,
-            filter=False,
-            resize=False,
-            autosize=False,
-            suppressSizeToFit=True,
-            width=width
-        )
+    # colonnes_fixes = {"Date": 50, "Début": 55, "Fin": 55, "Durée": 55}
+    # for col, width in colonnes_fixes.items():
+    #     gb.configure_column(
+    #         col,
+    #         filter=False,
+    #         resize=False,
+    #         autosize=False,
+    #         suppressSizeToFit=True,
+    #         width=width
+    #     )
 
     # Epinglage de la colonne Date
     gb.configure_column(
@@ -4024,7 +4024,7 @@ def afficher_creneaux_disponibles():
                 "Créneaux disponibles", 
                 creneaux_disponibles, 
                 header_names={"Debut": "Début"},
-                fixed_columns={"Date": 50, "Début": 55, "Fin": 55}, 
+                # fixed_columns={"Date": 50, "Début": 55, "Fin": 55}, 
                 hide=["__type_creneau", "__index"], 
                 key="creneaux_disponibles", 
                 hide_label=True, 
@@ -4061,7 +4061,7 @@ def afficher_creneaux_disponibles():
                         "Activités programmables", 
                         proposables, 
                         header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité"},
-                        fixed_columns={"Date": 50, "Début": 55, "Fin": 55, "Durée": 55}, 
+                        # fixed_columns={"Date": 50, "Début": 55, "Fin": 55, "Durée": 55}, 
                         hide=["__type_activite", "__index"], 
                         key="activites_programmables_dans_creneau_selectionne", 
                         hide_label=True, 
