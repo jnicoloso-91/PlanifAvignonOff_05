@@ -4521,13 +4521,13 @@ def main():
         debug_trace("afficher_activites_programmees", trace_type=["gen"])
         afficher_activites_programmees()
 
-        # Affichage des activités non programmées
-        debug_trace("afficher_activites_non_programmees", trace_type=["gen"])
-        afficher_activites_non_programmees()
-
         # Programmation d'une nouvelle activité par créneau
         debug_trace("afficher_creneaux_disponibles", trace_type=["gen"])
         afficher_creneaux_disponibles()      
+
+        # Affichage des activités non programmées
+        debug_trace("afficher_activites_non_programmees", trace_type=["gen"])
+        afficher_activites_non_programmees()
     else:
         message = st.session_state.get("contexte_invalide_message")
         if message is not None:
