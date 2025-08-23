@@ -951,7 +951,7 @@ def forcer_reaffichage_df(key):
         st.session_state[session_state_forcer_reaffichage] = True
 
 # Affichage d'un dataframe
-def afficher_df(label, df, hide=[], fixed_columns=[], fixed_width=50, key="affichage_df", colorisation=False, hide_label=False, background_color=None):
+def afficher_df(label, df, hide=[], fixed_columns={}, key="affichage_df", colorisation=False, hide_label=False, background_color=None):
 
     # Calcul de la hauteur de l'aggrid
     nb_lignes = len(df)
@@ -975,8 +975,7 @@ def afficher_df(label, df, hide=[], fixed_columns=[], fixed_width=50, key="affic
     gb.configure_default_column(resizable=True)
 
     # Colonnes à largeur fixe
-    fixed_columns = ["Date", "Debut", "Début", "Fin", "Duree", "Durée"]
-    for col in fixed_columns:
+    for col, width in fixed_columns.items():
         if col in df.columns:
             gb.configure_column(
                 col,
@@ -984,7 +983,7 @@ def afficher_df(label, df, hide=[], fixed_columns=[], fixed_width=50, key="affic
                 resize=False,
                 autosize=False,
                 suppressSizeToFit=True,
-                width=fixed_width
+                width=width
             )
 
     # Epinglage de la colonne Date
@@ -2334,15 +2333,15 @@ def afficher_activites_programmees():
     gb.configure_default_column(resizable=True)
 
     # Colonnes à largeur fixe
-    colonnes_fixes = ["Date", "Début", "Fin", "Durée"]
-    for col in colonnes_fixes:
+    colonnes_fixes = {"Date": 40, "Début": 50, "Fin": 50, "Durée": 50}
+    for col, width in colonnes_fixes.items():
         gb.configure_column(
             col,
             filter=False,
             resize=False,
             autosize=False,
             suppressSizeToFit=True,
-            width=50
+            width=width
         )
 
     # Epinglage de la colonne Date
@@ -2729,15 +2728,15 @@ def afficher_activites_non_programmees():
     gb.configure_default_column(resizable=True)
 
     # Colonnes à largeur fixe
-    colonnes_fixes = ["Date", "Début", "Fin", "Durée"]
-    for col in colonnes_fixes:
+    colonnes_fixes = {"Date": 40, "Début": 50, "Fin": 50, "Durée": 50}
+    for col, width in colonnes_fixes.items():
         gb.configure_column(
             col,
             filter=False,
             resize=False,
             autosize=False,
             suppressSizeToFit=True,
-            width=50
+            width=width
         )
 
     # Epinglage de la colonne Date
@@ -3974,9 +3973,8 @@ def afficher_creneaux_disponibles():
         
         choix_creneau = afficher_df(
             "Créneaux disponibles", 
-            creneaux_disponibles, 
-            fixed_columns=["Date", "Debut", "Fin"], 
-            fixed_width=50, 
+            creneaux_disponibles.rename(columns={"Debut": "Début"}), 
+            fixed_columns={"Date": 40, "Début": 50, "Fin": 50}, 
             hide=["__type_creneau", "__index"], 
             key="creneaux_disponibles", 
             hide_label=True, 
@@ -4006,9 +4004,8 @@ def afficher_creneaux_disponibles():
 
                 activite = afficher_df(
                     "Activités programmables", 
-                    proposables, 
-                    fixed_columns=["Date", "Debut", "Fin", "Duree"], 
-                    fixed_width=50, 
+                    proposables.rename(columns={"Debut": "Début", "Duree": "Durée"}), 
+                    fixed_columns={"Date": 40, "Début": 50, "Fin": 50, "Durée": 50}, 
                     hide=["__type_activite", "__index"], 
                     key="activites_programmables_dans_creneau_selectionne", 
                     hide_label=True, 
