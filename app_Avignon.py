@@ -951,7 +951,7 @@ def forcer_reaffichage_df(key):
         st.session_state[session_state_forcer_reaffichage] = True
 
 # Affichage d'un dataframe
-def afficher_df(label, df, hide=[], fixed_columns={}, key="affichage_df", colorisation=False, hide_label=False, background_color=None):
+def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affichage_df", colorisation=False, hide_label=False, background_color=None):
 
     # Calcul de la hauteur de l'aggrid
     nb_lignes = len(df)
@@ -984,6 +984,14 @@ def afficher_df(label, df, hide=[], fixed_columns={}, key="affichage_df", colori
                 autosize=False,
                 suppressSizeToFit=True,
                 width=width
+            )
+
+    # header names
+    for col, name in header_names.items():
+        if col in df.columns:
+            gb.configure_column(
+                col,
+                headerName=name
             )
 
     # Epinglage de la colonne Date
@@ -2333,7 +2341,7 @@ def afficher_activites_programmees():
     gb.configure_default_column(resizable=True)
 
     # Colonnes à largeur fixe
-    colonnes_fixes = {"Date": 40, "Début": 50, "Fin": 50, "Durée": 50}
+    colonnes_fixes = {"Date": 50, "Début": 50, "Fin": 50, "Durée": 50}
     for col, width in colonnes_fixes.items():
         gb.configure_column(
             col,
@@ -2728,7 +2736,7 @@ def afficher_activites_non_programmees():
     gb.configure_default_column(resizable=True)
 
     # Colonnes à largeur fixe
-    colonnes_fixes = {"Date": 40, "Début": 50, "Fin": 50, "Durée": 50}
+    colonnes_fixes = {"Date": 50, "Début": 50, "Fin": 50, "Durée": 50}
     for col, width in colonnes_fixes.items():
         gb.configure_column(
             col,
@@ -3973,8 +3981,9 @@ def afficher_creneaux_disponibles():
         
         choix_creneau = afficher_df(
             "Créneaux disponibles", 
-            creneaux_disponibles.rename(columns={"Debut": "Début"}), 
-            fixed_columns={"Date": 40, "Début": 50, "Fin": 50}, 
+            creneaux_disponibles, 
+            header_names={"Debut": "Début"},
+            fixed_columns={"Date": 50, "Début": 50, "Fin": 50}, 
             hide=["__type_creneau", "__index"], 
             key="creneaux_disponibles", 
             hide_label=True, 
@@ -4004,8 +4013,9 @@ def afficher_creneaux_disponibles():
 
                 activite = afficher_df(
                     "Activités programmables", 
-                    proposables.rename(columns={"Debut": "Début", "Duree": "Durée"}), 
-                    fixed_columns={"Date": 40, "Début": 50, "Fin": 50, "Durée": 50}, 
+                    proposables, 
+                    header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité"},
+                    fixed_columns={"Date": 50, "Début": 50, "Fin": 50, "Durée": 50}, 
                     hide=["__type_activite", "__index"], 
                     key="activites_programmables_dans_creneau_selectionne", 
                     hide_label=True, 
