@@ -1423,10 +1423,18 @@ def afficher_aide():
             <p>Les activités à programmer sont présentées dans deux tableaux séparés, 
                 l'un pour les activités déja programmées à une date donnée, l'autre pour les activités restant à programmer. 
                 Dans ces deux tableaux les informations sont éditables, sauf les heures de fin (qui sont calculées automatiquement) 
-                et les date de programmation, heure de début et durée des activités réservées (celles dont la colonne 'Réservé' est à Oui).</p>
+                et les dates de programmation, heures de début et durées des activités réservées (celles dont la colonne 'Réservé' est à Oui). 
+                Sur la colonne Date un menu permet de programmer / reprogrammer les activités en fonction du jour sélectionné, 
+                voire de déprogrammer les activités du tableau des activités programmées par sélection de l'item vide du menu. 
+                Dans le tableau des activités programmées la couleur de fond est fonction du jour de programmation 
+                et les activités réservées sont écrite en rouge. Dans le tableau des activités non programmées la couleur de fond menthe 
+                permet de repérer les activités programmables.</p>
             
             <p>Deux autres tableaux adressent la gestion des créneaux disponibles. 
-                Le premier présente les créneaux encore disponibles sur la période considérée et le deuxième les activités programmables dans le créneau sélectionné en tenant compte de leur durée et de la marge entre activités.</p>
+                Le premier présente les créneaux encore disponibles sur la période considérée et le deuxième les activités programmables dans 
+                le créneau sélectionné en tenant compte de leur durée et de la marge entre activités. 
+                Un bouton Programmer permet de programmer l'activité programmable sélectionnée au jour dit du créneau sélectionné. 
+                la couleur de fond est fonction du jour pour les créneaux disponibles et menthe pour les activités programmables.</p>
             
             <p style="margin-bottom: 0.2em">Les menus sont regroupés dans une barre latérale escamotable:</p>
             <ul style="margin-top: 0em">
@@ -2536,15 +2544,32 @@ def afficher_activites_programmees():
     )
 
     # Colorisation
+    # gb.configure_grid_options(getRowStyle=JsCode(f"""
+    # function(params) {{
+    #     const jour = params.data.__jour;
+    #     const couleurs = {PALETTE_COULEURS_JOURS};
+    #     if (jour && couleurs[jour]) {{
+    #         return {{ 'backgroundColor': couleurs[jour] }};
+    #     }}
+    #     return null;
+    # }}
+    # """))
     gb.configure_grid_options(getRowStyle=JsCode(f"""
-    function(params) {{
-        const jour = params.data.__jour;
-        const couleurs = {PALETTE_COULEURS_JOURS};
-        if (jour && couleurs[jour]) {{
-            return {{ 'backgroundColor': couleurs[jour] }};
+        function(params) {{
+            const jour = params.data.__jour;
+            const couleurs = {PALETTE_COULEURS_JOURS};
+            let style = {{}};
+
+            if (jour && couleurs[jour]) {{
+                style.backgroundColor = couleurs[jour];
+            }}
+
+            if (params.data.__non_reserve === false) {{
+                style.color = 'red';
+            }}
+
+            return style;
         }}
-        return null;
-    }}
     """))
 
     # Configuration de la sélection
@@ -2766,10 +2791,12 @@ def afficher_activites_programmees():
                                             forcer_reaffichage_activites_programmees()
                                             if col in ["Debut", "Duree", "Activité"]:
                                                 forcer_reaffichage_df("creneaux_disponibles")
+                                            st.session_state.aggrid_activites_programmees_reset_counter += 1 
                                             st.rerun()
                                         else:
                                             st.session_state.aggrid_activites_programmees_erreur = erreur
                                             forcer_reaffichage_activites_programmees()
+                                            st.session_state.aggrid_activites_programmees_reset_counter += 1 
                                             st.rerun()
             st.session_state.aggrid_activites_programmees_gerer_modification_cellule = True
 
@@ -3174,10 +3201,12 @@ def afficher_activites_non_programmees():
                                         if not erreur:
                                             forcer_reaffichage_activites_non_programmees()
                                             forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
+                                            st.session_state.aggrid_activites_non_programmees_reset_counter += 1 
                                             st.rerun()
                                         else:
                                             st.session_state.aggrid_activites_non_programmees_erreur = erreur
                                             forcer_reaffichage_activites_non_programmees()
+                                            st.session_state.aggrid_activites_non_programmees_reset_counter += 1 
                                             st.rerun()
             st.session_state.aggrid_activites_non_programmees_gerer_modification_cellule = True
 
@@ -4288,12 +4317,13 @@ def afficher_creneaux_disponibles():
                 elif type_creneau == "Journée":
                     proposables = get_activites_programmables_journee(date_ref)
 
-                if proposables:
+        if proposables:
+            with st.expander("**Activités programmables**", expanded=True):
                     proposables = pd.DataFrame(proposables).sort_values(by=["Debut"], ascending=[True]) if proposables else pd.DataFrame(proposables)
                     proposables["Date"] = choix_creneau["Date"] # ou str(date_ref) car col Date au format string dans les df_display !
                     # st.markdown("##### Activités programmables")
                     # st.markdown("**Activités programmables**")
-                    st.markdown(f"Activités programmables sur le créneau du {int(date_ref)} de {choix_creneau["Debut"]} à {choix_creneau["Fin"]}")
+                    st.markdown(f"Sur le créneau du {int(date_ref)} de {choix_creneau["Debut"]} à {choix_creneau["Fin"]}")
 
                     activite = afficher_df(
                         "Activités programmables", 
@@ -4320,8 +4350,6 @@ def afficher_creneaux_disponibles():
                             st.session_state.forcer_menu_activites_programmees = True
 
                         programmer_activite_non_programmee(date_ref, activite)
-
-                    return
 
 # Menu de gestion des créneaux disponibles
 def menu_creneaux_disponibles(date, creneau, activite):
