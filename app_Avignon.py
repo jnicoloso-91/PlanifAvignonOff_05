@@ -2622,7 +2622,7 @@ def afficher_activites_programmees():
     # Permet de gérer les modifications de df_display dans avoir à redessiner l'aggrid complètement par changement de key
     gb.configure_grid_options(
         immutableData=True,
-        deltaRowDataMode=True,
+        # deltaRowDataMode=True,
         getRowId=JsCode("function (params) { return params.data.__id; }"),
     )
 
