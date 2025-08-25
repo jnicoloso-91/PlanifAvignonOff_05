@@ -204,7 +204,8 @@ DEBOUNCE_S = 0.30
 # )
 
 # En ce qui concerne la gestion des changements de date via celValueChanged impossible de gérer la mise à jour de l'aggrid en mode immutableData=True.
-# Donc en l'état obligé d'incrementer la key pour forcer un réaffichage complet, suggestions chatgpt essayées sans succés.
+# Donc en l'état obligé d'incrementer la key pour forcer un réaffichage complet à chaque cellValueChanged, suggestions chatgpt essayées sans succés
+# mais res à creuser. deltaRowDataMode mis en commentaire car sinon le forçage par incrémentation de key ne fonctionne pas bien sur Iphone...
 
 ######################
 # User Sheet Manager #
@@ -3052,7 +3053,7 @@ def afficher_activites_non_programmees():
     # Permet de gérer les modifications de df_display dans avoir à redessiner l'aggrid complètement par changement de key
     gb.configure_grid_options(
         immutableData=True,
-        deltaRowDataMode=True,
+        # deltaRowDataMode=True,
         getRowId=JsCode("function (params) { return params.data.__id; }"),
     )
 
