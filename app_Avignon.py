@@ -132,6 +132,7 @@ DEBOUNCE_S = 0.30
 
 JS_SELECT_DESELECT_ONCE = JsCode("""
     function(p){
+    p.api.sizeColumnsToFit();
     var api=p&&p.api; if(!api) return;
 
     // caches par grille (anti double-tir)
