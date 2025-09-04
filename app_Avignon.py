@@ -2763,7 +2763,7 @@ def demander_deselection(grid_name: str):
         k = f"{grid_name}_desel_request"
         st.session_state.setdefault(k, {"ver": 0})
         st.session_state[k]["ver"] += 1
-        # debug_trace(f"-------------------Demande de désélection sur {grid_name} version {st.session_state[k]["ver"]}")
+        debug_trace(f"-------------------Demande de désélection sur {grid_name} version {st.session_state[k]["ver"]}")
         k = f"{grid_name}_sel_request"
         st.session_state.setdefault(k, {"ver": 0, "id": None})
         st.session_state[k]["id"] = None
@@ -2922,12 +2922,12 @@ def afficher_activites_programmees():
         if sel_request is not None and sel_request["id"] is not None:
             df_display["__sel_id"] = get_uuid(df_display, sel_request["id"])
             df_display["__sel_ver"] = sel_request["ver"]
-            # debug_trace(f"PROG ________________traitement requête de sélection {sel_request["id"]} {sel_request["ver"]}")
+            debug_trace(f"PROG ________________traitement requête de sélection {sel_request["id"]} {sel_request["ver"]}")
     
         desel_request = st.session_state.get("activites_programmees_desel_request", None)
         if desel_request is not None:
             df_display["__desel_ver"] = desel_request["ver"]
-            # debug_trace(f"PROG ________________traitement requête de desélection {desel_request["ver"]}")
+            debug_trace(f"PROG ________________traitement requête de desélection {desel_request["ver"]}")
 
     grid_options = init_activites_programmees_grid_options(df_display)
 
@@ -2983,18 +2983,18 @@ def afficher_activites_programmees():
         #         row = df_display.iloc[pre_selected_row] if pre_selected_row < len(df_display) else None
         # st.session_state.activites_programmees_sel_request_pending = False
         if st.session_state.activites_programmees_sel_request_pending == True:
-            # debug_trace("PROG sel_request_pending")
+            debug_trace("PROG sel_request_pending")
             reqid = requested_rowid("activites_programmees")
-            # debug_trace(f"PROG row = df_display.loc[{reqid}]")
+            debug_trace(f"PROG row = df_display.loc[{reqid}]")
             row = df_display.loc[reqid] if reqid is not None and reqid in df_display.index else None
             st.session_state.activites_programmees_sel_request_pending = False
-            # debug_trace("PROG sel_request_ending")
+            debug_trace("PROG sel_request_ending")
         else:
             if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
-                # debug_trace("PROG row = selected_rows.iloc[0]")
+                debug_trace("PROG row = selected_rows.iloc[0]")
                 row = selected_rows.iloc[0] 
             elif isinstance(selected_rows, list) and len(selected_rows) > 0:
-                # debug_trace("PROG row = selected_rows[0]")
+                debug_trace("PROG row = selected_rows[0]")
                 row = selected_rows[0]
 
         # 🟡 Traitement si ligne sélectionnée et index correspondant non vide
@@ -3011,9 +3011,9 @@ def afficher_activites_programmees():
             # Evènement de type "selectionChanged" 
             if event_type == "selectionChanged":
                 if index_df != st.session_state.activites_programmees_sel_request["id"]:
-                    # debug_trace(f"PROG ***activites_programmees_sel_request[id] de  {st.session_state.activites_programmees_sel_request["id"]} à {index_df}")
+                    debug_trace(f"PROG ***activites_programmees_sel_request[id] de  {st.session_state.activites_programmees_sel_request["id"]} à {index_df}")
                     st.session_state.activites_programmees_sel_request["id"] = index_df
-                    # debug_trace("PROG ***demander_deselection activites_non_programmees")
+                    debug_trace("PROG ***demander_deselection activites_non_programmees")
                     demander_deselection("activites_non_programmees")
                     
                     # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
@@ -3025,7 +3025,7 @@ def afficher_activites_programmees():
                             "index_df": index_df
                         }
 
-                    # debug_trace("PROG***rerun")
+                    debug_trace("PROG***rerun")
                     st.rerun()
                 else:
                     if st.session_state.forcer_menu_activites_programmees or st.session_state.forcer_maj_menu_activites_programmees:
@@ -3356,12 +3356,12 @@ def afficher_activites_non_programmees():
         if sel_request is not None and sel_request["id"] is not None:
             df_display["__sel_id"] = get_uuid(df_display, sel_request["id"])
             df_display["__sel_ver"] = sel_request["ver"]
-            # debug_trace(f"NONPROG ________________traitement requête de sélection {sel_request["id"]} {sel_request["ver"]}")
+            debug_trace(f"NONPROG ________________traitement requête de sélection {sel_request["id"]} {sel_request["ver"]}")
     
         desel_request = st.session_state.get("activites_non_programmees_desel_request", None)
         if desel_request is not None:
             df_display["__desel_ver"] = desel_request["ver"]
-            # debug_trace(f"NONPROG ________________traitement requête de desélection {desel_request["ver"]}")
+            debug_trace(f"NONPROG ________________traitement requête de desélection {desel_request["ver"]}")
 
     grid_options = init_activites_non_programmees_grid_options(df_display)
 
@@ -3395,6 +3395,7 @@ def afficher_activites_non_programmees():
                 # else:
                 #     with st.expander("Contrôles"):
                 #         menu_activites_non_programmees(None)
+            st.session_state.activites_programmees_sel_request_pending = False
             return
         
         # Récupération de la ligne sélectionnée
@@ -3412,18 +3413,18 @@ def afficher_activites_non_programmees():
         #         row = df_display.iloc[pre_selected_row] if pre_selected_row < len(df_display) else None
         # st.session_state.activites_non_programmees_sel_request_pending = False
         if st.session_state.activites_non_programmees_sel_request_pending == True:
-            # debug_trace("NONPROG sel_request_pending")
+            debug_trace("NONPROG sel_request_pending")
             reqid = requested_rowid("activites_non_programmees")
-            # debug_trace(f"NONPROG row = df_display.loc[{reqid}]")
+            debug_trace(f"NONPROG row = df_display.loc[{reqid}]")
             row = df_display.loc[reqid] if reqid is not None and reqid in df_display.index else None
             st.session_state.activites_non_programmees_sel_request_pending = False
-            # debug_trace("NONPROG sel_request_ending")
+            debug_trace("NONPROG sel_request_ending")
         else:
             if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
-                # debug_trace("NONPROG row = selected_rows.iloc[0]")
+                debug_trace("NONPROG row = selected_rows.iloc[0]")
                 row = selected_rows.iloc[0] 
             elif isinstance(selected_rows, list) and len(selected_rows) > 0:
-                # debug_trace("NONPROG row = selected_rows[0]")
+                debug_trace("NONPROG row = selected_rows[0]")
                 row = selected_rows[0]
 
         # 🟡 Traitement si ligne sélectionnée et index correspondant non vide
@@ -3440,9 +3441,9 @@ def afficher_activites_non_programmees():
             # Evènement de type "selectionChanged"
             if event_type == "selectionChanged":
                 if index_df != st.session_state.activites_non_programmees_sel_request["id"]:
-                    # debug_trace(f"NONPROG ***activites_non_programmees_sel_request[id] de  {st.session_state.activites_non_programmees_sel_request["id"]} à {index_df}")
+                    debug_trace(f"NONPROG ***activites_non_programmees_sel_request[id] de  {st.session_state.activites_non_programmees_sel_request["id"]} à {index_df}")
                     st.session_state.activites_non_programmees_sel_request["id"] = index_df
-                    # debug_trace("NONPROG ***demander_deselection activites_programmees")
+                    debug_trace("NONPROG ***demander_deselection activites_programmees")
                     demander_deselection("activites_programmees")
 
                     # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
@@ -3454,7 +3455,7 @@ def afficher_activites_non_programmees():
                             "index_df": index_df
                         }
 
-                    # debug_trace("NONPROG***rerun")
+                    debug_trace("NONPROG***rerun")
                     st.rerun()
                 else:
                     if st.session_state.forcer_menu_activites_non_programmees or st.session_state.forcer_maj_menu_activites_non_programmees:
