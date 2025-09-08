@@ -5095,8 +5095,7 @@ def main():
     # debug_trace("afficher_titre", trace_type=["gen"])
     afficher_titre("Planificateur Avignon Off")
 
-    import streamlit as st
-
+    # Affichage de la console JS miroir
     st.markdown("""
     <div id="jslog" style="
     white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
