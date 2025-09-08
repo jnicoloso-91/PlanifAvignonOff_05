@@ -4565,16 +4565,15 @@ def afficher_creneaux_disponibles():
             # Affichage de la grille des créneaux disponibles
             choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
             
-            # choix_creneau = afficher_df(
-            #     "Créneaux disponibles", 
-            #     creneaux_disponibles, 
-            #     header_names={"Debut": "Début"},
-            #     # fixed_columns={"Date": 50, "Début": 55, "Fin": 55}, 
-            #     hide=["__type_creneau", "__index"], 
-            #     key="creneaux_disponibles", 
-            #     hide_label=True, 
-            #     colorisation=True)
-            choix_creneau = creneaux_disponibles.iloc[0]
+            choix_creneau = afficher_df(
+                "Créneaux disponibles", 
+                creneaux_disponibles, 
+                header_names={"Debut": "Début"},
+                # fixed_columns={"Date": 50, "Début": 55, "Fin": 55}, 
+                hide=["__type_creneau", "__index", "__uuid"], 
+                key="creneaux_disponibles", 
+                hide_label=True, 
+                colorisation=True)
 
             if choix_creneau is not None:
                 if choix_creneau_pred is not None and choix_creneau_pred.to_dict() != choix_creneau.to_dict():
@@ -4616,7 +4615,7 @@ def afficher_creneaux_disponibles():
                         proposables, 
                         header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité"},
                         # fixed_columns={"Date": 50, "Début": 55, "Fin": 55, "Durée": 55}, 
-                        hide=["__type_activite", "__index"], 
+                        hide=["__type_activite", "__index", "__uuid"], 
                         key="activites_programmables_dans_creneau_selectionne", 
                         hide_label=True, 
                         background_color=COULEUR_ACTIVITE_PROGRAMMABLE)
