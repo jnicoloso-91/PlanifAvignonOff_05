@@ -5093,7 +5093,7 @@ def main():
 
     # Affichage du titre
     # debug_trace("afficher_titre", trace_type=["gen"])
-    afficher_titre("Planificateur Avignon Of")
+    afficher_titre("Planificateur Avignon Off")
 
     # version = pkg_resources.get_distribution("streamlit-aggrid").version
     # st.write("Version streamlit-aggrid :", version)
