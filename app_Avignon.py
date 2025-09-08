@@ -1121,42 +1121,42 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
                 headerName=name
             )
 
-    # # Epinglage de la colonne Date
-    # if "Date" in df.columns:
-    #     gb.configure_column(
-    #         "Date",
-    #         pinned=JsCode("'left'")
-    #     )
+    # Epinglage de la colonne Date
+    if "Date" in df.columns:
+        gb.configure_column(
+            "Date",
+            pinned=JsCode("'left'")
+        )
 
-    # #Colonnes cachées
-    # for col in hide:
-    #     if col in df.columns:
-    #         gb.configure_column(col, hide=True)
+    #Colonnes cachées
+    for col in hide:
+        if col in df.columns:
+            gb.configure_column(col, hide=True)
 
-    # # Colorisation
-    # if colorisation:
-    #     if "Date" in df.columns:
-    #         df["__jour"] = df["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
-    #         gb.configure_column("__jour", hide=True)
-    #         gb.configure_grid_options(getRowStyle=JsCode(f"""
-    #         function(params) {{
-    #             const jour = params.data.__jour;
-    #             const couleurs = {PALETTE_COULEURS_JOURS};
-    #             if (jour && couleurs[jour]) {{
-    #                 return {{ 'backgroundColor': couleurs[jour] }};
-    #             }}
-    #             return null;
-    #         }}
-    #         """))
-    # elif background_color is not None:
-    #     gb.configure_grid_options(getRowStyle=JsCode(f"""
-    #         function(params) {{
-    #             return {{
-    #                 'backgroundColor': '{background_color}'
-    #             }}
-    #         }}
-    #         """)
-    #     )
+    # Colorisation
+    if colorisation:
+        if "Date" in df.columns:
+            df["__jour"] = df["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
+            gb.configure_column("__jour", hide=True)
+            gb.configure_grid_options(getRowStyle=JsCode(f"""
+            function(params) {{
+                const jour = params.data.__jour;
+                const couleurs = {PALETTE_COULEURS_JOURS};
+                if (jour && couleurs[jour]) {{
+                    return {{ 'backgroundColor': couleurs[jour] }};
+                }}
+                return null;
+            }}
+            """))
+    elif background_color is not None:
+        gb.configure_grid_options(getRowStyle=JsCode(f"""
+            function(params) {{
+                return {{
+                    'backgroundColor': '{background_color}'
+                }}
+            }}
+            """)
+        )
 
     # Configuration de la sélection
     pre_selected_row = 0  # par défaut
@@ -1188,9 +1188,9 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
                 }}
             }}
         """)
-        # gb.configure_grid_options(
-        #     onRowDataUpdated=js_select_by_key,
-        # )
+        gb.configure_grid_options(
+            onRowDataUpdated=js_select_by_key,
+        )
         
     # Retaillage auto des largeurs de colonnes
     gb.configure_grid_options(onGridReady=JsCode(f"""
@@ -5077,35 +5077,6 @@ def afficher_menu_activite_sidebar():
 
 def main():
 
-    # components.html("""
-    # <div id="errbox" style="white-space:pre-wrap;font-family:ui-monospace,monospace;background:#111;color:#f77;padding:8px;border-radius:6px;margin:6px 0;max-height:220px;overflow:auto;border:1px solid #333">
-    # [iOS error console]
-    # </div>
-    # <script>
-    # (function(){
-    # var box = document.getElementById('errbox');
-    # function push(msg){
-    #     box.textContent += msg + "\\n";
-    #     box.scrollTop = box.scrollHeight;
-    #     if (box.textContent.length > 12000) box.textContent = box.textContent.slice(-12000);
-    # }
-    # window.addEventListener('error', function(e){
-    #     // Erreurs de <script> module / réseau
-    #     var t = e.target;
-    #     if (t && t.tagName === 'SCRIPT'){
-    #     push("[SCRIPT ERROR] src=" + (t.src||"(inline)") + " type=" + (t.type||"") + " message=" + (e.message||""));
-    #     } else {
-    #     push("[ERROR] " + (e.message||"") + " at " + (e.filename||"") + ":" + (e.lineno||""));
-    #     }
-    # }, true);
-    # window.addEventListener('unhandledrejection', function(e){
-    #     var r = e && e.reason;
-    #     push("[PROMISE] " + (r && (r.stack||r.message||r) || "unhandled"));
-    # });
-    # })();
-    # </script>
-    # """, height=260)
-
     st.session_state.setdefault("main_counter", 0)
     st.session_state.main_counter += 1
     debug_trace(f"____________MAIN {st.session_state.main_counter}______________", trace_type=["gen","main"])
@@ -5145,13 +5116,13 @@ def main():
         # debug_trace("afficher_infos_generales", trace_type=["gen"])
         afficher_infos_generales()
         
-        # Affichage des activités programmées
-        # debug_trace("afficher_activites_programmees", trace_type=["gen"])
-        afficher_activites_programmees()
+        # # Affichage des activités programmées
+        # # debug_trace("afficher_activites_programmees", trace_type=["gen"])
+        # afficher_activites_programmees()
 
-        # Affichage des activités non programmées
-        # debug_trace("afficher_activites_non_programmees", trace_type=["gen"])
-        afficher_activites_non_programmees()
+        # # Affichage des activités non programmées
+        # # debug_trace("afficher_activites_non_programmees", trace_type=["gen"])
+        # afficher_activites_non_programmees()
 
         # Affichage des créneaux disponibles et des activités programmables
         # debug_trace("afficher_creneaux_disponibles", trace_type=["gen"])
