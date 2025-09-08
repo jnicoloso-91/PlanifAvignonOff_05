@@ -4564,16 +4564,17 @@ def afficher_creneaux_disponibles():
             # Affichage de la grille des créneaux disponibles
             choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
             
-            choix_creneau = afficher_df(
-                "Créneaux disponibles", 
-                creneaux_disponibles, 
-                header_names={"Debut": "Début"},
-                # fixed_columns={"Date": 50, "Début": 55, "Fin": 55}, 
-                hide=["__type_creneau", "__index"], 
-                key="creneaux_disponibles", 
-                hide_label=True, 
-                colorisation=True)
-            
+            # choix_creneau = afficher_df(
+            #     "Créneaux disponibles", 
+            #     creneaux_disponibles, 
+            #     header_names={"Debut": "Début"},
+            #     # fixed_columns={"Date": 50, "Début": 55, "Fin": 55}, 
+            #     hide=["__type_creneau", "__index"], 
+            #     key="creneaux_disponibles", 
+            #     hide_label=True, 
+            #     colorisation=True)
+            choix_creneau = creneaux_disponibles.iloc[0]
+
             if choix_creneau is not None:
                 if choix_creneau_pred is not None and choix_creneau_pred.to_dict() != choix_creneau.to_dict():
                     forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
@@ -5124,9 +5125,9 @@ def main():
         # debug_trace("afficher_activites_non_programmees", trace_type=["gen"])
         afficher_activites_non_programmees()
 
-        # # Affichage des créneaux disponibles et des activités programmables
-        # # debug_trace("afficher_creneaux_disponibles", trace_type=["gen"])
-        # afficher_creneaux_disponibles()      
+        # Affichage des créneaux disponibles et des activités programmables
+        # debug_trace("afficher_creneaux_disponibles", trace_type=["gen"])
+        afficher_creneaux_disponibles()      
 
         # # Affichage du menu activité de la sidebar
         # debug_trace("afficher_menu_activite_sidebar", trace_type=["gen"])
