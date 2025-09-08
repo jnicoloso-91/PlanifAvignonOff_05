@@ -8,9 +8,10 @@ streamlit-js-eval
 gspread
 google-auth
 google-api-python-client
-gspread_dataframe
+gspread-dataframe
 dropbox
-streamlit-
+streamlit-javascript
 requests
 setuptools
+
 
