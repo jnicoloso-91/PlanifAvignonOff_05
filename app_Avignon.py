@@ -25,6 +25,7 @@ import unicodedata
 from urllib.parse import quote_plus
 from time import monotonic
 import copy
+import streamlit.components.v1 as components
 # import pkg_resources
 
 # Debug
@@ -5076,6 +5077,35 @@ def afficher_menu_activite_sidebar():
 
 def main():
 
+    components.html("""
+    <div id="errbox" style="white-space:pre-wrap;font-family:ui-monospace,monospace;background:#111;color:#f77;padding:8px;border-radius:6px;margin:6px 0;max-height:220px;overflow:auto;border:1px solid #333">
+    [iOS error console]
+    </div>
+    <script>
+    (function(){
+    var box = document.getElementById('errbox');
+    function push(msg){
+        box.textContent += msg + "\\n";
+        box.scrollTop = box.scrollHeight;
+        if (box.textContent.length > 12000) box.textContent = box.textContent.slice(-12000);
+    }
+    window.addEventListener('error', function(e){
+        // Erreurs de <script> module / réseau
+        var t = e.target;
+        if (t && t.tagName === 'SCRIPT'){
+        push("[SCRIPT ERROR] src=" + (t.src||"(inline)") + " type=" + (t.type||"") + " message=" + (e.message||""));
+        } else {
+        push("[ERROR] " + (e.message||"") + " at " + (e.filename||"") + ":" + (e.lineno||""));
+        }
+    }, true);
+    window.addEventListener('unhandledrejection', function(e){
+        var r = e && e.reason;
+        push("[PROMISE] " + (r && (r.stack||r.message||r) || "unhandled"));
+    });
+    })();
+    </script>
+    """, height=260)
+
     st.session_state.setdefault("main_counter", 0)
     st.session_state.main_counter += 1
     debug_trace(f"____________MAIN {st.session_state.main_counter}______________", trace_type=["gen","main"])
@@ -5095,76 +5125,8 @@ def main():
     # debug_trace("afficher_titre", trace_type=["gen"])
     afficher_titre("Planificateur Avignon Off")
 
-    # Affichage de la console JS miroir
-    st.markdown("""
-    <div id="jslog" style="
-    white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    background:#0b0b0b; color:#c7f7c7; padding:10px; border-radius:8px;
-    height:220px; overflow:auto; border:1px solid #2a2a2a; margin:6px 0;
-    "></div>
-    <div style="display:flex; gap:8px; margin-bottom:8px;">
-    <button id="jslog-clear" style="padding:6px 10px;">Effacer les logs</button>
-    <span id="jslog-status" style="color:#9aa; font-size:12px;">Console miroir active</span>
-    </div>
-
-    <script>
-    (function(){
-    var box = document.getElementById("jslog");
-    var status = document.getElementById("jslog-status");
-    if (!box) return;
-
-    function now(){
-        try{
-        return new Date().toISOString().replace('T',' ').replace('Z','');
-        }catch(e){ return '[time]'; }
-    }
-    function push(kind, args){
-        var msg = Array.from(args).map(function(a){
-        try {
-            if (a instanceof Error) return (a.stack || (a.name+': '+a.message));
-            if (typeof a === 'object') return JSON.stringify(a);
-            return String(a);
-        } catch(e){ return String(a); }
-        }).join(' ');
-        var line = "["+now()+"] ["+kind.toUpperCase()+"] "+msg + "\\n";
-        box.textContent += line;
-        box.scrollTop = box.scrollHeight;
-        // limiter à ~5000 caractères pour éviter un DOM trop gros
-        if (box.textContent.length > 5000){
-        box.textContent = box.textContent.slice(box.textContent.length - 5000);
-        }
-    }
-
-    // Sauvegarder les originaux
-    var olog = console.log, owarn = console.warn, oerr = console.error, oinfo = console.info, odebug = console.debug;
-
-    console.log = function(){ try{ push('log', arguments);}catch(e){}; try{ olog.apply(console, arguments);}catch(e){} };
-    console.warn = function(){ try{ push('warn', arguments);}catch(e){}; try{ owarn.apply(console, arguments);}catch(e){} };
-    console.error = function(){ try{ push('error', arguments);}catch(e){}; try{ oerr.apply(console, arguments);}catch(e){} };
-    console.info = function(){ try{ push('info', arguments);}catch(e){}; try{ oinfo.apply(console, arguments);}catch(e){} };
-    console.debug = function(){ try{ push('debug', arguments);}catch(e){}; try{ odebug.apply(console, arguments);}catch(e){} };
-
-    // Erreurs globales
-    window.addEventListener('error', function(e){
-        push('error', [ (e.message||'Error'), 'at', (e.filename||''), (e.lineno||''), (e.colno||'') ]);
-    });
-    window.addEventListener('unhandledrejection', function(e){
-        var r = e && e.reason;
-        push('error', [ 'UnhandledRejection:', r && (r.stack||r.message||r) ]);
-    });
-
-    // Bouton clear
-    var btn = document.getElementById('jslog-clear');
-    if (btn) btn.addEventListener('click', function(){ box.textContent = ''; });
-
-    // Petit ping
-    try { push('info', ['Console miroir prête (iOS ok).']); } catch(e){}
-    })();
-    </script>
-    """, unsafe_allow_html=True)
-
-
-
+    # Affichage de la version de streamlit-aggrid
+    # import pkg_resources
     # version = pkg_resources.get_distribution("streamlit-aggrid").version
     # st.write("Version streamlit-aggrid :", version)
 
