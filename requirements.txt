@@ -1,5 +1,6 @@
 streamlit
 pandas
+numpy
 openpyxl
 streamlit-aggrid==1.1.6
 beautifulsoup4
@@ -11,3 +12,4 @@ gspread_dataframe
 dropbox
 streamlit-javascript
 setuptools
+
