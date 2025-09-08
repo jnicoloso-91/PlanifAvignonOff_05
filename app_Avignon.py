@@ -4560,6 +4560,7 @@ def afficher_creneaux_disponibles():
             #     forcer_reaffichage_df("creneaux_disponibles")
             #     st.session_state.creneaux_disponibles_choix_activite = None
             #     st.rerun()
+            traiter_pauses = False
 
             # Affichage de la grille des créneaux disponibles
             choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
