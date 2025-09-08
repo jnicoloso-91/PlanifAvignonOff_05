@@ -4552,14 +4552,14 @@ def afficher_creneaux_disponibles():
 
             st.session_state.creneaux_disponibles_choix_activite = None
 
-            # Gestion du flag de traitement des pauses
-            traiter_pauses = st.checkbox("Tenir compte des pauses", value=False)  
-            if traiter_pauses != st.session_state.get("traiter_pauses", False):
-                st.session_state.traiter_pauses = traiter_pauses
-                bd_maj_creneaux_disponibles()
-                forcer_reaffichage_df("creneaux_disponibles")
-                st.session_state.creneaux_disponibles_choix_activite = None
-                st.rerun()
+            # # Gestion du flag de traitement des pauses
+            # traiter_pauses = st.checkbox("Tenir compte des pauses", value=False)  
+            # if traiter_pauses != st.session_state.get("traiter_pauses", False):
+            #     st.session_state.traiter_pauses = traiter_pauses
+            #     bd_maj_creneaux_disponibles()
+            #     forcer_reaffichage_df("creneaux_disponibles")
+            #     st.session_state.creneaux_disponibles_choix_activite = None
+            #     st.rerun()
 
             # Affichage de la grille des créneaux disponibles
             choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
