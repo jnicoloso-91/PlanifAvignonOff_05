@@ -30,7 +30,7 @@ import streamlit.components.v1 as components
 # import pkg_resources
 
 # Debug
-DEBUG_TRACE_MODE = True
+DEBUG_TRACE_MODE = False
 DEBUG_TRACE_TYPE = ["all"]
 
 def debug_trace(trace, trace_type=["all"]):
@@ -2617,8 +2617,6 @@ def afficher_activites_programmees():
     work_cols = ACTIVITES_PROGRAMMEES_WORK_COLS
     non_editable_cols = ["Fin"] + work_cols
 
-    # st.markdown("##### Activités programmées")
-
     # Calcul de la hauteur de l'aggrid
     nb_lignes = len(df_display)
     ligne_px = 30  # hauteur approximative d’une ligne dans AgGrid
@@ -4888,6 +4886,7 @@ def bd_modifier_cellule(idx, col, val, section_critique=None):
         elif est_activite_programmee(df.loc[idx]):
             modifier_df_cell(st.session_state.activites_programmees, idx, col, val)
             modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, df_display_col_nom(col), str(val))
+            modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, "__jour", int(val) if safe_int(val) is not None else None)
             st.session_state.activites_programmees = st.session_state.activites_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
             st.session_state.activites_programmees_df_display = st.session_state.activites_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
             st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
@@ -4895,6 +4894,7 @@ def bd_modifier_cellule(idx, col, val, section_critique=None):
         elif est_activite_non_programmee(df.loc[idx]):
             modifier_df_cell(st.session_state.activites_non_programmees, idx, col, val)
             modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, df_display_col_nom(col), str(val))
+            modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, "__jour", int(val) if safe_int(val) is not None else None)
             st.session_state.activites_non_programmees = st.session_state.activites_non_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
             st.session_state.activites_non_programmees_df_display = st.session_state.activites_non_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
             st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
