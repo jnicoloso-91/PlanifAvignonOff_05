@@ -2751,23 +2751,14 @@ def afficher_activites_programmees():
                                     # Déprogrammation de l'activité (Suppression de l'activité des activités programmées)
                                     undo_redo_save()
                                     demander_selection("activites_non_programmees", idx, deselect="activites_programmees")
-                                    st.session_state.forcer_menu_activites_non_programmees = True
-                                    deprogrammer_activite_programmee(idx)
-                                    forcer_reaffichage_activites_programmees()
-                                    forcer_reaffichage_activites_non_programmees()
-                                    forcer_reaffichage_df("creneaux_disponibles")
-                                    sauvegarder_row_ds_gsheet(idx)
-                                    st.session_state.aggrid_activites_programmees_key_counter += 1 
+                                    activites_programmees_deprogrammer(idx)
                                     st.rerun()
                                 elif pd.isna(df.at[idx, "Date"]) or df_modifie.at[i, col] != str(int(df.at[idx, "Date"])):
                                     # Reprogrammation de l'activité à la date choisie
                                     jour_choisi = int(df_modifie.at[i, col])
                                     undo_redo_save()
                                     demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
-                                    bd_modifier_cellule(idx, "Date", jour_choisi)
-                                    forcer_reaffichage_activites_programmees()
-                                    sauvegarder_row_ds_gsheet(idx)
-                                    st.session_state.aggrid_activites_programmees_key_counter += 1 
+                                    activites_programmees_reprogrammer(idx, jour_choisi)
                                     st.rerun()
                             else:
                                 if (pd.isna(df.at[idx, col_df]) and pd.notna(df_modifie.at[i, col])) or df.at[idx, col_df] != df_modifie.at[i, col]:
@@ -2775,6 +2766,49 @@ def afficher_activites_programmees():
                                     activites_programmees_modifier_cellule(idx, col_df, df_modifie.at[i, col])
                                     st.rerun()
 
+# Section critique pour la déprogrammation d'une activité programmée
+def activites_programmees_deprogrammer(idx):
+    
+    st.session_state.setdefault("activites_programmees_deprogrammer_cmd", 
+        {
+            "idx": idx,
+            "step": 0,
+        }
+    )
+    debug_trace(f"Début activites_programmees_deprogrammer {idx}")
+
+    st.session_state.forcer_menu_activites_non_programmees = True
+    deprogrammer_activite_programmee(idx)
+    forcer_reaffichage_activites_programmees()
+    forcer_reaffichage_activites_non_programmees()
+    forcer_reaffichage_df("creneaux_disponibles")
+    sauvegarder_row_ds_gsheet(idx)
+    st.session_state.aggrid_activites_programmees_key_counter += 1 
+
+    debug_trace(f"Fin activites_programmees_deprogrammer {idx}")
+    del st.session_state["activites_programmees_deprogrammer_cmd"]
+
+# Section critique pour la reprogrammation d'une activité programmée
+def activites_programmees_reprogrammer(idx, jour):
+    
+    st.session_state.setdefault("activites_programmees_reprogrammer_cmd", 
+        {
+            "idx": idx,
+            "jour": jour,
+            "step": 0,
+        }
+    )
+    debug_trace(f"Début activites_programmees_reprogrammer {idx} {jour}")
+
+    bd_modifier_cellule(idx, "Date", jour)
+    forcer_reaffichage_activites_programmees()
+    sauvegarder_row_ds_gsheet(idx)
+    st.session_state.aggrid_activites_programmees_key_counter += 1 
+
+    debug_trace(f"Fin activites_programmees_reprogrammer {idx} {jour}")
+    del st.session_state["activites_programmees_reprogrammer_cmd"]
+
+# Section critique pour la modification de cellules d'une activité programmée
 def activites_programmees_modifier_cellule(idx, col, val):
     
     st.session_state.setdefault("activites_programmees_modifier_cellule_cmd", 
@@ -2785,8 +2819,8 @@ def activites_programmees_modifier_cellule(idx, col, val):
             "step": 0,
         }
     )
-
     debug_trace(f"Début activites_programmees_modifier_cellule {idx} {col} {val}")
+
     erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
     forcer_reaffichage_activites_programmees()
     st.session_state.aggrid_activites_programmees_key_counter += 1 
@@ -3105,18 +3139,12 @@ def afficher_activites_non_programmees():
                                     jour_choisi = int(df_modifie.at[i, col])
                                     undo_redo_save()
                                     demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
-                                    st.session_state.forcer_menu_activites_programmees = True
-                                    bd_modifier_cellule(idx, "Date", int(jour_choisi))
-                                    forcer_reaffichage_activites_non_programmees()
-                                    forcer_reaffichage_activites_programmees()
-                                    forcer_reaffichage_df("creneaux_disponibles")
-                                    sauvegarder_row_ds_gsheet(idx)
-                                    st.session_state.aggrid_activites_non_programmees_key_counter += 1 
+                                    activites_non_programmees_programmer(idx, jour_choisi)
                                     st.rerun()
                             else:
                                 if (pd.isna(df.at[idx, col_df]) and pd.notna(df_modifie.at[i, col])) or df.at[idx, col_df] != df_modifie.at[i, col]:
                                     demander_selection("activites_non_programmees", idx, deselect="activites_programmees")
-                                    activites_programmees_modifier_cellule(idx, col_df, df_modifie.at[i, col])
+                                    activites_non_programmees_modifier_cellule(idx, col_df, df_modifie.at[i, col])
                                     st.rerun()
 
         elif len(df_display) == 0:
@@ -3126,6 +3154,30 @@ def afficher_activites_non_programmees():
                     "index_df": None
                 }
 
+# Section critique pour la programmation d'une activité non programmée
+def activites_non_programmees_programmer(idx, jour):
+    
+    st.session_state.setdefault("activites_non_programmees_programmer_cmd", 
+        {
+            "idx": idx,
+            "jour": jour,
+            "step": 0,
+        }
+    )
+    debug_trace(f"Début activites_non_programmees_programmer {idx} {jour}")
+
+    st.session_state.forcer_menu_activites_programmees = True
+    bd_modifier_cellule(idx, "Date", int(jour))
+    forcer_reaffichage_activites_non_programmees()
+    forcer_reaffichage_activites_programmees()
+    forcer_reaffichage_df("creneaux_disponibles")
+    sauvegarder_row_ds_gsheet(idx)
+    st.session_state.aggrid_activites_non_programmees_key_counter += 1 
+
+    debug_trace(f"Fin activites_non_programmees_programmer {idx} {jour}")
+    del st.session_state["activites_non_programmees_programmer_cmd"]
+
+# Section critique pour la modification de cellules d'une activité non programmée
 def activites_non_programmees_modifier_cellule(idx, col, val):
     
     st.session_state.setdefault("activites_non_programmees_modifier_cellule_cmd", 
@@ -3136,8 +3188,8 @@ def activites_non_programmees_modifier_cellule(idx, col, val):
             "step": 0,
         }
     )
-
     debug_trace(f"Début activites_non_programmees_modifier_cellule {idx} {col} {val}")
+
     erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
     forcer_reaffichage_activites_non_programmees()
     st.session_state.aggrid_activites_non_programmees_key_counter += 1 
@@ -3372,7 +3424,7 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=None):
                     set_section_critique_step(section_critique, 2)
                     df.at[index, colonne] = valeur_courante
                     undo_redo_save()
-                    bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
+                    bd_modifier_cellule(index, colonne, nouvelle_valeur)
                     sauvegarder_row_ds_gsheet(index)
     elif step == 1:
         if colonne == "Debut" :
@@ -4859,9 +4911,9 @@ def bd_maj_activites_non_programmees():
     st.session_state.activites_non_programmees_df_display = df_display
     st.session_state.activites_non_programmees_df_display_copy = df_display.copy()
 
-def bd_modifier_cellule(idx, col, val, section_critique=None):
+def bd_modifier_cellule(idx, col, val, section_critique=False):
 
-    if section_critique is None:
+    if section_critique:
         st.session_state.setdefault("bd_modifier_cellule_cmd", 
             {
                 "idx": idx,
@@ -4871,6 +4923,7 @@ def bd_modifier_cellule(idx, col, val, section_critique=None):
         )
 
     debug_trace(f"Debut bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
+
     df = st.session_state.df
     oldval = df.loc[idx, col]
     modifier_df_cell(df, idx, col, val)
@@ -4930,7 +4983,7 @@ def bd_modifier_cellule(idx, col, val, section_critique=None):
 
     debug_trace(f"Fin bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
     
-    if section_critique is None:
+    if section_critique:
         del st.session_state["bd_modifier_cellule_cmd"]
 
 # Transfère une activité du contexte des activités non programmées vers celui des activités programmées
@@ -5170,6 +5223,22 @@ def traiter_sections_critiques():
     cmd = st.session_state.get("activites_programmees_modifier_cellule_cmd")
     if cmd:
         activites_programmees_modifier_cellule(cmd["idx"], cmd["col"], cmd["val"])
+    
+    cmd = st.session_state.get("activites_programmees_deprogrammer_cmd")
+    if cmd:
+        activites_programmees_deprogrammer(cmd["idx"])
+    
+    cmd = st.session_state.get("activites_programmees_reprogrammer_cmd")
+    if cmd:
+        activites_programmees_reprogrammer(cmd["idx"], cmd["jour"])
+    
+    cmd = st.session_state.get("activites_non_programmees_modifier_cellule_cmd")
+    if cmd:
+        activites_non_programmees_modifier_cellule(cmd["idx"], cmd["col"], cmd["val"])
+    
+    cmd = st.session_state.get("activites_non_programmees_programmer_cmd")
+    if cmd:
+        activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
 
 def main():
 
