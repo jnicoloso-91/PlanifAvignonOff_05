@@ -387,12 +387,7 @@ def charger_contexte_depuis_gsheet():
             df = nettoyer_donnees(df, fn)
             initialiser_etat_contexte(df, wb, fn, lnk, ca)
             undo_redo_init(verify=False)
-            st.session_state.maj_contexte_interrupted = True
-            bd_maj_donnees_calculees()
-            bd_maj_activites_programmees()
-            bd_maj_activites_non_programmees()
-            bd_maj_creneaux_disponibles()
-            st.session_state.maj_contexte_interrupted = False
+            bd_maj_contexte(maj_donnees_calculees=True) 
             selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
             demander_selection("activites_non_programmees", selection, deselect="activites_programmees")
             st.session_state.menu_activites = {
@@ -665,13 +660,7 @@ def undo_redo_undo():
         st.session_state.liens_activites = snapshot["liens"]
         undo_redo_sel_request_update_from_snapshot(snapshot)
         st.session_state.menu_activites = snapshot["menu_activites"]
-
-        st.session_state.maj_contexte_interrupted = True
-        bd_maj_activites_programmees()
-        bd_maj_activites_non_programmees()
-        bd_maj_creneaux_disponibles()
-        st.session_state.maj_contexte_interrupted = False
-
+        bd_maj_contexte(maj_donnees_calculees=False)
         forcer_reaffichage_activites_programmees()
         forcer_reaffichage_activites_non_programmees()
         forcer_reaffichage_df("creneaux_disponibles")
@@ -702,13 +691,7 @@ def undo_redo_redo():
         st.session_state.liens_activites = snapshot["liens"]
         undo_redo_sel_request_update_from_snapshot(snapshot)
         st.session_state.menu_activites = snapshot["menu_activites"]
-
-        st.session_state.maj_contexte_interrupted = True
-        bd_maj_activites_programmees()
-        bd_maj_activites_non_programmees()
-        bd_maj_creneaux_disponibles()
-        st.session_state.maj_contexte_interrupted = False
-
+        bd_maj_contexte(maj_donnees_calculees=False)
         forcer_reaffichage_activites_programmees()
         forcer_reaffichage_activites_non_programmees()
         forcer_reaffichage_df("creneaux_disponibles")
@@ -1742,13 +1725,7 @@ def afficher_periode_programmation():
 
             # Ne forcer le réaffichage des grilles qu'une seule fois
             if need_refresh_grids:
-
-                st.session_state.maj_contexte_interrupted = True
-                bd_maj_activites_programmees() # pour mise à jour menus options date
-                bd_maj_activites_non_programmees() # pour mise à jour menus options date
-                bd_maj_creneaux_disponibles()
-                st.session_state.maj_contexte_interrupted = False
-
+                bd_maj_contexte(maj_donnees_calculees=False)
                 forcer_reaffichage_activites_non_programmees() # pour mise à jour colorisation
                 forcer_reaffichage_df("creneaux_disponibles")
 
@@ -1889,12 +1866,7 @@ def afficher_parametres():
 
             # Ne forcer le réaffichage des grilles qu'une seule fois
             if need_refresh_grids:
-                st.session_state.maj_contexte_interrupted = True
-                bd_maj_activites_programmees() # pour mise à jour menus options date
-                bd_maj_activites_non_programmees() # pour mise à jour menus options date
-                bd_maj_creneaux_disponibles()
-                st.session_state.maj_contexte_interrupted = False
-
+                bd_maj_contexte(maj_donnees_calculees=False)
 
             # Sauvegarde en batch (une seule fois)
             if changed_keys:
@@ -1906,64 +1878,6 @@ def afficher_parametres():
 
             # Pas de st.rerun() nécessaire : submit a déjà provoqué un rerun
             st.toast("Paramètres appliqués.", icon="✅")
-
-# Met à jour les données calculées d'une ligne
-def bd_maj_donnees_calculees_row(idx, full=True):
-    df = st.session_state.get("df", None)
-    if df is None:
-        return
-    if idx not in df.index:
-        return
-    try:
-        if len(df) > 0:
-            debut = heure_parse(df.loc[idx, "Debut"])
-            duree = duree_parse(df.loc[idx, "Duree"])
-            
-            df.at[idx, "Debut_dt"] = debut
-            df.at[idx, "Duree_dt"] = duree
-
-            fin = calculer_fin_row(df.loc[idx])
-            df.at[idx, "Fin"] = fin
-
-            if full:
-                df = st.session_state.get("activites_programmees", None)
-                if df is not None and idx in df.index:
-                    df.at[idx, "Debut_dt"] = debut
-                    df.at[idx, "Duree_dt"] = duree
-                    df.at[idx, "Fin"] = fin
-
-                df = st.session_state.get("activites_programmees_df_display", None)
-                if df is not None and idx in df.index:
-                    df.at[idx, "Fin"] = fin
-                    st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
-                
-                df = st.session_state.get("activites_non_programmees", None)
-                if df is not None and idx in df.index:
-                    df.at[idx, "Debut_dt"] = debut
-                    df.at[idx, "Duree_dt"] = duree
-                    df.at[idx, "Fin"] = fin
-                df = st.session_state.get("activites_non_programmees_df_display", None)
-                if df is not None and idx in df.index:
-                    df.at[idx, "Fin"] = fin
-                    st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
-
-    except:
-        pass        
-
-# Met à jour les données calculées sur st.session_state
-# A utiliser conjointement avec bd_maj_activites_programmees, bd_maj_activites_non_programmees et , bd_maj_creneaux_disponibles
-# pour reconstituer le contexte apres chargement de nouvelles données via fichier ou google sheet
-def bd_maj_donnees_calculees():
-    df = st.session_state.get("df", None)
-    if df is None:
-        return
-    try:
-        if len(df) > 0:
-            df["Debut_dt"] = df["Debut"].apply(heure_parse)
-            df["Duree_dt"] = df["Duree"].apply(duree_parse)
-            df["Fin"] = df.apply(calculer_fin_row, axis=1)    
-    except:
-        pass        
 
 # Nettoie les données du tableau Excel importé
 def nettoyer_donnees(df, fn):
@@ -2568,112 +2482,6 @@ def show_dialog_programmer_activite_non_programmee(df, index_df, df_display, jou
         if st.button(LABEL_BOUTON_ANNULER, use_container_width=CENTRER_BOUTONS):
             st.rerun()
 
-def bd_creer_df_display_activites_programmees(activites_programmees):
-    df_display = activites_programmees.copy()
-    df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
-    df_display["__index"] = df_display.index
-    df_display["__options_date"] = calculer_options_date_activites_programmees(df_display) 
-    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
-    df_display["__non_reserve"] = df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
-    df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
-    df_display["__desel_ver"] = st.session_state.activites_programmees_sel_request["desel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
-    df_display["__sel_ver"] = st.session_state.activites_programmees_sel_request["sel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
-    df_display["__sel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["sel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
-    df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
-    df_display.rename(columns=RENOMMAGE_COLONNES, inplace=True)
-    df_display = df_display.where(df_display.notna(), None)
-    return df_display
-
-# Met à jour les variables d'état relatives aux activités programmées
-# @chrono
-def bd_maj_activites_programmees():
-    if st.session_state.get("df", None) is None:
-        return  
-    activites_programmees = get_activites_programmees(st.session_state.df)
-    st.session_state.activites_programmees = activites_programmees
-    df_display = bd_creer_df_display_activites_programmees(activites_programmees.copy())
-    st.session_state.activites_programmees_df_display = df_display
-    st.session_state.activites_programmees_df_display_copy = df_display.copy()
-
-# Transfère une activité du contexte des activités non programmées vers celui des activités programmées
-# @chrono
-def bd_programmer(idx, jour=None):
-    
-    if "df" not in st.session_state:
-        return
-    
-    if idx not in st.session_state.df.index:
-        return
-    
-    if "activites_programmees" not in st.session_state:
-        return
-    
-    if "activites_non_programmees" not in st.session_state:
-        return
-
-    if jour is None:
-        return
-
-    if idx in st.session_state.activites_non_programmees.index:
-
-        row = st.session_state.activites_non_programmees.loc[[idx]]
-        row.at[idx, "Date"] = jour
-        st.session_state.activites_non_programmees.drop(index=idx, inplace=True)
-        st.session_state.activites_programmees = pd.concat([st.session_state.activites_programmees, row]).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
-
-        row = st.session_state.activites_non_programmees_df_display.loc[[idx]]
-        row.at[idx, "Date"] = str(jour)
-        row["__jour"] = row["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
-        row["__non_reserve"] = row["Réservé"].astype(str).str.strip().str.lower() != "oui"
-        st.session_state.activites_non_programmees_df_display.drop(index=idx, inplace=True)
-        st.session_state.activites_programmees_df_display = pd.concat([st.session_state.activites_programmees_df_display, row]).sort_values(by=["Date", "Début"], ascending=[True, True])
-
-        maj_options_date(st.session_state.df, st.session_state.activites_programmees, st.session_state.activites_programmees_df_display, jour)
-        maj_options_date(st.session_state.df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
-
-        st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
-        st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
-        
-        bd_maj_creneaux_disponibles()
-
-# Transfère une activité du contexte des activités programmées vers celui des activités non programmées
-# @chrono
-def bd_deprogrammer(idx, jour=None):
-    
-    if "df" not in st.session_state:
-        return
-    
-    if idx not in st.session_state.df.index:
-        return
-    
-    if "activites_programmees" not in st.session_state:
-        return
-    
-    if "activites_non_programmees" not in st.session_state:
-        return
-
-    if idx in st.session_state.activites_programmees.index:
-        row = st.session_state.activites_programmees.loc[[idx]]
-        if jour is None:
-            jour = row.loc[idx]["Date"]
-        row.at[idx, "Date"] = None
-        st.session_state.activites_programmees.drop(index=idx, inplace=True)
-        st.session_state.activites_non_programmees = pd.concat([st.session_state.activites_non_programmees, row]).sort_values(by=["Debut_dt"], ascending=[True])
-
-        row = st.session_state.activites_programmees_df_display.loc[[idx]]
-        row.at[idx, "Date"] = ""
-        row.drop(columns=["__jour", "__non_reserve"], inplace=True)
-        st.session_state.activites_programmees_df_display.drop(index=idx, inplace=True)
-        st.session_state.activites_non_programmees_df_display = pd.concat([st.session_state.activites_non_programmees_df_display, row]).sort_values(by=["Début"], ascending=[True])
-
-        maj_options_date(st.session_state.df, st.session_state.activites_programmees, st.session_state.activites_programmees_df_display, jour)
-        maj_options_date(st.session_state.df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
-
-        st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
-        st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
-
-        bd_maj_creneaux_disponibles()
-
 # Demande de sélection d'une ligne sur une grille
 def demander_selection(grid_name: str, target_id: str | None, deselect=None):
     if grid_name is not None:
@@ -3050,31 +2858,6 @@ def menu_activites_programmees(index_df):
                                
     # Affichage du contrôle Ajouter
     afficher_bouton_nouvelle_activite(key="menu_activite_bouton_nouvelle_activite")
-
-def bd_creer_df_display_activites_non_programmees(activites_non_programmees):
-    df_display = activites_non_programmees.copy()
-    df_display["__index"] = df_display.index
-    df_display["__options_date"] = calculer_options_date_activites_non_programmees(df_display) 
-    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
-    df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
-    df_display["__desel_ver"] = st.session_state.activites_programmees_sel_request["desel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
-    df_display["__sel_ver"] = st.session_state.activites_programmees_sel_request["sel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
-    df_display["__sel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["sel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
-    df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
-    df_display.rename(columns=RENOMMAGE_COLONNES, inplace=True)
-    df_display = df_display.where(df_display.notna(), None)
-    return df_display
-
-# Met à jour les variables d'état relatives aux activités non programmées
-# @chrono
-def bd_maj_activites_non_programmees():
-    if st.session_state.get("df", None) is None:
-        return
-    activites_non_programmees = get_activites_non_programmees(st.session_state.df)
-    st.session_state.activites_non_programmees = activites_non_programmees
-    df_display = bd_creer_df_display_activites_non_programmees(activites_non_programmees)
-    st.session_state.activites_non_programmees_df_display = df_display
-    st.session_state.activites_non_programmees_df_display_copy = df_display.copy()
 
 # Initialisation des grid_options sur la grille des activités non programmées
 def init_activites_non_programmees_grid_options(df_display):
@@ -3671,66 +3454,6 @@ def df_display_col_nom(nom):
         return RENOMMAGE_COLONNES[nom]
     else:
         return nom
-
-def bd_modifier_cellule(idx, col, val):
-    # st.session_state.maj_contexte_interrupted = True
-    debug_trace(f"Debut bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
-    df = st.session_state.df
-    oldval = df.loc[idx, col]
-    modifier_df_cell(df, idx, col, val)
-    if col == "Date":
-        jour = safe_int(val)
-        if (pd.isna(oldval) or oldval == "") and not (pd.isna(val) or val == ""):
-            if jour is not None:
-                bd_programmer(idx, jour)
-        elif not (pd.isna(oldval) or oldval == "") and (pd.isna(val) or val == ""):
-            jour = safe_int(oldval)
-            if jour is not None:
-                bd_deprogrammer(idx, jour)                
-        elif est_activite_programmee(df.loc[idx]):
-            modifier_df_cell(st.session_state.activites_programmees, idx, col, val)
-            modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, df_display_col_nom(col), str(val))
-            st.session_state.activites_programmees = st.session_state.activites_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
-            st.session_state.activites_programmees_df_display = st.session_state.activites_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
-            st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
-            bd_maj_creneaux_disponibles()
-        elif est_activite_non_programmee(df.loc[idx]):
-            modifier_df_cell(st.session_state.activites_non_programmees, idx, col, val)
-            modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, df_display_col_nom(col), str(val))
-            st.session_state.activites_non_programmees = st.session_state.activites_non_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
-            st.session_state.activites_non_programmees_df_display = st.session_state.activites_non_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
-            st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
-    else:
-        if est_activite_programmee(df.loc[idx]):
-            modifier_df_cell(st.session_state.activites_programmees, idx, col, val)
-            modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, df_display_col_nom(col), val)
-            if col == "Debut":
-                st.session_state.activites_programmees = st.session_state.activites_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
-                st.session_state.activites_programmees_df_display = st.session_state.activites_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
-            elif col == "Reserve":
-                if st.session_state.activites_programmees_df_display.loc[idx]["__index"] == idx:
-                    non_reserve = str(st.session_state.activites_programmees_df_display.loc[idx][df_display_col_nom("Reserve")].strip().lower()) != "oui"
-                    modifier_df_cell(st.session_state.activites_programmees_df_display, idx, "__non_reserve", non_reserve)
-                else:
-                    st.session_state.activites_programmees_df_display["__non_reserve"] = st.session_state.activites_programmees_df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
-            st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
-        if est_activite_non_programmee(df.loc[idx]):
-            modifier_df_cell(st.session_state.activites_non_programmees, idx, col, val)
-            modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, df_display_col_nom(col), val)
-            if col == "Debut":
-                st.session_state.activites_non_programmees = st.session_state.activites_non_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
-                st.session_state.activites_non_programmees_df_display = st.session_state.activites_non_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
-            st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
-        if (col == "Debut" or col == "Duree"):
-            bd_maj_donnees_calculees_row(idx)
-            if pd.notna(df.loc[idx]["Date"]):
-                jour = df.loc[idx]["Date"]
-                maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_programmees_df_display, jour)
-                maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
-                
-        bd_maj_creneaux_disponibles()
-    debug_trace(f"Fin bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
-    # st.session_state.maj_contexte_interrupted = False
 
 # Déprogrammation d'une activité programmée d'un df (si pause suppression, si activité ordinaire date à None)
 def deprogrammer_activite_programmee(idx):
@@ -4525,21 +4248,6 @@ def programmer_activite_par_choix_activite():
                 df.at[idx_choisi, "Date"] = jour_choisi
                 st.rerun()
 
-# Met à jour la variable d'état qui donne la liste des créneaux disponibles
-# @chrono
-def bd_maj_creneaux_disponibles():
-    df = st.session_state.get("df")
-    if df is None:
-        return
-    
-    activites_programmees = st.session_state.get("activites_programmees")
-    if activites_programmees is None:
-        return
-    
-    traiter_pauses = st.session_state.get("traiter_pauses", False)
-    
-    st.session_state.creneaux_disponibles = get_creneaux(df, activites_programmees, traiter_pauses) 
-
 # Programme une activité en fonction des créneaux possibles
 def afficher_creneaux_disponibles():
 
@@ -4730,63 +4438,6 @@ def initialiser_etat_contexte(df, wb, fn, lnk, ca):
     forcer_reaffichage_activites_non_programmees()
     forcer_reaffichage_df("creneaux_disponibles")
 
-# Ajout d'une nouvelle activité à la bd contexte
-# @chrono
-def bd_ajouter_activite(idx=None, nom=None, jour=None, debut=None, duree=None):
-    def get_nom_nouvelle_activite(df):
-        noms_existants = df["Activite"].dropna().astype(str).str.strip().tolist()
-        while True:
-            st.session_state.compteur_activite += 1
-            nom_candidat = f"Activité {st.session_state.compteur_activite}"
-            if nom_candidat not in noms_existants:
-                return nom_candidat
-            
-    def get_next_free_index(df):
-        existing = set(df.index)
-        i = 0
-        while i in existing:
-            i += 1
-        return i
-    
-    df = st.session_state.get("df", None)
-    if df is None:
-        return
-    
-    idx = get_next_free_index(df) if idx is None else idx
-    nom = get_nom_nouvelle_activite(df) if nom is None else nom
-    jour = pd.NA if jour is None else jour
-    debut = "09h00" if debut is None else debut
-    duree = "1h00" if duree is None else duree
-
-    df.at[idx, "Date"] = jour
-    df.at[idx, "Debut"] = debut
-    df.at[idx, "Duree"] = duree
-    df.at[idx, "Activite"] = nom
-    add_persistent_uuid(df, idx)
-    bd_maj_donnees_calculees_row(idx, full=False)
-
-    row = df.loc[[idx]]
-
-    if est_activite_programmee(row):
-        st.session_state.activites_programmees = pd.concat([st.session_state.activites_programmees, row]).sort_values(by=["Date", "Debut"], ascending=[True, True])
-
-        row = bd_creer_df_display_activites_programmees(row)
-        st.session_state.activites_programmees_df_display = pd.concat([st.session_state.activites_programmees_df_display, row]).sort_values(by=["Date", "Début"], ascending=[True, True])
-        st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
-
-        bd_maj_creneaux_disponibles()
-
-    elif est_activite_non_programmee(row):
-        st.session_state.activites_non_programmees = pd.concat([st.session_state.activites_non_programmees, row]).sort_values(by=["Date", "Debut"], ascending=[True, True])
-
-        row = bd_creer_df_display_activites_non_programmees(row)
-        st.session_state.activites_non_programmees_df_display = pd.concat([st.session_state.activites_non_programmees_df_display, row]).sort_values(by=["Date", "Début"], ascending=[True, True])
-        st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
-
-        bd_maj_creneaux_disponibles()
-    
-    return idx
-
 # Ajout d'une nouvelle activité 
 def afficher_bouton_nouvelle_activite(disabled=False, key="ajouter_activite"):
     import numpy as np
@@ -4851,14 +4502,7 @@ def charger_contexte_depuis_fichier():
                     initialiser_etat_contexte(df, wb, fd.name, lnk, ca)
                     initialiser_periode_programmation(df)
                     undo_redo_init(verify=False)
-
-                    st.session_state.maj_contexte_interrupted = True
-                    bd_maj_donnees_calculees()
-                    bd_maj_activites_programmees()
-                    bd_maj_activites_non_programmees()
-                    bd_maj_creneaux_disponibles()
-                    st.session_state.maj_contexte_interrupted = False
-
+                    bd_maj_contexte(maj_donnees_calculees=True)
                     sauvegarder_contexte_ds_gsheet(df, lnk, fd, ca)
                     selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
                     demander_selection("activites_non_programmees", selection, deselect="activites_programmees")
@@ -4918,17 +4562,355 @@ def creer_nouveau_contexte():
         curseur_attente()
         undo_redo_save()
         initialiser_nouveau_contexte()
-        st.session_state.maj_contexte_interrupted = True
-        bd_maj_donnees_calculees()
-        bd_maj_activites_programmees()
-        bd_maj_activites_non_programmees()
-        bd_maj_creneaux_disponibles()
-        st.session_state.maj_contexte_interrupted = False
+        bd_maj_contexte(maj_donnees_calculees=True)
         st.rerun()
 
 # Indique si le contexte est vlide pour traitement
 def est_contexte_valide():
     return "df" in st.session_state and isinstance(st.session_state.df, pd.DataFrame) and "contexte_invalide" not in st.session_state
+
+# Ajout d'une nouvelle activité à la bd contexte
+# @chrono
+def bd_ajouter_activite(idx=None, nom=None, jour=None, debut=None, duree=None):
+    def get_nom_nouvelle_activite(df):
+        noms_existants = df["Activite"].dropna().astype(str).str.strip().tolist()
+        while True:
+            st.session_state.compteur_activite += 1
+            nom_candidat = f"Activité {st.session_state.compteur_activite}"
+            if nom_candidat not in noms_existants:
+                return nom_candidat
+            
+    def get_next_free_index(df):
+        existing = set(df.index)
+        i = 0
+        while i in existing:
+            i += 1
+        return i
+    
+    df = st.session_state.get("df", None)
+    if df is None:
+        return
+    
+    idx = get_next_free_index(df) if idx is None else idx
+    nom = get_nom_nouvelle_activite(df) if nom is None else nom
+    jour = pd.NA if jour is None else jour
+    debut = "09h00" if debut is None else debut
+    duree = "1h00" if duree is None else duree
+
+    df.at[idx, "Date"] = jour
+    df.at[idx, "Debut"] = debut
+    df.at[idx, "Duree"] = duree
+    df.at[idx, "Activite"] = nom
+    add_persistent_uuid(df, idx)
+    bd_maj_donnees_calculees_row(idx, full=False)
+
+    row = df.loc[[idx]]
+
+    if est_activite_programmee(row):
+        st.session_state.activites_programmees = pd.concat([st.session_state.activites_programmees, row]).sort_values(by=["Date", "Debut"], ascending=[True, True])
+
+        row = bd_creer_df_display_activites_programmees(row)
+        st.session_state.activites_programmees_df_display = pd.concat([st.session_state.activites_programmees_df_display, row]).sort_values(by=["Date", "Début"], ascending=[True, True])
+        st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
+
+        bd_maj_creneaux_disponibles()
+
+    elif est_activite_non_programmee(row):
+        st.session_state.activites_non_programmees = pd.concat([st.session_state.activites_non_programmees, row]).sort_values(by=["Date", "Debut"], ascending=[True, True])
+
+        row = bd_creer_df_display_activites_non_programmees(row)
+        st.session_state.activites_non_programmees_df_display = pd.concat([st.session_state.activites_non_programmees_df_display, row]).sort_values(by=["Date", "Début"], ascending=[True, True])
+        st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
+
+        bd_maj_creneaux_disponibles()
+    
+    return idx
+
+def bd_creer_df_display_activites_non_programmees(activites_non_programmees):
+    df_display = activites_non_programmees.copy()
+    df_display["__index"] = df_display.index
+    df_display["__options_date"] = calculer_options_date_activites_non_programmees(df_display) 
+    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
+    df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
+    df_display["__desel_ver"] = st.session_state.activites_programmees_sel_request["desel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
+    df_display["__sel_ver"] = st.session_state.activites_programmees_sel_request["sel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
+    df_display["__sel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["sel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
+    df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
+    df_display.rename(columns=RENOMMAGE_COLONNES, inplace=True)
+    df_display = df_display.where(df_display.notna(), None)
+    return df_display
+
+def bd_creer_df_display_activites_programmees(activites_programmees):
+    df_display = activites_programmees.copy()
+    df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
+    df_display["__index"] = df_display.index
+    df_display["__options_date"] = calculer_options_date_activites_programmees(df_display) 
+    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
+    df_display["__non_reserve"] = df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
+    df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
+    df_display["__desel_ver"] = st.session_state.activites_programmees_sel_request["desel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
+    df_display["__sel_ver"] = st.session_state.activites_programmees_sel_request["sel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
+    df_display["__sel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["sel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
+    df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
+    df_display.rename(columns=RENOMMAGE_COLONNES, inplace=True)
+    df_display = df_display.where(df_display.notna(), None)
+    return df_display
+
+# Transfère une activité du contexte des activités programmées vers celui des activités non programmées
+# @chrono
+def bd_deprogrammer(idx, jour=None):
+    
+    if "df" not in st.session_state:
+        return
+    
+    if idx not in st.session_state.df.index:
+        return
+    
+    if "activites_programmees" not in st.session_state:
+        return
+    
+    if "activites_non_programmees" not in st.session_state:
+        return
+
+    if idx in st.session_state.activites_programmees.index:
+        row = st.session_state.activites_programmees.loc[[idx]]
+        if jour is None:
+            jour = row.loc[idx]["Date"]
+        row.at[idx, "Date"] = None
+        st.session_state.activites_programmees.drop(index=idx, inplace=True)
+        st.session_state.activites_non_programmees = pd.concat([st.session_state.activites_non_programmees, row]).sort_values(by=["Debut_dt"], ascending=[True])
+
+        row = st.session_state.activites_programmees_df_display.loc[[idx]]
+        row.at[idx, "Date"] = ""
+        row.drop(columns=["__jour", "__non_reserve"], inplace=True)
+        st.session_state.activites_programmees_df_display.drop(index=idx, inplace=True)
+        st.session_state.activites_non_programmees_df_display = pd.concat([st.session_state.activites_non_programmees_df_display, row]).sort_values(by=["Début"], ascending=[True])
+
+        maj_options_date(st.session_state.df, st.session_state.activites_programmees, st.session_state.activites_programmees_df_display, jour)
+        maj_options_date(st.session_state.df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
+
+        st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
+        st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
+
+        bd_maj_creneaux_disponibles()
+
+# Met à jour les variables d'état relatives aux activités programmées
+# @chrono
+def bd_maj_activites_programmees():
+    if st.session_state.get("df", None) is None:
+        return  
+    activites_programmees = get_activites_programmees(st.session_state.df)
+    st.session_state.activites_programmees = activites_programmees
+    df_display = bd_creer_df_display_activites_programmees(activites_programmees.copy())
+    st.session_state.activites_programmees_df_display = df_display
+    st.session_state.activites_programmees_df_display_copy = df_display.copy()
+
+# Met à jour le contexte complet (activités programmées, non programmées et créneaux disponibles)
+def bd_maj_contexte(maj_donnees_calculees=True):
+    st.session_state.bd_maj_contexte_cmd = { "maj_donnees_calculees": maj_donnees_calculees}
+    debug_trace(f"Debut bd_maj_contexte", trace_type=["gen"])
+    if maj_donnees_calculees:
+        bd_maj_donnees_calculees()
+    bd_maj_activites_programmees() # pour mise à jour menus options date
+    bd_maj_activites_non_programmees() # pour mise à jour menus options date
+    bd_maj_creneaux_disponibles()
+    debug_trace(f"Fin bd_maj_contexte", trace_type=["gen"])
+    del st.session_state["bd_maj_contexte_cmd"]
+
+# Met à jour la variable d'état qui donne la liste des créneaux disponibles
+# @chrono
+def bd_maj_creneaux_disponibles():
+    df = st.session_state.get("df")
+    if df is None:
+        return
+    
+    activites_programmees = st.session_state.get("activites_programmees")
+    if activites_programmees is None:
+        return
+    
+    traiter_pauses = st.session_state.get("traiter_pauses", False)
+    
+    st.session_state.creneaux_disponibles = get_creneaux(df, activites_programmees, traiter_pauses) 
+
+# Met à jour les données calculées d'une ligne
+def bd_maj_donnees_calculees_row(idx, full=True):
+    df = st.session_state.get("df", None)
+    if df is None:
+        return
+    if idx not in df.index:
+        return
+    try:
+        if len(df) > 0:
+            debut = heure_parse(df.loc[idx, "Debut"])
+            duree = duree_parse(df.loc[idx, "Duree"])
+            
+            df.at[idx, "Debut_dt"] = debut
+            df.at[idx, "Duree_dt"] = duree
+
+            fin = calculer_fin_row(df.loc[idx])
+            df.at[idx, "Fin"] = fin
+
+            if full:
+                df = st.session_state.get("activites_programmees", None)
+                if df is not None and idx in df.index:
+                    df.at[idx, "Debut_dt"] = debut
+                    df.at[idx, "Duree_dt"] = duree
+                    df.at[idx, "Fin"] = fin
+
+                df = st.session_state.get("activites_programmees_df_display", None)
+                if df is not None and idx in df.index:
+                    df.at[idx, "Fin"] = fin
+                    st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
+                
+                df = st.session_state.get("activites_non_programmees", None)
+                if df is not None and idx in df.index:
+                    df.at[idx, "Debut_dt"] = debut
+                    df.at[idx, "Duree_dt"] = duree
+                    df.at[idx, "Fin"] = fin
+                df = st.session_state.get("activites_non_programmees_df_display", None)
+                if df is not None and idx in df.index:
+                    df.at[idx, "Fin"] = fin
+                    st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
+
+    except:
+        pass        
+
+# Met à jour les données calculées sur st.session_state
+# A utiliser conjointement avec bd_maj_activites_programmees, bd_maj_activites_non_programmees et , bd_maj_creneaux_disponibles
+# pour reconstituer le contexte apres chargement de nouvelles données via fichier ou google sheet
+def bd_maj_donnees_calculees():
+    df = st.session_state.get("df", None)
+    if df is None:
+        return
+    try:
+        if len(df) > 0:
+            df["Debut_dt"] = df["Debut"].apply(heure_parse)
+            df["Duree_dt"] = df["Duree"].apply(duree_parse)
+            df["Fin"] = df.apply(calculer_fin_row, axis=1)    
+    except:
+        pass        
+
+# Met à jour les variables d'état relatives aux activités non programmées
+# @chrono
+def bd_maj_activites_non_programmees():
+    if st.session_state.get("df", None) is None:
+        return
+    activites_non_programmees = get_activites_non_programmees(st.session_state.df)
+    st.session_state.activites_non_programmees = activites_non_programmees
+    df_display = bd_creer_df_display_activites_non_programmees(activites_non_programmees)
+    st.session_state.activites_non_programmees_df_display = df_display
+    st.session_state.activites_non_programmees_df_display_copy = df_display.copy()
+
+def bd_modifier_cellule(idx, col, val):
+
+    # Commande à relancer dans le main si interrompue par un rerun
+    st.session_state.bd_modifier_cellule_cmd = {
+        "idx": idx,
+        "col": col,
+        "val": val
+    }
+
+    debug_trace(f"Debut bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
+    df = st.session_state.df
+    oldval = df.loc[idx, col]
+    modifier_df_cell(df, idx, col, val)
+    if col == "Date":
+        jour = safe_int(val)
+        if (pd.isna(oldval) or oldval == "") and not (pd.isna(val) or val == ""):
+            if jour is not None:
+                bd_programmer(idx, jour)
+        elif not (pd.isna(oldval) or oldval == "") and (pd.isna(val) or val == ""):
+            jour = safe_int(oldval)
+            if jour is not None:
+                bd_deprogrammer(idx, jour)                
+        elif est_activite_programmee(df.loc[idx]):
+            modifier_df_cell(st.session_state.activites_programmees, idx, col, val)
+            modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, df_display_col_nom(col), str(val))
+            st.session_state.activites_programmees = st.session_state.activites_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
+            st.session_state.activites_programmees_df_display = st.session_state.activites_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
+            st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
+            bd_maj_creneaux_disponibles()
+        elif est_activite_non_programmee(df.loc[idx]):
+            modifier_df_cell(st.session_state.activites_non_programmees, idx, col, val)
+            modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, df_display_col_nom(col), str(val))
+            st.session_state.activites_non_programmees = st.session_state.activites_non_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
+            st.session_state.activites_non_programmees_df_display = st.session_state.activites_non_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
+            st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
+    else:
+        if est_activite_programmee(df.loc[idx]):
+            modifier_df_cell(st.session_state.activites_programmees, idx, col, val)
+            modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, df_display_col_nom(col), val)
+            if col == "Debut":
+                st.session_state.activites_programmees = st.session_state.activites_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
+                st.session_state.activites_programmees_df_display = st.session_state.activites_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
+            elif col == "Reserve":
+                if st.session_state.activites_programmees_df_display.loc[idx]["__index"] == idx:
+                    non_reserve = str(st.session_state.activites_programmees_df_display.loc[idx][df_display_col_nom("Reserve")].strip().lower()) != "oui"
+                    modifier_df_cell(st.session_state.activites_programmees_df_display, idx, "__non_reserve", non_reserve)
+                else:
+                    st.session_state.activites_programmees_df_display["__non_reserve"] = st.session_state.activites_programmees_df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
+            st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
+        if est_activite_non_programmee(df.loc[idx]):
+            modifier_df_cell(st.session_state.activites_non_programmees, idx, col, val)
+            modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, df_display_col_nom(col), val)
+            if col == "Debut":
+                st.session_state.activites_non_programmees = st.session_state.activites_non_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
+                st.session_state.activites_non_programmees_df_display = st.session_state.activites_non_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
+            st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
+        if (col == "Debut" or col == "Duree"):
+            bd_maj_donnees_calculees_row(idx)
+            if pd.notna(df.loc[idx]["Date"]):
+                jour = df.loc[idx]["Date"]
+                maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_programmees_df_display, jour)
+                maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
+                
+        bd_maj_creneaux_disponibles()
+
+    debug_trace(f"Fin bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
+    
+    # Suppression de la commande
+    del st.session_state["bd_modifier_cellule_cmd"]
+
+# Transfère une activité du contexte des activités non programmées vers celui des activités programmées
+# @chrono
+def bd_programmer(idx, jour=None):
+    
+    if "df" not in st.session_state:
+        return
+    
+    if idx not in st.session_state.df.index:
+        return
+    
+    if "activites_programmees" not in st.session_state:
+        return
+    
+    if "activites_non_programmees" not in st.session_state:
+        return
+
+    if jour is None:
+        return
+
+    if idx in st.session_state.activites_non_programmees.index:
+
+        row = st.session_state.activites_non_programmees.loc[[idx]]
+        row.at[idx, "Date"] = jour
+        st.session_state.activites_non_programmees.drop(index=idx, inplace=True)
+        st.session_state.activites_programmees = pd.concat([st.session_state.activites_programmees, row]).sort_values(by=["Date", "Debut_dt"], ascending=[True, True])
+
+        row = st.session_state.activites_non_programmees_df_display.loc[[idx]]
+        row.at[idx, "Date"] = str(jour)
+        row["__jour"] = row["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
+        row["__non_reserve"] = row["Réservé"].astype(str).str.strip().str.lower() != "oui"
+        st.session_state.activites_non_programmees_df_display.drop(index=idx, inplace=True)
+        st.session_state.activites_programmees_df_display = pd.concat([st.session_state.activites_programmees_df_display, row]).sort_values(by=["Date", "Début"], ascending=[True, True])
+
+        maj_options_date(st.session_state.df, st.session_state.activites_programmees, st.session_state.activites_programmees_df_display, jour)
+        maj_options_date(st.session_state.df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
+
+        st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
+        st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
+        
+        bd_maj_creneaux_disponibles()
 
 # Affichage des contrôles d'édition
 def afficher_controles_edition():
@@ -5120,13 +5102,16 @@ def main():
     st.session_state.main_counter += 1
     debug_trace(f"____________MAIN {st.session_state.main_counter}______________", trace_type=["gen","main"])
     
-    # Gestion des sections critiques de calcul
-    if st.session_state.get("maj_contexte_interrupted", False):
-        bd_maj_activites_programmees()
-        bd_maj_activites_non_programmees()
-        bd_maj_creneaux_disponibles()
-        st.session_state.maj_contexte_interrupted = False
+    # Gestion de la section critique de calcul bd_maj_contexte
+    cmd = st.session_state.get("bd_maj_contexte_cmd")
+    if cmd:
+        bd_maj_contexte(cmd["maj_donnees_calculees"])
     
+    # Gestion de la section critique de calcul bd_modifier_cellule
+    cmd = st.session_state.get("bd_modifier_cellule_cmd")
+    if cmd:
+        bd_modifier_cellule(cmd["index"], cmd["col"], cmd["val"])
+
     # Configuration de la page HTML
     # debug_trace("initialiser_page", trace_type=["gen"])
     initialiser_page()
