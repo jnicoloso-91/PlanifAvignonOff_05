@@ -4557,6 +4557,7 @@ def afficher_creneaux_disponibles():
 
             # Gestion du flag de traitement des pauses
             traiter_pauses = False
+            st.checkbox("Tenir compte des pauses", value=False, key="traiter_pauses_cb", on_change=on_toggle_pauses)  
             # if traiter_pauses != st.session_state.get("traiter_pauses", False):
             #     st.session_state.traiter_pauses = traiter_pauses
             #     bd_maj_creneaux_disponibles()
@@ -4576,8 +4577,6 @@ def afficher_creneaux_disponibles():
                 key="creneaux_disponibles", 
                 hide_label=True, 
                 colorisation=True)
-
-            st.checkbox("Tenir compte des pauses", value=False, key="traiter_pauses_cb", on_change=on_toggle_pauses)  
 
             if choix_creneau is not None:
                 if choix_creneau_pred is not None and choix_creneau_pred.to_dict() != choix_creneau.to_dict():
@@ -5121,13 +5120,13 @@ def main():
         # debug_trace("afficher_infos_generales", trace_type=["gen"])
         afficher_infos_generales()
         
-        # Affichage des activités programmées
-        # debug_trace("afficher_activites_programmees", trace_type=["gen"])
-        afficher_activites_programmees()
+        # # Affichage des activités programmées
+        # # debug_trace("afficher_activites_programmees", trace_type=["gen"])
+        # afficher_activites_programmees()
 
-        # Affichage des activités non programmées
-        # debug_trace("afficher_activites_non_programmees", trace_type=["gen"])
-        afficher_activites_non_programmees()
+        # # Affichage des activités non programmées
+        # # debug_trace("afficher_activites_non_programmees", trace_type=["gen"])
+        # afficher_activites_non_programmees()
 
         # Affichage des créneaux disponibles et des activités programmables
         # debug_trace("afficher_creneaux_disponibles", trace_type=["gen"])
