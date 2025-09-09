@@ -3674,6 +3674,7 @@ def df_display_col_nom(nom):
 
 def bd_modifier_cellule(idx, col, val):
     # st.session_state.maj_contexte_interrupted = True
+    debug_trace(f"Debut bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
     df = st.session_state.df
     oldval = df.loc[idx, col]
     modifier_df_cell(df, idx, col, val)
@@ -3728,6 +3729,7 @@ def bd_modifier_cellule(idx, col, val):
                 maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
                 
         bd_maj_creneaux_disponibles()
+    debug_trace(f"Fin bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
     # st.session_state.maj_contexte_interrupted = False
 
 # Déprogrammation d'une activité programmée d'un df (si pause suppression, si activité ordinaire date à None)
