@@ -2652,7 +2652,8 @@ def afficher_activites_programmees():
         deselection_demandee = True
         st.session_state.activites_programmees_sel_request["desel"]["pending"] = False
         
-    # debug_trace(f"PROG ________________df_display['__sel_id'] {df_display.iloc[0]["__sel_id"]} df_display['__sel_ver'] {df_display.iloc[0]["__sel_ver"]} df_display['__desel_ver'] {df_display.iloc[0]["__desel_ver"]}")
+    # if len(df_display) > 0:
+    #     debug_trace(f"PROG ________________df_display['__sel_id'] {df_display.iloc[0]["__sel_id"]} df_display['__sel_ver'] {df_display.iloc[0]["__sel_ver"]} df_display['__desel_ver'] {df_display.iloc[0]["__desel_ver"]}")
 
     grid_options = init_activites_programmees_grid_options(df_display)
 
@@ -3039,7 +3040,8 @@ def afficher_activites_non_programmees():
         deselection_demandee = True
         st.session_state.activites_non_programmees_sel_request["desel"]["pending"] = False
 
-    debug_trace(f"NONPROG ________________df_display['__sel_id'] {df_display.iloc[0]["__sel_id"]} df_display['__sel_ver'] {df_display.iloc[0]["__sel_ver"]} df_display['__desel_ver'] {df_display.iloc[0]["__desel_ver"]}")
+    if len(df_display) > 0:
+        debug_trace(f"NONPROG ________________df_display['__sel_id'] {df_display.iloc[0]["__sel_id"]} df_display['__sel_ver'] {df_display.iloc[0]["__sel_ver"]} df_display['__desel_ver'] {df_display.iloc[0]["__desel_ver"]}")
 
     grid_options = init_activites_non_programmees_grid_options(df_display)
 
