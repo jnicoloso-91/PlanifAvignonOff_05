@@ -3333,11 +3333,11 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=None):
     
     def set_section_critique_step(section_critique, step):
         if section_critique is not None:
-            section_critique.step = step
+            section_critique["step"] = step
 
     df = st.session_state.df
     valeur_courante = df.at[index, colonne]
-    step = section_critique.step if section_critique is not None else 0
+    step = section_critique["step"] if section_critique is not None else 0
     debug_trace(f"affecter_valeur_df step {step}")
     erreur = None
 
