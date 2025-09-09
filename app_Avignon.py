@@ -1887,8 +1887,12 @@ def afficher_parametres():
 
             # Ne forcer le réaffichage des grilles qu'une seule fois
             if need_refresh_grids:
+                st.session_state.maj_contexte_interrupted = True
+                bd_maj_activites_programmees() # pour mise à jour menus options date
+                bd_maj_activites_non_programmees() # pour mise à jour menus options date
                 bd_maj_creneaux_disponibles()
-                forcer_reaffichage_df("creneaux_disponibles")
+                st.session_state.maj_contexte_interrupted = False
+
 
             # Sauvegarde en batch (une seule fois)
             if changed_keys:
