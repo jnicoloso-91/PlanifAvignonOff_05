@@ -2774,21 +2774,31 @@ def afficher_activites_programmees():
                             else:
                                 if (pd.isna(df.at[idx, col_df]) and pd.notna(df_modifie.at[i, col])) or df.at[idx, col_df] != df_modifie.at[i, col]:
                                     demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
-                                    erreur = affecter_valeur_df(idx, col_df, df_modifie.at[i, col])
-                                    debug_trace(f"PROG ***après affecter_valeur_df() dans modifier cellule")
-                                    if not erreur:
-                                        forcer_reaffichage_activites_programmees()
-                                        if col in ["Debut", "Duree", "Activité"]:
-                                            forcer_reaffichage_df("creneaux_disponibles")
-                                        st.session_state.aggrid_activites_programmees_key_counter += 1 
-                                        debug_trace(f"PROG ***avant st.rerun() dans modifier cellule")
-                                        st.rerun()
-                                    else:
-                                        st.session_state.aggrid_activites_programmees_erreur = erreur
-                                        forcer_reaffichage_activites_programmees()
-                                        st.session_state.aggrid_activites_programmees_key_counter += 1 
-                                        st.rerun()
+                                    st.rerun()
+
+def activites_programmees_modifier_cellule(idx, col, val):
     
+    st.session_state.activites_programmees_modifier_cellule_cmd = {
+        "idx": idx,
+        "col": col,
+        "val": val
+    }
+
+    debug_trace(f"Début activites_programmees_modifier_cellule {idx} {col} {val}")
+    erreur = affecter_valeur_df(idx, col, val, section_critique=False)
+    if not erreur:
+        forcer_reaffichage_activites_programmees()
+        if col in ["Debut", "Duree", "Activité"]:
+            forcer_reaffichage_df("creneaux_disponibles")
+        st.session_state.aggrid_activites_programmees_key_counter += 1 
+        debug_trace(f"PROG ***avant st.rerun() dans modifier cellule")
+    else:
+        st.session_state.aggrid_activites_programmees_erreur = erreur
+        forcer_reaffichage_activites_programmees()
+        st.session_state.aggrid_activites_programmees_key_counter += 1 
+    debug_trace(f"Fin activites_programmees_modifier_cellule {idx} {col} {val}")
+    del st.session_state["activites_programmees_modifier_cellule_cmd"]
+
 # Menu activité à afficher dans la sidebar si click dans aggrid d'activités programmées         }
 def menu_activites_programmees(index_df):
 
@@ -3318,7 +3328,7 @@ def valider_valeur(df, colonne, nouvelle_valeur):
     return erreur
 
 # Affecte une nouvelle valeur à une cellule du df de base donnée par son index et sa colonne
-def affecter_valeur_df(index, colonne, nouvelle_valeur):
+def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=True):
     df = st.session_state.df
     valeur_courante = df.at[index, colonne]
     erreur = valider_valeur(df, colonne, nouvelle_valeur)
@@ -3334,7 +3344,7 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur):
             else:
                 df.at[index, colonne] = valeur_courante
                 undo_redo_save()
-                bd_modifier_cellule(index, colonne, nouvelle_valeur)
+                bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
                 sauvegarder_row_ds_gsheet(index)
             
     return erreur
@@ -4801,14 +4811,14 @@ def bd_maj_activites_non_programmees():
     st.session_state.activites_non_programmees_df_display = df_display
     st.session_state.activites_non_programmees_df_display_copy = df_display.copy()
 
-def bd_modifier_cellule(idx, col, val):
+def bd_modifier_cellule(idx, col, val, section_critique=True):
 
-    # Commande à relancer dans le main si interrompue par un rerun
-    st.session_state.bd_modifier_cellule_cmd = {
-        "idx": idx,
-        "col": col,
-        "val": val
-    }
+    if section_critique:
+        st.session_state.bd_modifier_cellule_cmd = {
+            "idx": idx,
+            "col": col,
+            "val": val
+        }
 
     debug_trace(f"Debut bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
     df = st.session_state.df
@@ -4868,8 +4878,8 @@ def bd_modifier_cellule(idx, col, val):
 
     debug_trace(f"Fin bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
     
-    # Suppression de la commande
-    del st.session_state["bd_modifier_cellule_cmd"]
+    if section_critique:
+        del st.session_state["bd_modifier_cellule_cmd"]
 
 # Transfère une activité du contexte des activités non programmées vers celui des activités programmées
 # @chrono
@@ -5096,7 +5106,7 @@ def configurer_logger():
 
 # Gestion des sections critiques de traitement
 def traiter_sections_critiques():
-    
+
     cmd = st.session_state.get("bd_maj_contexte_cmd")
     if cmd:
         bd_maj_contexte(cmd["maj_donnees_calculees"])
@@ -5104,6 +5114,10 @@ def traiter_sections_critiques():
     cmd = st.session_state.get("bd_modifier_cellule_cmd")
     if cmd:
         bd_modifier_cellule(cmd["idx"], cmd["col"], cmd["val"])
+    
+    cmd = st.session_state.get("activites_programmees_modifier_cellule_cmd")
+    if cmd:
+        activites_programmees_modifier_cellule(cmd["idx"], cmd["col"], cmd["val"])
 
 def main():
 
