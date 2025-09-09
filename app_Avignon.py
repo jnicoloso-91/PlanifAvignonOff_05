@@ -30,7 +30,7 @@ import streamlit.components.v1 as components
 # import pkg_resources
 
 # Debug
-DEBUG_TRACE_MODE = False
+DEBUG_TRACE_MODE = True
 DEBUG_TRACE_TYPE = ["all"]
 
 def debug_trace(trace, trace_type=["all"]):
