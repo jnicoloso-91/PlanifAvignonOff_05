@@ -34,6 +34,7 @@ DEBUG_TRACE_MODE = True
 DEBUG_TRACE_TYPE = ["all"]
 
 def debug_trace(trace, trace_type=["all"]):
+    logger = logging.getLogger("_app")
     trace_type_requested = [s.lower() for s in DEBUG_TRACE_TYPE]
     trace_type = [s.lower() for s in trace_type]
     if DEBUG_TRACE_MODE and ("all" in trace_type_requested or any(x in trace_type_requested for x in trace_type)):
@@ -5083,25 +5084,30 @@ def afficher_menu_activite_sidebar():
         if st.session_state.forcer_menu_activites_non_programmees and st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
             st.session_state.forcer_menu_activites_non_programmees = False
 
-def configuration_logger():
-    # Crée un logger
-    logger = logging.getLogger("mon_app")
-    logger.setLevel(logging.DEBUG)
+def configurer_logger():
+    if "logger_configured" not in st.session_state:
 
-    # # Handler qui écrit dans Streamlit
-    # class StreamlitHandler(logging.Handler):
-    #     def emit(self, record):
-    #         log_entry = self.format(record)
-    #         st.text(log_entry)  # tu pourrais mettre st.write, st.error, etc.
+        # Crée un logger
+        logger = logging.getLogger("_app")
+        logger.setLevel(logging.DEBUG)
 
-    # Ajoute le handler
-    if not logger.handlers:  # évite les doublons
+        # # Handler qui écrit dans Streamlit
+        # class StreamlitHandler(logging.Handler):
+        #     def emit(self, record):
+        #         log_entry = self.format(record)
+        #         st.text(log_entry)  # on peut mettre st.write, st.error, etc.
+
+        # Ajoute le handler
         handler = logging.StreamlitHandler()
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
+        st.session_state.logger_configured = True
+
 def main():
+
+    configurer_logger()
 
     st.session_state.setdefault("main_counter", 0)
     st.session_state.main_counter += 1
