@@ -5098,7 +5098,7 @@ def configurer_logger():
         #         st.text(log_entry)  # on peut mettre st.write, st.error, etc.
 
         # Ajoute le handler
-        handler = logging.StreamlitHandler()
+        handler = logging.StreamHandler()
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)
