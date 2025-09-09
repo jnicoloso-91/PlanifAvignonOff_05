@@ -5094,6 +5094,17 @@ def configurer_logger():
 
         st.session_state.logger_configured = True
 
+# Gestion des sections critiques de traitement
+def traiter_sections_critiques():
+    
+    cmd = st.session_state.get("bd_maj_contexte_cmd")
+    if cmd:
+        bd_maj_contexte(cmd["maj_donnees_calculees"])
+    
+    cmd = st.session_state.get("bd_modifier_cellule_cmd")
+    if cmd:
+        bd_modifier_cellule(cmd["idx"], cmd["col"], cmd["val"])
+
 def main():
 
     configurer_logger()
@@ -5102,15 +5113,8 @@ def main():
     st.session_state.main_counter += 1
     debug_trace(f"____________MAIN {st.session_state.main_counter}______________", trace_type=["gen","main"])
     
-    # Gestion de la section critique de calcul bd_maj_contexte
-    cmd = st.session_state.get("bd_maj_contexte_cmd")
-    if cmd:
-        bd_maj_contexte(cmd["maj_donnees_calculees"])
-    
-    # Gestion de la section critique de calcul bd_modifier_cellule
-    cmd = st.session_state.get("bd_modifier_cellule_cmd")
-    if cmd:
-        bd_modifier_cellule(cmd["index"], cmd["col"], cmd["val"])
+    # Gestion des sections critiques de traitement
+    traiter_sections_critiques()
 
     # Configuration de la page HTML
     # debug_trace("initialiser_page", trace_type=["gen"])
