@@ -2782,21 +2782,21 @@ def activites_programmees_modifier_cellule(idx, col, val):
     st.session_state.activites_programmees_modifier_cellule_cmd = {
         "idx": idx,
         "col": col,
-        "val": val
+        "val": val,
+        "step": 0,
     }
 
     debug_trace(f"Début activites_programmees_modifier_cellule {idx} {col} {val}")
-    erreur = affecter_valeur_df(idx, col, val, section_critique=False)
+    erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
+    forcer_reaffichage_activites_programmees()
+    st.session_state.aggrid_activites_programmees_key_counter += 1 
+
     if not erreur:
-        forcer_reaffichage_activites_programmees()
         if col in ["Debut", "Duree", "Activité"]:
             forcer_reaffichage_df("creneaux_disponibles")
-        st.session_state.aggrid_activites_programmees_key_counter += 1 
-        debug_trace(f"PROG ***avant st.rerun() dans modifier cellule")
     else:
         st.session_state.aggrid_activites_programmees_erreur = erreur
-        forcer_reaffichage_activites_programmees()
-        st.session_state.aggrid_activites_programmees_key_counter += 1 
+
     debug_trace(f"Fin activites_programmees_modifier_cellule {idx} {col} {val}")
     del st.session_state["activites_programmees_modifier_cellule_cmd"]
 
@@ -3329,11 +3329,37 @@ def valider_valeur(df, colonne, nouvelle_valeur):
     return erreur
 
 # Affecte une nouvelle valeur à une cellule du df de base donnée par son index et sa colonne
-def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=True):
+def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=None):
+    
+    def set_section_critique_step(section_critique, step):
+        if section_critique is not None:
+            section_critique.step = step
+
     df = st.session_state.df
     valeur_courante = df.at[index, colonne]
-    erreur = valider_valeur(df, colonne, nouvelle_valeur)
-    if not erreur:
+    step = section_critique.step if section_critique is not None else 0
+    debug_trace(f"affecter_valeur_df step {step}")
+    erreur = None
+
+    if step == 0:
+        erreur = valider_valeur(df, colonne, nouvelle_valeur)
+        if not erreur:
+            set_section_critique_step(section_critique, 1)
+            if colonne == "Debut" :
+                heures, minutes = nouvelle_valeur.split("h")
+                nouvelle_valeur = f"{int(heures):02d}h{int(minutes):02d}"
+            if (pd.isna(valeur_courante) and pd.notna(nouvelle_valeur)) or nouvelle_valeur != valeur_courante:
+                try:
+                    df.at[index, colonne] = nouvelle_valeur
+                except Exception as e:
+                    erreur = f"⛔ {e}"
+                else:
+                    set_section_critique_step(section_critique, 2)
+                    df.at[index, colonne] = valeur_courante
+                    undo_redo_save()
+                    bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
+                    sauvegarder_row_ds_gsheet(index)
+    elif step == 1:
         if colonne == "Debut" :
             heures, minutes = nouvelle_valeur.split("h")
             nouvelle_valeur = f"{int(heures):02d}h{int(minutes):02d}"
@@ -3343,11 +3369,17 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=True):
             except Exception as e:
                 erreur = f"⛔ {e}"
             else:
+                set_section_critique_step(section_critique, 2)
                 df.at[index, colonne] = valeur_courante
                 undo_redo_save()
                 bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
                 sauvegarder_row_ds_gsheet(index)
-            
+    elif step == 2:
+        df.at[index, colonne] = valeur_courante
+        undo_redo_save()
+        bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
+        sauvegarder_row_ds_gsheet(index)
+        
     return erreur
 
 # Affecte une nouvelle valeur à une cellule d'une row d'un df 
@@ -4812,9 +4844,9 @@ def bd_maj_activites_non_programmees():
     st.session_state.activites_non_programmees_df_display = df_display
     st.session_state.activites_non_programmees_df_display_copy = df_display.copy()
 
-def bd_modifier_cellule(idx, col, val, section_critique=True):
+def bd_modifier_cellule(idx, col, val, section_critique=None):
 
-    if section_critique:
+    if section_critique is None:
         st.session_state.bd_modifier_cellule_cmd = {
             "idx": idx,
             "col": col,
@@ -4879,7 +4911,7 @@ def bd_modifier_cellule(idx, col, val, section_critique=True):
 
     debug_trace(f"Fin bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
     
-    if section_critique:
+    if section_critique is None:
         del st.session_state["bd_modifier_cellule_cmd"]
 
 # Transfère une activité du contexte des activités non programmées vers celui des activités programmées
