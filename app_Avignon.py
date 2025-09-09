@@ -2677,7 +2677,7 @@ def bd_deprogrammer(idx, jour=None):
 # Demande de sélection d'une ligne sur une grille
 def demander_selection(grid_name: str, target_id: str | None, deselect=None):
     if grid_name is not None:
-        debug_trace(f"demander_selection {grid_name} {target_id}")
+        debug_trace(f"demander_selection {grid_name} {target_id} {st.session_state.df.loc[target_id]['Activite'] if target_id in st.session_state.df.index else ''}")
         k = f"{grid_name}_sel_request"
         st.session_state.setdefault(k, copy.deepcopy(SEL_REQUEST_DEFAUT))
         st.session_state[k]["sel"]["ver"] += 1
