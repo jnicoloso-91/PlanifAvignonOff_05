@@ -4556,7 +4556,7 @@ def afficher_creneaux_disponibles():
             st.session_state.creneaux_disponibles_choix_activite = None
 
             # Gestion du flag de traitement des pauses
-            st.checkbox("Tenir compte des pauses", value=False, key="traiter_pauses_cb", on_change=on_toggle_pauses)  
+            traiter_pauses = st.checkbox("Tenir compte des pauses", value=False, key="traiter_pauses_cb", on_change=on_toggle_pauses)  
             if traiter_pauses != st.session_state.get("traiter_pauses", False):
                 st.session_state.traiter_pauses = traiter_pauses
                 bd_maj_creneaux_disponibles()
