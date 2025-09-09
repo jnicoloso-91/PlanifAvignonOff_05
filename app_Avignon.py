@@ -5091,6 +5091,9 @@ def configurer_logger():
         logger = logging.getLogger("_app")
         logger.setLevel(logging.DEBUG)
 
+        if logger.hasHandlers():
+            logger.handlers.clear()
+
         # # Handler qui écrit dans Streamlit
         # class StreamlitHandler(logging.Handler):
         #     def emit(self, record):
