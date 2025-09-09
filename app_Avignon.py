@@ -1,3 +1,4 @@
+import logging
 import streamlit as st
 import pandas as pd
 import datetime
@@ -29,14 +30,14 @@ import streamlit.components.v1 as components
 # import pkg_resources
 
 # Debug
-DEBUG_TRACE_MODE = False
+DEBUG_TRACE_MODE = True
 DEBUG_TRACE_TYPE = ["all"]
 
 def debug_trace(trace, trace_type=["all"]):
     trace_type_requested = [s.lower() for s in DEBUG_TRACE_TYPE]
     trace_type = [s.lower() for s in trace_type]
     if DEBUG_TRACE_MODE and ("all" in trace_type_requested or any(x in trace_type_requested for x in trace_type)):
-        print(trace) 
+        logger.debug(trace) 
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -5081,6 +5082,24 @@ def afficher_menu_activite_sidebar():
             st.session_state.forcer_menu_activites_programmees = False
         if st.session_state.forcer_menu_activites_non_programmees and st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
             st.session_state.forcer_menu_activites_non_programmees = False
+
+def configuration_logger():
+    # Crée un logger
+    logger = logging.getLogger("mon_app")
+    logger.setLevel(logging.DEBUG)
+
+    # # Handler qui écrit dans Streamlit
+    # class StreamlitHandler(logging.Handler):
+    #     def emit(self, record):
+    #         log_entry = self.format(record)
+    #         st.text(log_entry)  # tu pourrais mettre st.write, st.error, etc.
+
+    # Ajoute le handler
+    if not logger.handlers:  # évite les doublons
+        handler = logging.StreamlitHandler()
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
 def main():
 
