@@ -2791,7 +2791,7 @@ def activites_programmees_modifier_cellule(idx, col, val):
     debug_trace(f"Début activites_programmees_modifier_cellule {idx} {col} {val}")
     erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
     forcer_reaffichage_activites_programmees()
-    st.session_state.aggrid_activites_programmees_key_counter += 1 
+    # st.session_state.aggrid_activites_programmees_key_counter += 1 
 
     if not erreur:
         if col in ["Debut", "Duree", "Activité"]:
