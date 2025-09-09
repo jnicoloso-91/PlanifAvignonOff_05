@@ -30,7 +30,7 @@ import streamlit.components.v1 as components
 # import pkg_resources
 
 # Debug
-DEBUG_TRACE_MODE = True
+DEBUG_TRACE_MODE = False
 DEBUG_TRACE_TYPE = ["all"]
 
 def debug_trace(trace, trace_type=["all"]):
@@ -2635,25 +2635,25 @@ def afficher_activites_programmees():
     if sel_request["sel"]["pending"]:
         if sel_request["sel"]["id"] is not None:
             reqid = sel_request["sel"]["id"]
-            debug_trace(f"PROG ________________traitement de la requête de sélection {sel_request["sel"]["id"]} {sel_request["sel"]["ver"]}")
+            # debug_trace(f"PROG ________________traitement de la requête de sélection {sel_request["sel"]["id"]} {sel_request["sel"]["ver"]}")
             df_display["__sel_id"] = get_uuid(df_display, reqid)
             df_display["__sel_ver"] = sel_request["sel"]["ver"]
             if reqid in df_display.index: 
                 row = df_display.loc[reqid]
-                debug_trace(f"PROG row = df_display.loc[{reqid}]")
+                # debug_trace(f"PROG row = df_display.loc[{reqid}]")
             selection_demandee = True
         st.session_state.activites_programmees_sel_request["sel"]["pending"] = False
 
     deselection_demandee = False
     if sel_request["desel"]["pending"]:
-        debug_trace(f"PROG ________________traitement de la requête de desélection {sel_request["desel"]["ver"]}")
+        # debug_trace(f"PROG ________________traitement de la requête de desélection {sel_request["desel"]["ver"]}")
         df_display["__desel_ver"] = sel_request["desel"]["ver"]
-        df_display["__sel_ver"] = None
+        df_display["__sel_id"] = None
         deselection_demandee = True
         st.session_state.activites_programmees_sel_request["desel"]["pending"] = False
         
-    if len(df_display) > 0:
-        debug_trace(f"PROG ________________df_display['__sel_id'] {df_display.iloc[0]["__sel_id"]} df_display['__sel_ver'] {df_display.iloc[0]["__sel_ver"]} df_display['__desel_ver'] {df_display.iloc[0]["__desel_ver"]}")
+    # if len(df_display) > 0:
+    #     debug_trace(f"PROG ________________df_display['__sel_id'] {df_display.iloc[0]["__sel_id"]} df_display['__sel_ver'] {df_display.iloc[0]["__sel_ver"]} df_display['__desel_ver'] {df_display.iloc[0]["__desel_ver"]}")
 
     grid_options = init_activites_programmees_grid_options(df_display)
 
@@ -2706,9 +2706,9 @@ def afficher_activites_programmees():
             # Evènement de type "selectionChanged" 
             if event_type == "selectionChanged":
                 if index_df != st.session_state.activites_programmees_sel_request["sel"]["id"] and not deselection_demandee:
-                    debug_trace(f"PROG ***activites_programmees_sel_request[id] de  {st.session_state.activites_programmees_sel_request["sel"]["id"]} à {index_df}")
+                    # debug_trace(f"PROG ***activites_programmees_sel_request[id] de  {st.session_state.activites_programmees_sel_request["sel"]["id"]} à {index_df}")
                     st.session_state.activites_programmees_sel_request["sel"]["id"] = index_df
-                    debug_trace("PROG ***demander_deselection activites_non_programmees")
+                    # debug_trace("PROG ***demander_deselection activites_non_programmees")
                     demander_deselection("activites_non_programmees")
                     
                     # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
@@ -3036,7 +3036,7 @@ def afficher_activites_non_programmees():
     if sel_request["desel"]["pending"]:
         # debug_trace(f"NONPROG ________________traitement de la requête de desélection {sel_request["desel"]["ver"]}")
         df_display["__desel_ver"] = sel_request["desel"]["ver"]
-        df_display["__sel_ver"] = None
+        df_display["__sel_id"] = None
         deselection_demandee = True
         st.session_state.activites_non_programmees_sel_request["desel"]["pending"] = False
 
@@ -3097,8 +3097,8 @@ def afficher_activites_non_programmees():
                 if index_df != st.session_state.activites_non_programmees_sel_request["sel"]["id"] and not deselection_demandee:
                     # debug_trace(f"NONPROG ***activites_non_programmees_sel_request[id] de  {st.session_state.activites_non_programmees_sel_request["sel"]["id"]} à {index_df}")
                     st.session_state.activites_non_programmees_sel_request["sel"]["id"] = index_df
-                    debug_trace("NONPROG ***demander_deselection activites_programmees")
-                    # demander_deselection("activites_programmees")
+                    # debug_trace("NONPROG ***demander_deselection activites_programmees")
+                    demander_deselection("activites_programmees")
 
                     # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
 
