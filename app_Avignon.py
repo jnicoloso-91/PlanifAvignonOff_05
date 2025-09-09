@@ -5120,13 +5120,13 @@ def main():
         # debug_trace("afficher_infos_generales", trace_type=["gen"])
         afficher_infos_generales()
         
-        # # Affichage des activités programmées
-        # # debug_trace("afficher_activites_programmees", trace_type=["gen"])
-        # afficher_activites_programmees()
+        # Affichage des activités programmées
+        # debug_trace("afficher_activites_programmees", trace_type=["gen"])
+        afficher_activites_programmees()
 
-        # # Affichage des activités non programmées
-        # # debug_trace("afficher_activites_non_programmees", trace_type=["gen"])
-        # afficher_activites_non_programmees()
+        # Affichage des activités non programmées
+        # debug_trace("afficher_activites_non_programmees", trace_type=["gen"])
+        afficher_activites_non_programmees()
 
         # Affichage des créneaux disponibles et des activités programmables
         # debug_trace("afficher_creneaux_disponibles", trace_type=["gen"])
