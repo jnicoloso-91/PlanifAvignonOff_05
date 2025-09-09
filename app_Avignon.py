@@ -2791,7 +2791,7 @@ def activites_programmees_modifier_cellule(idx, col, val):
     debug_trace(f"Début activites_programmees_modifier_cellule {idx} {col} {val}")
     erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
     forcer_reaffichage_activites_programmees()
-    # st.session_state.aggrid_activites_programmees_key_counter += 1 
+    st.session_state.aggrid_activites_programmees_key_counter += 1 
 
     if not erreur:
         if col in ["Debut", "Duree", "Activité"]:
@@ -3118,17 +3118,8 @@ def afficher_activites_non_programmees():
                             else:
                                 if (pd.isna(df.at[idx, col_df]) and pd.notna(df_modifie.at[i, col])) or df.at[idx, col_df] != df_modifie.at[i, col]:
                                     demander_selection("activites_non_programmees", idx, deselect="activites_programmees")
-                                    erreur = affecter_valeur_df(idx, col_df, df_modifie.at[i, col])
-                                    if not erreur:
-                                        forcer_reaffichage_activites_non_programmees()
-                                        forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
-                                        st.session_state.aggrid_activites_non_programmees_key_counter += 1 
-                                        st.rerun()
-                                    else:
-                                        st.session_state.aggrid_activites_non_programmees_erreur = erreur
-                                        forcer_reaffichage_activites_non_programmees()
-                                        st.session_state.aggrid_activites_non_programmees_key_counter += 1 
-                                        st.rerun()
+                                    activites_programmees_modifier_cellule(idx, col_df, df_modifie.at[i, col])
+                                    st.rerun()
 
         elif len(df_display) == 0:
             if st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
@@ -3136,6 +3127,30 @@ def afficher_activites_non_programmees():
                     "menu": "menu_activites_non_programmees",
                     "index_df": None
                 }
+
+def activites_non_programmees_modifier_cellule(idx, col, val):
+    
+    st.session_state.setdefault("activites_non_programmees_modifier_cellule_cmd", 
+        {
+            "idx": idx,
+            "col": col,
+            "val": val,
+            "step": 0,
+        }
+    )
+
+    debug_trace(f"Début activites_non_programmees_modifier_cellule {idx} {col} {val}")
+    erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
+    forcer_reaffichage_activites_non_programmees()
+    st.session_state.aggrid_activites_non_programmees_key_counter += 1 
+    
+    if not erreur:
+        forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
+    else:
+        st.session_state.aggrid_activites_non_programmees_erreur = erreur
+
+    debug_trace(f"Fin activites_non_programmees_modifier_cellule {idx} {col} {val}")
+    del st.session_state["activites_non_programmees_modifier_cellule_cmd"]
 
 # Menu activité à afficher dans la sidebar si click dans aggrid d'activités non programmées         }
 def menu_activites_non_programmees(index_df):
