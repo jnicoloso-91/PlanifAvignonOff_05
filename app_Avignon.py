@@ -2779,12 +2779,14 @@ def afficher_activites_programmees():
 
 def activites_programmees_modifier_cellule(idx, col, val):
     
-    st.session_state.activites_programmees_modifier_cellule_cmd = {
-        "idx": idx,
-        "col": col,
-        "val": val,
-        "step": 0,
-    }
+    st.session_state.setdefault("activites_programmees_modifier_cellule_cmd", 
+        {
+            "idx": idx,
+            "col": col,
+            "val": val,
+            "step": 0,
+        }
+    )
 
     debug_trace(f"Début activites_programmees_modifier_cellule {idx} {col} {val}")
     erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
@@ -4750,7 +4752,7 @@ def bd_maj_activites_programmees():
 
 # Met à jour le contexte complet (activités programmées, non programmées et créneaux disponibles)
 def bd_maj_contexte(maj_donnees_calculees=True):
-    st.session_state.bd_maj_contexte_cmd = { "maj_donnees_calculees": maj_donnees_calculees}
+    st.session_state.setdefault("bd_maj_contexte_cmd", {"maj_donnees_calculees": maj_donnees_calculees})
     debug_trace(f"Debut bd_maj_contexte", trace_type=["gen"])
     if maj_donnees_calculees:
         bd_maj_donnees_calculees()
@@ -4847,11 +4849,13 @@ def bd_maj_activites_non_programmees():
 def bd_modifier_cellule(idx, col, val, section_critique=None):
 
     if section_critique is None:
-        st.session_state.bd_modifier_cellule_cmd = {
-            "idx": idx,
-            "col": col,
-            "val": val
-        }
+        st.session_state.setdefault("bd_modifier_cellule_cmd", 
+            {
+                "idx": idx,
+                "col": col,
+                "val": val
+            }
+        )
 
     debug_trace(f"Debut bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
     df = st.session_state.df
