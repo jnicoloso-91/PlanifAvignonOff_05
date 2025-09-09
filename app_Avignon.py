@@ -2774,6 +2774,7 @@ def afficher_activites_programmees():
                             else:
                                 if (pd.isna(df.at[idx, col_df]) and pd.notna(df_modifie.at[i, col])) or df.at[idx, col_df] != df_modifie.at[i, col]:
                                     demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
+                                    activites_programmees_modifier_cellule(idx, col_df, df_modifie.at[i, col])
                                     st.rerun()
 
 def activites_programmees_modifier_cellule(idx, col, val):
