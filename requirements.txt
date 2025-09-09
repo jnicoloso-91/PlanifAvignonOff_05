@@ -1,4 +1,4 @@
-streamlit>=1.31
+streamlit==1.47.1
 pandas>=2.1
 numpy
 openpyxl
@@ -13,3 +13,4 @@ dropbox
 streamlit-javascript
 requests
 setuptools
+
