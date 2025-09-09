@@ -2972,6 +2972,7 @@ def afficher_activites_programmees():
                                         if col in ["Debut", "Duree", "Activité"]:
                                             forcer_reaffichage_df("creneaux_disponibles")
                                         st.session_state.aggrid_activites_programmees_key_counter += 1 
+                                        debug_trace(f"PROG ***st.rerun() après affecter_valeur_df() dans modifier cellule")
                                         st.rerun()
                                     else:
                                         st.session_state.aggrid_activites_programmees_erreur = erreur
