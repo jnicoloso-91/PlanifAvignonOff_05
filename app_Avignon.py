@@ -2967,12 +2967,13 @@ def afficher_activites_programmees():
                                 if (pd.isna(df.at[idx, col_df]) and pd.notna(df_modifie.at[i, col])) or df.at[idx, col_df] != df_modifie.at[i, col]:
                                     demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
                                     erreur = affecter_valeur_df(idx, col_df, df_modifie.at[i, col])
+                                    debug_trace(f"PROG ***après affecter_valeur_df() dans modifier cellule")
                                     if not erreur:
                                         forcer_reaffichage_activites_programmees()
                                         if col in ["Debut", "Duree", "Activité"]:
                                             forcer_reaffichage_df("creneaux_disponibles")
                                         st.session_state.aggrid_activites_programmees_key_counter += 1 
-                                        debug_trace(f"PROG ***st.rerun() après affecter_valeur_df() dans modifier cellule")
+                                        debug_trace(f"PROG ***avant st.rerun() dans modifier cellule")
                                         st.rerun()
                                     else:
                                         st.session_state.aggrid_activites_programmees_erreur = erreur
