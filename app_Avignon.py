@@ -2648,6 +2648,7 @@ def afficher_activites_programmees():
     if sel_request["desel"]["pending"]:
         # debug_trace(f"PROG ________________traitement de la requête de desélection {sel_request["desel"]["ver"]}")
         df_display["__desel_ver"] = sel_request["desel"]["ver"]
+        df_display["__sel_ver"] = None
         deselection_demandee = True
         st.session_state.activites_programmees_sel_request["desel"]["pending"] = False
         
