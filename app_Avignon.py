@@ -1754,7 +1754,7 @@ def afficher_parametres():
                 min_value=0, max_value=120, step=5,
                 value=st.session_state.param_marge_min,
                 key="param_marge_min",
-                help="Marge pour calculer les créneaux disponibles. Pour les pauses café, ne s’applique qu’à l’activité précédente OU suivante."
+                help="Marge utilisée pour le calcul des créneaux disponibles. Pour les pauses café, ne s’applique qu’à l’activité précédente OU suivante, la pause café étant supposée se tenir près du lieu d'une de ces deux activités."
             )
 
             # Durée des pauses repas
@@ -1820,7 +1820,7 @@ def afficher_parametres():
                 "Ville par défaut pour la recherche d'itinéraire",
                 value=st.session_state.city_default_input,
                 key="city_default_input",
-                help="Si vide, on utilisera la ville du lieu de l’activité."
+                help="Si vide, la ville du lieu de l’activité est utilisée pour la recherche d'itinéraire."
             )
 
             submitted = st.form_submit_button("Appliquer")
