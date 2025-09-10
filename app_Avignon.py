@@ -1488,7 +1488,7 @@ def afficher_aide():
             st.markdown("""
             <div style='font-size: 14px;'>
             <p style="margin-bottom: 0.2em">Règles adoptées pour la programmation des activités:</p>
-            <ul style="margin-top: 0em; margin-bottom: 2em">
+            <ul style="margin-top: 0em; margin-bottom: 0.5em">
             <li>30 minutes de marge entre activités</li>
             <li>1 heure par pause repas</li>
             <li>1/2 heure par pause café sans marge avec l'activité précédente ou suivante</li>
