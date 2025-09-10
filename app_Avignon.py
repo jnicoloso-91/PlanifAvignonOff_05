@@ -4210,11 +4210,23 @@ def maj_options_date(df, activites_programmees, df_display, jour):
         if not s:
             continue
         
-        if df_display.loc[i]["Date"] == jour:
+        row = df_display.loc[i]
+
+        # S'il s'agit d'une activité programmée au jour dit aucune raison de modifier le menu,
+        # car s'il s'agit d'une activité reprogrammée au jour dit ce jour était déjà dans le menu avant reprogrammation et doit y rester
+        # et sinon ce jour est déjà dans le menu et doit y rester aussi pour que le déploiement dudit menu n'oblige pas à changer de jour.
+        if row["Date"] == jour:
             continue
         
         # parse -> set[str]
         opts = parse_options_date(s)
+
+        # S'il s'agit d'une activité programmée réservée on vérifie que le menu est vide. Si ce n'est pas le cas on le vide.
+        if est_activite_programmee(row) and est_activite_reserve(df.loc[i]):
+            if opts != set():
+                df_display.at[i, "__options_date"] = dump_options_date(set())
+                changed_idx.append(i)
+            continue
 
         # si le jour n'était pas présent ET que la règle ne le concerne pas, on peut sauter
         # (mais on doit tout de même appeler la règle si tu veux ajouter quand c'est possible)
@@ -4945,6 +4957,10 @@ def bd_modifier_cellule(idx, col, val, section_critique=False):
                     modifier_df_cell(st.session_state.activites_programmees_df_display, idx, "__non_reserve", non_reserve)
                 else:
                     st.session_state.activites_programmees_df_display["__non_reserve"] = st.session_state.activites_programmees_df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
+            if pd.notna(df.loc[idx]["Date"]):
+                jour = df.loc[idx]["Date"]
+                maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_programmees_df_display, jour)
+                maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
             st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
         if est_activite_non_programmee(df.loc[idx]):
             modifier_df_cell(st.session_state.activites_non_programmees, idx, col, val)
