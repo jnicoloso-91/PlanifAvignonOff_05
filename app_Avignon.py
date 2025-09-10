@@ -76,8 +76,8 @@ RENOMMAGE_COLONNES_INVERSE = {
     "Activité": "Activite",
 }
 
-ACTIVITES_PROGRAMMEES_WORK_COLS = ["__index", "__jour", "__options_date", "__non_reserve", "__uuid", "__sel_id", "__sel_ver", "__desel_ver"]
-ACTIVITES_NON_PROGRAMMEES_WORK_COLS = ["__index", "__options_date", "__uuid", "__sel_id", "__sel_ver", "__desel_ver"]
+ACTIVITES_PROGRAMMEES_WORK_COLS = ["__index", "__jour", "__options_date", "__non_reserve", "__uuid", "__sel_id", "__sel_ver", "__desel_ver", "__desel_id"]
+ACTIVITES_NON_PROGRAMMEES_WORK_COLS = ["__index", "__options_date", "__uuid", "__sel_id", "__sel_ver", "__desel_ver", "__desel_id"]
 
 LABEL_BOUTON_NOUVEAU = "Nouveau"
 LABEL_BOUTON_SAUVEGARDER = "Sauvegarder"
@@ -129,86 +129,88 @@ CRITICAL_VARS = [
 
 DEBOUNCE_S = 0.30
 
-# JsCode d'origine
+# JsCode pour gérer la sélection/déselection programmée de lignes dans AgGrid
 JS_SELECT_DESELECT_ONCE = JsCode("""
-    function(p){
-    p.api.sizeColumnsToFit();
-    var api=p&&p.api; if(!api) return;
+function(p){
+  var api=p&&p.api; if(!api) return;
 
-    // caches par grille (anti double-tir)
-    if(!window.__deselCache||typeof window.__deselCache!=="object") window.__deselCache={};
-    if(!window.__selCache  ||typeof window.__selCache  !=="object") window.__selCache  ={};
-    var gridKey=(api.gridDiv&&api.gridDiv.id)||(api.gridCore&&api.gridCore.eGridDiv&&api.gridCore.eGridDiv.id)||"grid";
+  if(!window.__deselCache||typeof window.__deselCache!=="object") window.__deselCache={};
+  if(!window.__selCache  ||typeof window.__selCache  !=="object") window.__selCache  ={};
 
-    function scan(col){
-        var n=api.getDisplayedRowCount?api.getDisplayedRowCount():0;
-        for(var i=0;i<n;i++){
-        var r=api.getDisplayedRowAtIndex(i);
-        if(r&&r.data&&r.data[col]!=null) return String(r.data[col]);
-        }
-        return null;
+  var gridKey=(api.gridDiv&&api.gridDiv.id)||(api.gridCore&&api.gridCore.eGridDiv&&api.gridCore.eGridDiv.id)||"grid";
+
+  function scan(col){
+    var n=api.getDisplayedRowCount?api.getDisplayedRowCount():0;
+    for(var i=0;i<n;i++){
+      var r=api.getDisplayedRowAtIndex(i);
+      if(r&&r.data&&r.data[col]!=null) return String(r.data[col]);
     }
-    function readMeta(){
-        return {
-        deselVer: scan("__desel_ver"),
-        selId:    scan("__sel_id"),
-        selVer:   scan("__sel_ver"),
-        };
+    return null;
+  }
+  function readMeta(){
+    return {
+      deselVer: scan("__desel_ver"),
+      deselId:  scan("__desel_id"),   // << NEW
+      selId:    scan("__sel_id"),
+      selVer:   scan("__sel_ver"),
+    };
+  }
+  function findNodeByUuid(id){
+    if(id==null) return null;
+    var node=api.getRowNode?api.getRowNode(String(id)):null;
+    if(node) return node;
+    var n=api.getDisplayedRowCount?api.getDisplayedRowCount():0;
+    for(var i=0;i<n;i++){
+      var r=api.getDisplayedRowAtIndex(i);
+      if(r&&r.data&&String(r.data.__uuid)===String(id)) return r;
     }
-    function findNodeByUuid(id){
-        var node=api.getRowNode?api.getRowNode(String(id)):null;
-        if(node) return node;
-        var n=api.getDisplayedRowCount?api.getDisplayedRowCount():0;
-        for(var i=0;i<n;i++){
-        var r=api.getDisplayedRowAtIndex(i);
-        if(r&&r.data&&String(r.data.__uuid)===String(id)) return r;
-        }
-        return null;
+    return null;
+  }
+  function ensureVisible(node){
+    if(!node) return;
+    if(typeof node.rowIndex==="number" && api.ensureIndexVisible){
+      api.ensureIndexVisible(node.rowIndex,"middle");
+    } else if(api.ensureNodeVisible){
+      api.ensureNodeVisible(node,"middle");
+    }
+  }
+
+  function run(){
+    var m=readMeta(); if(!m) return;
+
+    // 1) Déselection programmée (prioritaire)
+    if(m.deselVer!=null && window.__deselCache[gridKey]!==m.deselVer){
+      api.deselectAll&&api.deselectAll();
+      // si on nous donne une ligne à garder visible, on y va sans la sélectionner
+      var deselNode = findNodeByUuid(m.deselId);
+      ensureVisible(deselNode);
+      window.__deselCache[gridKey]=m.deselVer;
+      // on continue éventuellement vers une sélection programmée juste après
     }
 
-    function run(){
-        var m=readMeta(); if(!m) return;
-        try{
-        console.log("[SEL_META]", m);
-        var sample=[], n=Math.min(api.getDisplayedRowCount?api.getDisplayedRowCount():0, 5);
-        for(var i=0;i<n;i++){
-            var r=api.getDisplayedRowAtIndex(i);
-            if(r && r.data) sample.push({i:i, uuid:r.data.__uuid, sel_ver:r.data.__sel_ver, desel_ver:r.data.__desel_ver});
-        }
-        console.log("[ROWS_SAMPLE]", sample, "cacheSel=", window.__selCache[gridKey], "cacheDesel=", window.__deselCache[gridKey]);
-        }catch(e){}
-
-        // 1) Déselection programmée (prioritaire)
-        if(m.deselVer!=null && window.__deselCache[gridKey]!==m.deselVer){
+    // 2) Sélection programmée (once)
+    if(m.selId!=null && m.selVer!=null && window.__selCache[gridKey]!==m.selVer){
+      var node=findNodeByUuid(m.selId);
+      if(node){
         api.deselectAll&&api.deselectAll();
-        window.__deselCache[gridKey]=m.deselVer;
-        // on enchaîne éventuellement avec une sélection
-        }
-
-        // 2) Sélection programmée (once)
-        if(m.selId!=null && m.selVer!=null && window.__selCache[gridKey]!==m.selVer){
-        var node=findNodeByUuid(m.selId);
-        if(node){
-            api.deselectAll&&api.deselectAll();
-            node.setSelected&&node.setSelected(true,true,true);
-            if(typeof node.rowIndex==="number"&&api.ensureIndexVisible) api.ensureIndexVisible(node.rowIndex,"middle");
-            else if(api.ensureNodeVisible) api.ensureNodeVisible(node,"middle");
-        }
-        window.__selCache[gridKey]=m.selVer;
-        }
+        node.setSelected&&node.setSelected(true,true,true);
+        ensureVisible(node);
+      }
+      window.__selCache[gridKey]=m.selVer;
     }
+  }
 
-    var sched=function(){ (typeof requestAnimationFrame==="function")?requestAnimationFrame(run):setTimeout(run,0); };
-    if(p.type==="gridReady"){
-        delete window.__deselCache[gridKey];
-        delete window.__selCache[gridKey];
-        ["firstDataRendered","modelUpdated","rowDataUpdated"].forEach(function(e){ api.addEventListener&&api.addEventListener(e,sched); });
-        sched();
-    } else { sched(); }
-    }
+  var sched=function(){ (typeof requestAnimationFrame==="function")?requestAnimationFrame(run):setTimeout(run,0); };
+  if(p.type==="gridReady"){
+    delete window.__deselCache[gridKey];
+    delete window.__selCache[gridKey];
+    ["firstDataRendered","modelUpdated","rowDataUpdated"].forEach(function(e){ api.addEventListener&&api.addEventListener(e,sched); });
+    sched();
+  } else { sched(); }
+}
 """)
 
-SEL_REQUEST_DEFAUT = {"sel": {"ver": 0, "id": None, "pending": False}, "desel": {"ver": 0, "pending": False}}
+SEL_REQUEST_DEFAUT = {"sel": {"ver": 0, "id": None, "pending": False}, "desel": {"ver": 0, "id": None, "pending": False}}
 
 # Permet de mesurer le temps d'exécution d'une fonction avec le décorateur # @chrono
 def chrono(func):
@@ -2499,7 +2501,7 @@ def show_dialog_programmer_activite_non_programmee(df, index_df, df_display, jou
             st.rerun()
 
 # Demande de sélection d'une ligne sur une grille
-def demander_selection(grid_name: str, target_id: str | None, deselect=None):
+def demander_selection(grid_name: str, target_id: str | None, deselect=None, visible_id: str | None=None):
     if grid_name is not None:
         debug_trace(f"demander_selection {grid_name} {target_id} {st.session_state.df.loc[target_id]['Activite'] if target_id in st.session_state.df.index else ''}")
         k = f"{grid_name}_sel_request"
@@ -2507,15 +2509,16 @@ def demander_selection(grid_name: str, target_id: str | None, deselect=None):
         st.session_state[k]["sel"]["ver"] += 1
         st.session_state[k]["sel"]["id"] = target_id
         st.session_state[k]["sel"]["pending"] = True
-        demander_deselection(deselect)
+        demander_deselection(deselect, visible_id=visible_id)
 
 # Demande de désélection de la ligne sélectionnée sur une grille
-def demander_deselection(grid_name: str):
+def demander_deselection(grid_name: str, visible_id: str | None=None):
     if grid_name is not None:
         debug_trace(f"demander_deselection {grid_name}")
         k = f"{grid_name}_sel_request"
         st.session_state.setdefault(k, copy.deepcopy(SEL_REQUEST_DEFAUT))
         st.session_state[k]["desel"]["ver"] += 1
+        st.session_state[k]["desel"]["id"] = visible_id
         st.session_state[k]["desel"]["pending"] = True
         st.session_state[k]["sel"]["id"] = None
 
@@ -2664,6 +2667,7 @@ def afficher_activites_programmees():
     if sel_request["desel"]["pending"]:
         # debug_trace(f"PROG ________________traitement de la requête de desélection {sel_request["desel"]["ver"]}")
         df_display["__desel_ver"] = sel_request["desel"]["ver"]
+        df_display["__desel_id"] = get_uuid(df_display, sel_request["desel"]["id"]) # id visible après déselection, None si pas de contrainte de visibilité
         df_display["__sel_id"] = None
         deselection_demandee = True
         st.session_state.activites_programmees_sel_request["desel"]["pending"] = False
@@ -2747,39 +2751,59 @@ def afficher_activites_programmees():
             if erreur is not None:
                 st.error(erreur)
 
+            # # Si une requete de reprogrammation est en cours sur idx on bypasse la gestion de modification de cellules
+            # # car sinon elle va détecter une modification de valeur sur idx et déclencher une reprogrammation inverse à celle demandée.
+            # reprogrammation_request = reprogrammation_request_get()
+            # if reprogrammation_request is not None and reprogrammation_request["idx"] == index_df:
+            #     reprogrammation_request_del()
+            # else:
             # Gestion des modifications de cellules
             # Attention : la modification de cellule uniquement sur "cellValueChanged" n'est pas suffisante, car lorsque l'on valide la modification
             # de cellule en cliquant sur une autre ligne, on a un event de type "selectionChanged" et non "cellValueChanged".
             if isinstance(response["data"], pd.DataFrame):
                 df_modifie = pd.DataFrame(response["data"])
-                lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.activites_programmees_df_display_copy, columns_to_drop=work_cols)
-                if lignes_modifiees:
-                    st.session_state.aggrid_activites_programmees_erreur = None
-                    undo_redo_save()
-                    for i, idx in lignes_modifiees:
-                        for col in [col for col in df_modifie.columns if col not in non_editable_cols]:
-                            col_df = RENOMMAGE_COLONNES_INVERSE[col] if col in RENOMMAGE_COLONNES_INVERSE else col
-                            if pd.isna(df.at[idx, col_df]) and pd.isna(df_modifie.at[i, col]):
-                                continue
-                            if col == "Date":
-                                if df_modifie.at[i, col] == "":
-                                    # Déprogrammation de l'activité (Suppression de l'activité des activités programmées)
-                                    undo_redo_save()
-                                    demander_selection("activites_non_programmees", idx, deselect="activites_programmees")
-                                    activites_programmees_deprogrammer(idx)
-                                    st.rerun()
-                                elif pd.isna(df.at[idx, "Date"]) or df_modifie.at[i, col] != str(int(df.at[idx, "Date"])):
-                                    # Reprogrammation de l'activité à la date choisie
-                                    jour_choisi = int(df_modifie.at[i, col])
-                                    undo_redo_save()
-                                    demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
-                                    activites_programmees_reprogrammer(idx, jour_choisi)
-                                    st.rerun()
+                # Si une requete de reprogrammation est en cours sur idx on bypasse la gestion de modification de cellules
+                # jusquà ce que le DOM soit stabilisé et ait enregistré la modification de date. 
+                # car sinon elle va détecter une modification de valeur sur idx et déclencher une reprogrammation inverse à celle demandée.
+                gerer_modification_cellule = True
+                reprogrammation_request = reprogrammation_request_get()
+                if reprogrammation_request is not None:
+                    if reprogrammation_request["idx"] == index_df:
+                        matching = df_modifie.index[df_modifie["__index"] == index_df]
+                        if not matching.empty:
+                            if reprogrammation_request["jour"] == safe_int(df_modifie.at[matching[0], "Date"]): # la modification de date a été prise en compte par le DOM
+                                reprogrammation_request_del()
                             else:
-                                if (pd.isna(df.at[idx, col_df]) and pd.notna(df_modifie.at[i, col])) or df.at[idx, col_df] != df_modifie.at[i, col]:
-                                    demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
-                                    activites_programmees_modifier_cellule(idx, col_df, df_modifie.at[i, col])
-                                    st.rerun()
+                                gerer_modification_cellule = False
+                if gerer_modification_cellule:
+                    lignes_modifiees = get_lignes_modifiees(df_modifie, st.session_state.activites_programmees_df_display_copy, columns_to_drop=work_cols)
+                    if lignes_modifiees:
+                        st.session_state.aggrid_activites_programmees_erreur = None
+                        undo_redo_save()
+                        for i, idx in lignes_modifiees:
+                            for col in [col for col in df_modifie.columns if col not in non_editable_cols]:
+                                col_df = RENOMMAGE_COLONNES_INVERSE[col] if col in RENOMMAGE_COLONNES_INVERSE else col
+                                if pd.isna(df.at[idx, col_df]) and pd.isna(df_modifie.at[i, col]):
+                                    continue
+                                if col == "Date":
+                                    if df_modifie.at[i, col] == "":
+                                        # Déprogrammation de l'activité (Suppression de l'activité des activités programmées)
+                                        undo_redo_save()
+                                        demander_selection("activites_non_programmees", idx, deselect="activites_programmees", visible_id=ligne_voisine_index(df_display, idx))
+                                        activites_programmees_deprogrammer(idx)
+                                        st.rerun()
+                                    elif pd.isna(df.at[idx, "Date"]) or df_modifie.at[i, col] != str(int(df.at[idx, "Date"])):
+                                        # Reprogrammation de l'activité à la date choisie
+                                        jour_choisi = int(df_modifie.at[i, col])
+                                        undo_redo_save()
+                                        demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
+                                        activites_programmees_reprogrammer(idx, jour_choisi)
+                                        st.rerun()
+                                else:
+                                    if (pd.isna(df.at[idx, col_df]) and pd.notna(df_modifie.at[i, col])) or df.at[idx, col_df] != df_modifie.at[i, col]:
+                                        demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
+                                        activites_programmees_modifier_cellule(idx, col_df, df_modifie.at[i, col])
+                                        st.rerun()
 
 # Section critique pour la déprogrammation d'une activité programmée.
 # Section critique car la modification de cellule depuis la grille est validée par un click row 
@@ -2802,7 +2826,7 @@ def activites_programmees_deprogrammer(idx):
     bd_deprogrammer_activite_programmee(idx)
 
     # Workaround pour forcer le réaffichage de la grille.
-    # Sinon pour une raison inconnue elle reste figée après une modification de cellule.
+    # Sinon figeage grille après modification de cellule.
     forcer_reaffichage_activites_programmees() 
 
     forcer_reaffichage_df("creneaux_disponibles")
@@ -2832,7 +2856,7 @@ def activites_programmees_reprogrammer(idx, jour):
     bd_modifier_cellule(idx, "Date", jour)
 
     # Workaround pour forcer le réaffichage de la grille.
-    # Sinon pour une raison inconnue elle reste figée après une modification de cellule.
+    # Sinon figeage grille après modification de cellule.
     forcer_reaffichage_activites_programmees() 
 
     sauvegarder_row_ds_gsheet(idx)
@@ -2862,7 +2886,7 @@ def activites_programmees_modifier_cellule(idx, col, val):
     erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
 
     # Workaround pour forcer le réaffichage de la grille.
-    # Sinon pour une raison inconnue elle reste figée après une modification de cellule.
+    # Sinon figeage grille après modification de cellule.
     forcer_reaffichage_activites_programmees() 
 
     if not erreur:
@@ -2873,6 +2897,21 @@ def activites_programmees_modifier_cellule(idx, col, val):
 
     debug_trace(f"Fin activites_programmees_modifier_cellule {idx} {col} {val}")
     del st.session_state["activites_programmees_modifier_cellule_cmd"]
+
+def reprogrammation_request_set(idx, jour):
+    st.session_state.setdefault("reprogrammation_request", 
+        {
+            "idx": idx,
+            "jour": jour,
+        }
+    )
+
+def reprogrammation_request_get():
+    return st.session_state.get("reprogrammation_request")
+
+def reprogrammation_request_del():
+    if "reprogrammation_request" in st.session_state:
+        del st.session_state["reprogrammation_request"]
 
 # Menu activité à afficher dans la sidebar si click dans aggrid d'activités programmées         }
 def menu_activites_programmees(index_df):
@@ -2921,6 +2960,7 @@ def menu_activites_programmees(index_df):
             jour_choisi = st.session_state.activites_programmees_jour_choisi
             undo_redo_save()
             demander_selection("activites_programmees", index_df, deselect="activites_non_programmees")
+            reprogrammation_request_set(index_df, int(jour_choisi))
             bd_modifier_cellule(index_df, "Date", int(jour_choisi))
             sauvegarder_row_ds_gsheet(index_df)
             st.rerun()
@@ -3070,6 +3110,7 @@ def afficher_activites_non_programmees():
     if sel_request["desel"]["pending"]:
         # debug_trace(f"NONPROG ________________traitement de la requête de desélection {sel_request["desel"]["ver"]}")
         df_display["__desel_ver"] = sel_request["desel"]["ver"]
+        df_display["__desel_id"] = get_uuid(df_display, sel_request["desel"]["id"]) # id visible après déselection, None si pas de contrainte de visibilité
         df_display["__sel_id"] = None
         deselection_demandee = True
         st.session_state.activites_non_programmees_sel_request["desel"]["pending"] = False
@@ -3211,7 +3252,7 @@ def activites_non_programmees_programmer(idx, jour):
     bd_modifier_cellule(idx, "Date", int(jour))
 
     # Workaround pour forcer le réaffichage de la grille.
-    # Sinon pour une raison inconnue elle reste figée après une modification de cellule.
+    # Sinon figeage grille après modification de cellule.
     forcer_reaffichage_activites_non_programmees() 
 
     forcer_reaffichage_df("creneaux_disponibles")
@@ -3242,7 +3283,7 @@ def activites_non_programmees_modifier_cellule(idx, col, val):
     erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
 
     # Workaround pour forcer le réaffichage de la grille.
-    # Sinon pour une raison inconnue elle reste figée après une modification de cellule.
+    # Sinon figeage grille après modification de cellule.
     forcer_reaffichage_activites_non_programmees() 
     
     if not erreur:
@@ -4105,12 +4146,12 @@ def programmer_activite_non_programmee(date_ref, activite):
     if type_activite == "ActiviteExistante":
         # Pour les spectacles, on programme la date et l'heure
         index = activite["__index"]
-        # df.at[index, "Date"] = date_ref
         bd_modifier_cellule(index, "Date", date_ref)
     elif type_activite == "déjeuner":
         # Pour les pauses, on ne programme pas d'heure spécifique
+        index = len(df)
         bd_ajouter_activite(
-            idx=len(df), 
+            idx=index, 
             nom="Pause déjeuner",
             jour=date_ref, 
             debut=activite["Debut"],
@@ -4118,8 +4159,9 @@ def programmer_activite_non_programmee(date_ref, activite):
             )
     elif type_activite == "dîner":
         # Pour les pauses, on ne programme pas d'heure spécifique
+        index = len(df)
         bd_ajouter_activite(
-            idx=len(df), 
+            idx=index, 
             nom="Pause dîner",
             jour=date_ref, 
             debut=activite["Debut"],
@@ -4127,8 +4169,9 @@ def programmer_activite_non_programmee(date_ref, activite):
             )
     elif type_activite == "café":
         # Pour les pauses, on ne programme pas d'heure spécifique
+        index = len(df)
         bd_ajouter_activite(
-            idx=len(df), 
+            idx=index, 
             nom="Pause café",
             jour=date_ref, 
             debut=activite["Debut"],
@@ -4796,6 +4839,7 @@ def bd_creer_df_display_activites_non_programmees(activites_non_programmees):
     df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
     df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
     df_display["__desel_ver"] = st.session_state.activites_programmees_sel_request["desel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
+    df_display["__desel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["desel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
     df_display["__sel_ver"] = st.session_state.activites_programmees_sel_request["sel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
     df_display["__sel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["sel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
     df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
@@ -4812,6 +4856,7 @@ def bd_creer_df_display_activites_programmees(activites_programmees):
     df_display["__non_reserve"] = df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
     df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
     df_display["__desel_ver"] = st.session_state.activites_programmees_sel_request["desel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
+    df_display["__desel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["desel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
     df_display["__sel_ver"] = st.session_state.activites_programmees_sel_request["sel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
     df_display["__sel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["sel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
     df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
