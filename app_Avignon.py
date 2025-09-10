@@ -1659,11 +1659,12 @@ def afficher_periode_programmation():
         changed_keys = []
         need_refresh_grids = False
 
-        with st.form("periode_programmation_form"):
-            dates_valides = get_dates_from_df(st.session_state.df)  # doit renvoyer une série d'int (jours)
-            date_min = int(dates_valides.min()) if not dates_valides.empty else None
-            date_max = int(dates_valides.max()) if not dates_valides.empty else None
+        if st.session_state.get("periode_programmation_abandon_pending", False) == True:
+            st.session_state.periode_debut_input = st.session_state.periode_a_programmer_debut
+            st.session_state.periode_fin_input = st.session_state.periode_a_programmer_fin
+            st.session_state.periode_programmation_abandon_pending = False
 
+        with st.form("periode_programmation_form"):
             base_deb = st.session_state.periode_a_programmer_debut
             base_fin = st.session_state.periode_a_programmer_fin
 
@@ -1672,8 +1673,13 @@ def afficher_periode_programmation():
 
             st.session_state.setdefault("periode_debut_input", base_deb)
             st.session_state.setdefault("periode_fin_input",   base_fin)
+            
             deb_kwargs["value"] = base_deb
             fin_kwargs["value"] = base_fin
+
+            dates_valides = get_dates_from_df(st.session_state.df)  # doit renvoyer une série d'int (jours)
+            date_min = int(dates_valides.min()) if not dates_valides.empty else None
+            date_max = int(dates_valides.max()) if not dates_valides.empty else None
 
             if isinstance(date_min, int):
                 try:
@@ -1698,9 +1704,12 @@ def afficher_periode_programmation():
             except Exception as e:
                 print(f"Erreur dans afficher_periode_programmation : {e}")
         
-            submitted = st.form_submit_button("Appliquer")
 
-        if submitted:
+            col1, col2 = st.columns(2)
+            appliquer = col1.form_submit_button("Appliquer", use_container_width=True)
+            abandonner = col2.form_submit_button("Abandonner", use_container_width=True)
+
+        if appliquer:
             if debut != st.session_state.periode_a_programmer_debut:
                 st.session_state.periode_a_programmer_debut = debut
                 changed_keys.append("periode_a_programmer_debut")
@@ -1711,6 +1720,11 @@ def afficher_periode_programmation():
                 changed_keys.append("periode_a_programmer_fin")
                 need_refresh_grids = True
             
+            # Ne forcer le réaffichage des grilles qu'une seule fois
+            if need_refresh_grids:
+                bd_maj_contexte(maj_donnees_calculees=False)
+                forcer_reaffichage_df("creneaux_disponibles")
+
             # Sauvegarde en batch (une seule fois)
             if changed_keys:
                 for k in changed_keys:
@@ -1719,13 +1733,12 @@ def afficher_periode_programmation():
                     except Exception:
                         pass  # log/ignorer selon besoin
 
-            # Ne forcer le réaffichage des grilles qu'une seule fois
-            if need_refresh_grids:
-                bd_maj_contexte(maj_donnees_calculees=False)
-                forcer_reaffichage_df("creneaux_disponibles")
+                # Pas de st.rerun() nécessaire : submit a déjà provoqué un rerun
+                st.toast("Paramètres appliqués.", icon="✅")
 
-            # Pas de st.rerun() nécessaire : submit a déjà provoqué un rerun
-            st.toast("Paramètres appliqués.", icon="✅")
+        if abandonner:
+            st.session_state.periode_programmation_abandon_pending = True
+            st.rerun()
 
 def afficher_parametres():
 
@@ -1741,6 +1754,14 @@ def afficher_parametres():
         changed_keys = []
         need_refresh_grids = False
 
+        if st.session_state.get("param_abandon_pending", False) == True:
+            st.session_state.param_marge_min = minutes(st.session_state.MARGE)
+            st.session_state.param_repas_min = minutes(st.session_state.DUREE_REPAS)
+            st.session_state.param_cafe_min  = minutes(st.session_state.DUREE_CAFE)
+            st.session_state.itineraire_app_selectbox = st.session_state.itineraire_app
+            st.session_state.city_default_input = st.session_state.city_default
+            st.session_state.param_abandon_pending = False
+
         with st.form("params_form"):
 
             # Marge entre activités
@@ -1754,7 +1775,7 @@ def afficher_parametres():
                 min_value=0, max_value=120, step=5,
                 value=st.session_state.param_marge_min,
                 key="param_marge_min",
-                help="Marge utilisée pour le calcul des créneaux disponibles. Pour les pauses café, ne s’applique qu’à l’activité précédente OU suivante, la pause café étant supposée se tenir près du lieu d'une de ces deux activités."
+                help="Marge utilisée pour le calcul des créneaux disponibles. Pour les pauses café, ne s’applique qu’à l’activité précédente OU suivante, la pause café étant supposée se tenir près du lieu de l'une ou de l'autre."
             )
 
             # Durée des pauses repas
@@ -1823,9 +1844,11 @@ def afficher_parametres():
                 help="Si vide, la ville du lieu de l’activité est utilisée pour la recherche d'itinéraire."
             )
 
-            submitted = st.form_submit_button("Appliquer")
+            col1, col2 = st.columns(2)
+            appliquer = col1.form_submit_button("Appliquer", use_container_width=True)
+            abandonner = col2.form_submit_button("Abandonner", use_container_width=True)
 
-        if submitted:
+        if appliquer:
 
             # MARGE
             new_marge = datetime.timedelta(minutes=st.session_state.param_marge_min)
@@ -1849,8 +1872,9 @@ def afficher_parametres():
                 need_refresh_grids = True
 
             # Itinéraire
-            if st.session_state.itineraire_app != st.session_state.itineraire_app_selectbox:
-                st.session_state.itineraire_app = st.session_state.itineraire_app_selectbox
+            new_itineraire = st.session_state.itineraire_app_selectbox
+            if st.session_state.itineraire_app != new_itineraire:
+                st.session_state.itineraire_app = new_itineraire
                 ajouter_sans_doublon(changed_keys, "itineraire_app")
 
             # Ville par défaut
@@ -1871,8 +1895,12 @@ def afficher_parametres():
                     except Exception:
                         pass  # log/ignorer selon besoin
 
-            # Pas de st.rerun() nécessaire : submit a déjà provoqué un rerun
-            st.toast("Paramètres appliqués.", icon="✅")
+                # Pas de st.rerun() nécessaire : submit a déjà provoqué un rerun
+                st.toast("Paramètres appliqués.", icon="✅")
+
+        if abandonner:
+            st.session_state.param_abandon_pending = True
+            st.rerun()
 
 # Nettoie les données du tableau Excel importé
 def nettoyer_donnees(df, fn):
