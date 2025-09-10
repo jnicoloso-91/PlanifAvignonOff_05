@@ -2531,16 +2531,18 @@ def init_activites_programmees_grid_options(df_display):
     gb.configure_default_column(resizable=True)
 
     # Colonnes à largeur fixe
-    # colonnes_fixes = {"Date": 50, "Début": 55, "Fin": 55, "Durée": 55}
-    # for col, width in colonnes_fixes.items():
-    #     gb.configure_column(
-    #         col,
-    #         filter=False,
-    #         resize=False,
-    #         autosize=False,
-    #         suppressSizeToFit=True,
-    #         width=width
-    #     )
+    colonnes_fixes = {"Date": 55, "Début": 55, "Fin": 55, "Durée": 55}
+    for col, width in colonnes_fixes.items():
+        gb.configure_column(
+            col,
+            filter=False,
+            resizable=False,
+            width=width,
+            minWidth=width,
+            maxWidth=width,
+            flex=0,
+            suppressSizeToFit=True,
+        )
 
     # Epinglage de la colonne Date
     gb.configure_column(
@@ -2989,16 +2991,18 @@ def init_activites_non_programmees_grid_options(df_display):
     gb.configure_default_column(resizable=True)
 
     # Colonnes à largeur fixe
-    # colonnes_fixes = {"Date": 50, "Début": 55, "Fin": 55, "Durée": 55}
-    # for col, width in colonnes_fixes.items():
-    #     gb.configure_column(
-    #         col,
-    #         filter=False,
-    #         resize=False,
-    #         autosize=False,
-    #         suppressSizeToFit=True,
-    #         width=width
-    #     )
+    colonnes_fixes = {"Date": 55, "Début": 55, "Fin": 55, "Durée": 55}
+    for col, width in colonnes_fixes.items():
+        gb.configure_column(
+            col,
+            filter=False,
+            resizable=False,
+            width=width,
+            minWidth=width,
+            maxWidth=width,
+            flex=0,
+            suppressSizeToFit=True,
+        )
 
     # Epinglage de la colonne Date
     gb.configure_column(
