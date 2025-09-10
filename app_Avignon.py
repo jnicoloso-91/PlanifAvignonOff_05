@@ -2434,7 +2434,7 @@ def show_dialog_reprogrammer_activite_programmee(df, activites_programmees, inde
                 # Déprogrammation
                 undo_redo_save()
                 demander_selection("activites_non_programmees", index_df, deselect="activites_programmees")
-                deprogrammer_activite_programmee(index_df)
+                bd_deprogrammer_activite_programmee(index_df)
                 forcer_reaffichage_df("creneaux_disponibles")
                 sauvegarder_row_ds_gsheet(index_df)
                 st.rerun()
@@ -2756,7 +2756,12 @@ def afficher_activites_programmees():
                                     activites_programmees_modifier_cellule(idx, col_df, df_modifie.at[i, col])
                                     st.rerun()
 
-# Section critique pour la déprogrammation d'une activité programmée
+# Section critique pour la déprogrammation d'une activité programmée.
+# Section critique car la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
 def activites_programmees_deprogrammer(idx):
     
     st.session_state.setdefault("activites_programmees_deprogrammer_cmd", 
@@ -2765,18 +2770,28 @@ def activites_programmees_deprogrammer(idx):
             "step": 0,
         }
     )
+
     debug_trace(f"Début activites_programmees_deprogrammer {idx}")
 
     st.session_state.forcer_menu_activites_non_programmees = True
-    deprogrammer_activite_programmee(idx)
+    bd_deprogrammer_activite_programmee(idx)
+
+    # Workaround pour forcer le réaffichage de la grille.
+    # Sinon pour une raison inconnue elle reste figée après une modification de cellule.
     forcer_reaffichage_activites_programmees() 
+
     forcer_reaffichage_df("creneaux_disponibles")
     sauvegarder_row_ds_gsheet(idx)
 
     debug_trace(f"Fin activites_programmees_deprogrammer {idx}")
     del st.session_state["activites_programmees_deprogrammer_cmd"]
 
-# Section critique pour la reprogrammation d'une activité programmée
+# Section critique pour la reprogrammation d'une activité programmée.
+# Section critique car la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
 def activites_programmees_reprogrammer(idx, jour):
     
     st.session_state.setdefault("activites_programmees_reprogrammer_cmd", 
@@ -2786,16 +2801,26 @@ def activites_programmees_reprogrammer(idx, jour):
             "step": 0,
         }
     )
+
     debug_trace(f"Début activites_programmees_reprogrammer {idx} {jour}")
 
     bd_modifier_cellule(idx, "Date", jour)
+
+    # Workaround pour forcer le réaffichage de la grille.
+    # Sinon pour une raison inconnue elle reste figée après une modification de cellule.
     forcer_reaffichage_activites_programmees() 
+
     sauvegarder_row_ds_gsheet(idx)
 
     debug_trace(f"Fin activites_programmees_reprogrammer {idx} {jour}")
     del st.session_state["activites_programmees_reprogrammer_cmd"]
 
-# Section critique pour la modification de cellules d'une activité programmée
+# Section critique pour la modification de cellules d'une activité programmée.
+# Section critique car la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
 def activites_programmees_modifier_cellule(idx, col, val):
     
     st.session_state.setdefault("activites_programmees_modifier_cellule_cmd", 
@@ -2806,9 +2831,13 @@ def activites_programmees_modifier_cellule(idx, col, val):
             "step": 0,
         }
     )
+
     debug_trace(f"Début activites_programmees_modifier_cellule {idx} {col} {val}")
 
     erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
+
+    # Workaround pour forcer le réaffichage de la grille.
+    # Sinon pour une raison inconnue elle reste figée après une modification de cellule.
     forcer_reaffichage_activites_programmees() 
 
     if not erreur:
@@ -2851,12 +2880,12 @@ def menu_activites_programmees(index_df):
         sauvegarder_row_ds_gsheet(index_df)
         st.rerun()
 
-    # Affichage contrôle Deprogrammer
+    # Affichage contrôle Déprogrammer
     if st.button(LABEL_BOUTON_DEPROGRAMMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled or activite_reservee, key="menu_activite_deprogrammer"):
         undo_redo_save()
         demander_selection("activites_non_programmees", index_df, deselect="activites_programmees")
         st.session_state.forcer_menu_activites_non_programmees = True
-        deprogrammer_activite_programmee(index_df)
+        bd_deprogrammer_activite_programmee(index_df)
         forcer_reaffichage_df("creneaux_disponibles")
         sauvegarder_row_ds_gsheet(index_df)
         st.rerun()
@@ -3138,7 +3167,12 @@ def afficher_activites_non_programmees():
                     "index_df": None
                 }
 
-# Section critique pour la programmation d'une activité non programmée
+# Section critique pour la programmation d'une activité non programmée.
+# Section critique car la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
 def activites_non_programmees_programmer(idx, jour):
     
     st.session_state.setdefault("activites_non_programmees_programmer_cmd", 
@@ -3148,18 +3182,28 @@ def activites_non_programmees_programmer(idx, jour):
             "step": 0,
         }
     )
+
     debug_trace(f"Début activites_non_programmees_programmer {idx} {jour}")
 
     st.session_state.forcer_menu_activites_programmees = True
     bd_modifier_cellule(idx, "Date", int(jour))
+
+    # Workaround pour forcer le réaffichage de la grille.
+    # Sinon pour une raison inconnue elle reste figée après une modification de cellule.
     forcer_reaffichage_activites_non_programmees() 
+
     forcer_reaffichage_df("creneaux_disponibles")
     sauvegarder_row_ds_gsheet(idx)
 
     debug_trace(f"Fin activites_non_programmees_programmer {idx} {jour}")
     del st.session_state["activites_non_programmees_programmer_cmd"]
 
-# Section critique pour la modification de cellules d'une activité non programmée
+# Section critique pour la modification de cellules d'une activité non programmée.
+# Section critique car la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
 def activites_non_programmees_modifier_cellule(idx, col, val):
     
     st.session_state.setdefault("activites_non_programmees_modifier_cellule_cmd", 
@@ -3170,9 +3214,13 @@ def activites_non_programmees_modifier_cellule(idx, col, val):
             "step": 0,
         }
     )
+
     debug_trace(f"Début activites_non_programmees_modifier_cellule {idx} {col} {val}")
 
     erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
+
+    # Workaround pour forcer le réaffichage de la grille.
+    # Sinon pour une raison inconnue elle reste figée après une modification de cellule.
     forcer_reaffichage_activites_non_programmees() 
     
     if not erreur:
@@ -3507,7 +3555,6 @@ def supprimer_row_df_display(df, idx):
 
 # Suppression d'une activité d'un df
 def supprimer_activite(idx):
-    # st.session_state.maj_contexte_interrupted = True
     if idx not in st.session_state.df.index:
         return
     jour = st.session_state.df.loc[idx]["Date"]
@@ -3521,7 +3568,6 @@ def supprimer_activite(idx):
     maj_options_date(st.session_state.df, st.session_state.activites_programmees, st.session_state.activites_programmees_df_display, jour)
     maj_options_date(st.session_state.df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
     bd_maj_creneaux_disponibles()
-    # st.session_state.maj_contexte_interrupted = False
 
 # Modifie la valeur d'une cellule d'un df
 def modifier_df_cell(df, idx, col, val):
@@ -3540,20 +3586,6 @@ def df_display_col_nom(nom):
         return RENOMMAGE_COLONNES[nom]
     else:
         return nom
-
-# Déprogrammation d'une activité programmée d'un df (si pause suppression, si activité ordinaire date à None)
-def deprogrammer_activite_programmee(idx):
-    df = st.session_state.df
-    if est_pause(df.loc[idx]):
-        supprimer_activite(idx)
-    else:
-        # st.session_state.maj_contexte_interrupted = True
-        if idx not in st.session_state.df.index:
-            return
-        jour = st.session_state.df.loc[idx]["Date"]
-        modifier_df_cell(st.session_state.df, idx, "Date", None)
-        bd_deprogrammer(idx, jour)
-        # st.session_state.maj_contexte_interrupted = False
 
 # Création de la liste des créneaux avant/après pour chaque activité programmée 
 # le df des activités programmées est supposé etre trié par jour ("Date") et par heure de début ("Debut")
@@ -4557,14 +4589,11 @@ def afficher_bouton_nouvelle_activite(disabled=False, key="ajouter_activite"):
 
         undo_redo_save()
         
-        # st.session_state.maj_contexte_interrupted = True
         new_idx = bd_ajouter_activite()
-        # st.session_state.maj_contexte_interrupted = False
 
         demander_selection("activites_non_programmees", new_idx, deselect="activites_programmees")
         st.session_state.editeur_activite_idx = new_idx
         
-        # if MENU_ACTIVITE_UNIQUE:
         # Bascule du menu activité sur le menu_activites_non_programmees
         st.session_state.menu_activites = {
             "menu": "menu_activites_non_programmees",
@@ -4796,6 +4825,18 @@ def bd_deprogrammer(idx, jour=None):
         st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
 
         bd_maj_creneaux_disponibles()
+
+# Déprogrammation d'une activité programmée (si pause suppression, si activité ordinaire date à None)
+def bd_deprogrammer_activite_programmee(idx):
+    df = st.session_state.df
+    if est_pause(df.loc[idx]):
+        supprimer_activite(idx)
+    else:
+        if idx not in st.session_state.df.index:
+            return
+        jour = st.session_state.df.loc[idx]["Date"]
+        modifier_df_cell(st.session_state.df, idx, "Date", None)
+        bd_deprogrammer(idx, jour)
 
 # Met à jour les variables d'état relatives aux activités programmées
 # @chrono
@@ -5206,7 +5247,13 @@ def configurer_logger():
 
         st.session_state.logger_configured = True
 
-# Gestion des sections critiques de traitement
+# Gestion des sections critiques de traitement.
+# Ces sections critiques sont utilisées notamment pour gérer la modification de cellules depuis les grilles.
+# Dans ce cas en effet la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun par la fonction ci-dessous tant qu'elle n'est pas terminée.
 def traiter_sections_critiques():
 
     cmd = st.session_state.get("bd_maj_contexte_cmd")
