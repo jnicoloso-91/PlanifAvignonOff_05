@@ -1494,6 +1494,7 @@ def afficher_aide():
             <li>1/2 heure par pause café sans marge avec l'activité précédente ou suivante</li>
             <li>Respect des jours de relâches</li>
             </ul>
+            <p>Ces valeurs sont paramétrables via la rubrique Paramètres.</p>
             </div>
             """, unsafe_allow_html=True)  
 
@@ -1530,7 +1531,6 @@ def afficher_aide():
                         <li>éditer les propriétés l'activité.</li>
                         </ul>
                 </li>
-                <li>Menu créneau disponible: présente le créneau sélectionné dans la table des créneaux disponibles, l'activité sélectionnée dans la table des activités programmables sur ce créneau et permet de programmer ladite activité sur le créneau choisi.</li>
             </ul>
                         
             <p style="margin-bottom: 0.2em">En haut de la page principale une rubrique escamotable 'Infos' présente:</p>
