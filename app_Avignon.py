@@ -2688,9 +2688,6 @@ def afficher_activites_programmees():
             # Récupération de l'index de ligne sélectionnée
             index_df = row["__index"]
 
-            # Recupération du nom d'activité correspondant
-            nom_activite = str(row["Activité"]).strip() if pd.notna(row["Activité"]) else ""
-
             # Evènement de type "selectionChanged" 
             if event_type == "selectionChanged":
                 if index_df != st.session_state.activites_programmees_sel_request["sel"]["id"] and not deselection_demandee:
@@ -3097,9 +3094,6 @@ def afficher_activites_non_programmees():
 
             # Récupération de l'index de ligne sélectionnée
             index_df = row["__index"]
-
-            # Recupération du nom d'activité correspondant
-            nom_activite = str(row["Activité"]).strip() if pd.notna(row["Activité"]) else ""
 
             # Evènement de type "selectionChanged"
             if event_type == "selectionChanged":
@@ -3663,6 +3657,7 @@ def get_creneaux(df, activites_programmees, traiter_pauses):
                 if pd.notnull(heure_fin):
                     if get_activites_programmables_apres(df, activites_programmees, row, traiter_pauses):
                         borne_min, borne_max, next = get_creneau_bounds_apres(activites_programmees, row)
+                        borne_max = borne_max if borne_max is not None else datetime.datetime.combine(BASE_DATE, datetime.time(23, 59))
                         if (borne_min, borne_max) not in bornes:
                             bornes.append((borne_min, borne_max))
                             creneaux.append(creer_creneau(row, borne_min, borne_max, row["Activite"], next["Activite"] if next is not None else "", "Après"))
@@ -3697,6 +3692,7 @@ def get_creneau_bounds_avant(activites_programmees, ligne_ref):
     return debut_min, fin_max, prev.iloc[0] if not prev.empty else None
 
 # Renvoie les bornes du créneau existant après une activité donnée par son descripteur ligne_ref
+# S'il n'y a pas d'activité suivante pour le même jour renvoie None pour fin_max
 def get_creneau_bounds_apres(activites_programmees, ligne_ref):
     date_ref = ligne_ref["Date"]
     debut_ref = ligne_ref["Debut_dt"] if pd.notnull(ligne_ref["Debut_dt"]) else datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
@@ -3717,7 +3713,7 @@ def get_creneau_bounds_apres(activites_programmees, ligne_ref):
     if not next.empty:
         fin_max = datetime.datetime.combine(BASE_DATE, next["Debut_dt"].iloc[0].time())
     else:
-        fin_max = datetime.datetime.combine(BASE_DATE, datetime.time(23, 59))
+        fin_max = None # datetime.datetime.combine(BASE_DATE, datetime.time(23, 59))
 
     # Calculer l'heure de début minimum du créneau
     debut_min = datetime.datetime.combine(BASE_DATE, fin_ref.time())
@@ -3761,8 +3757,8 @@ def get_activites_programmables_apres(df, activites_programmees, ligne_ref, trai
 
     proposables = []
 
-    debut_min, fin_max, _ = get_creneau_bounds_apres(activites_programmees, ligne_ref)
-    if debut_min >= fin_max:
+    debut_min, fin_max, _ = get_creneau_bounds_apres(activites_programmees, ligne_ref) # Attention fin_max est None si créneau se termine apres 23h59
+    if fin_max is not None and debut_min >= fin_max:
         return proposables  # Pas d'activités programmables avant si le créneau est invalide
 
     if fin_ref.day != debut_ref.day:
@@ -3773,8 +3769,8 @@ def get_activites_programmables_apres(df, activites_programmees, ligne_ref, trai
             continue
         h_debut = datetime.datetime.combine(BASE_DATE, row["Debut_dt"].time())
         h_fin = h_debut + row["Duree_dt"]
-        # Le spectacle doit commencer après debut_min et finir avant fin_max
-        if h_debut >= debut_min + st.session_state.MARGE and h_fin <= fin_max - st.session_state.MARGE and est_hors_relache(row["Relache"], date_ref):
+        # Le spectacle doit commencer après debut_min et finir avant fin_max en tenant compte des marges et des relaches
+        if h_debut >= debut_min + st.session_state.MARGE and (fin_max is None or h_fin <= fin_max - st.session_state.MARGE) and est_hors_relache(row["Relache"], date_ref):
             nouvelle_ligne = row.drop(labels=["Debut_dt", "Duree_dt"]).to_dict()
             nouvelle_ligne["__type_activite"] = "ActiviteExistante"
             nouvelle_ligne["__index"] = row.name
@@ -3825,11 +3821,11 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                         "__type_activite": type_repas
                     })
                     proposables.append(nouvelle_ligne)
-            elif type_creneau == "Après":
+            elif type_creneau == "Après": # Attention : dans ce cas fin_max est None si le créneau se termine apres 23h59
                 h_dej = min(max(debut_min + st.session_state.MARGE, 
                     datetime.datetime.combine(BASE_DATE, pause_debut_min)), 
                     datetime.datetime.combine(BASE_DATE, pause_debut_max))
-                if h_dej - st.session_state.MARGE >= debut_min and h_dej + st.session_state.MARGE <= fin_max:
+                if h_dej - st.session_state.MARGE >= debut_min and (fin_max is None or h_dej + st.session_state.MARGE <= fin_max):
                     nouvelle_ligne = completer_ligne({
                         "Debut": h_dej.strftime('%Hh%M'),
                         "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
@@ -3869,13 +3865,13 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                             "__type_activite": "café"
                         })
                         proposables.append(nouvelle_ligne)
-            elif type_creneau == "Après":
+            elif type_creneau == "Après": # Attention : dans ce cas fin_max est None si le créneau se termine apres 23h59
                 i = activites_programmees.index.get_loc(ligne_ref.name)  
                 Lieu_ref_suiv = activites_programmees.iloc[i + 1]["Lieu"] if i < len(activites_programmees) - 1 else None
                 h_cafe = debut_min
                 if not pd.isna(Lieu_ref) and not pd.isna(Lieu_ref_suiv) and Lieu_ref == Lieu_ref_suiv: 
                     # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle suivant 
-                    if h_cafe + st.session_state.DUREE_CAFE <= fin_max: 
+                    if fin_max is None or h_cafe + st.session_state.DUREE_CAFE <= fin_max: 
                         nouvelle_ligne = completer_ligne({
                             "Debut": h_cafe.strftime('%Hh%M'),
                             "Fin": (h_cafe + st.session_state.DUREE_CAFE).strftime('%Hh%M'),
@@ -3885,9 +3881,9 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                         })
                         proposables.append(nouvelle_ligne)
                 else: 
-                    # Dans ce cas on tient compte de la marge avec le spectacle suivant sauf si fin_max = 23h59
-                    marge_cafe = st.session_state.MARGE if fin_max != datetime.datetime.combine(BASE_DATE, datetime.time(23, 59)) else datetime.timedelta(minutes=0)
-                    if h_cafe + st.session_state.DUREE_CAFE <= fin_max - marge_cafe:
+                    # Dans ce cas on tient compte de la marge avec le spectacle suivant sauf si fin_max is None (créneau se termine après 23h59)
+                    marge_cafe = st.session_state.MARGE if fin_max is not None else datetime.timedelta(minutes=0)
+                    if fin_max is None or h_cafe + st.session_state.DUREE_CAFE <= fin_max - marge_cafe:
                         nouvelle_ligne = completer_ligne({
                             "Debut": h_cafe.strftime('%Hh%M'),
                             "Fin": (h_cafe + st.session_state.DUREE_CAFE).strftime('%Hh%M'),
@@ -4145,14 +4141,14 @@ def get_jours_possibles(df, activites_programmees, idx_activite):
                     premiere_activite_du_jour = activites_programmes_du_jour.iloc[0]
                     borne_inf = datetime.datetime.combine(BASE_DATE, datetime.time.min)  # 00h00
                     borne_sup = premiere_activite_du_jour["Debut_dt"]
-                    if debut > borne_inf + st.session_state.MARGE and fin < borne_sup - st.session_state.MARGE:
+                    if debut > borne_inf and fin < borne_sup - st.session_state.MARGE:
                         jours_possibles.append(jour)
                         continue  # on prend le premier créneau dispo du jour
 
                     # Ensuite, créneaux entre chaque activité programmée
                     for _, ligne in activites_programmes_du_jour.iterrows():
                         borne_inf, borne_sup, _ = get_creneau_bounds_apres(activites_programmes_du_jour, ligne)
-                        if debut > borne_inf + st.session_state.MARGE and fin < borne_sup - st.session_state.MARGE:
+                        if debut > borne_inf + st.session_state.MARGE and (borne_sup is None or fin < borne_sup - st.session_state.MARGE):
                             jours_possibles.append(jour)
                             break  # jour validé, on passe au suivant
                 else: # jour libre
@@ -4191,7 +4187,7 @@ def est_jour_possible(df, activites_programmees, idx_activite, jour):
                 # Ensuite, créneaux entre chaque activité programmée
                 for _, ligne in activites_programmes_du_jour.iterrows():
                     borne_inf, borne_sup, _ = get_creneau_bounds_apres(activites_programmes_du_jour, ligne)
-                    if debut > borne_inf + st.session_state.MARGE and fin < borne_sup - st.session_state.MARGE:
+                    if debut > borne_inf + st.session_state.MARGE and (borne_sup is None or fin < borne_sup - st.session_state.MARGE):
                         return True
             else: # jour libre
                 return True
@@ -4241,44 +4237,51 @@ def maj_options_date(df, activites_programmees, df_display, jour):
     for i, s in df_display["__options_date"].items():
         if not s:
             continue
-        
-        row = df_display.loc[i]
-
-        # S'il s'agit d'une activité programmée au jour dit aucune raison de modifier le menu,
-        # car s'il s'agit d'une activité reprogrammée au jour dit ce jour était déjà dans le menu avant reprogrammation et doit y rester
-        # et sinon ce jour est déjà dans le menu et doit y rester aussi pour que le déploiement dudit menu n'oblige pas à changer de jour.
-        if row["Date"] == jour:
-            continue
-        
+    
         # parse -> set[str]
         opts = parse_options_date(s)
+        
+        # Activité courante
+        row = df_display.loc[i]
 
-        # S'il s'agit d'une activité programmée réservée on vérifie que le menu est vide. Si ce n'est pas le cas on le vide.
-        if est_activite_programmee(row) and est_activite_reserve(df.loc[i]):
-            if opts != set():
-                df_display.at[i, "__options_date"] = dump_options_date(set())
+        # S'il s'agit d'une activité programmée au jour dit...
+        if row["Date"] == jour:
+            # S'il s'agit d'une activité réservée on vérifie que le menu est vide. Si ce n'est pas le cas on le vide.
+            if est_activite_reserve(df.loc[i]):
+                if opts != set():
+                    df_display.at[i, "__options_date"] = dump_options_date(set())
+                    changed_idx.append(i)
+            # Sinon on vérifie que le menu n'est pas vide (cas d'une activité qui serait passée de réservée à non réservée).
+            # Dans ce cas on reconstruit le menu.
+            else:
+                if opts == set():
+                    df_display.at[i, "__options_date"] = dump_options_date(get_jours_possibles_from_activite_programmee(row))
+                    changed_idx.append(i)
+            # Sinon rien d'autre à faire
+            # car s'il s'agit d'une activité reprogrammée au jour dit ce jour était déjà dans le menu avant reprogrammation et doit y rester
+            # et sinon ce jour est déjà dans le menu et doit y rester aussi pour que le déploiement dudit menu n'oblige pas à changer de jour.
+        
+        else:
+
+            # si le jour n'était pas présent ET que la règle ne le concerne pas, on peut sauter
+            # (mais on doit tout de même appeler la règle si tu veux ajouter quand c'est possible)
+            allowed = est_jour_possible(df, activites_programmees, i, int(jour))
+
+            # remove si plus possible
+            if not allowed and jour in opts:
+                opts.remove(jour)
+                if len(opts) == 1 and '' in opts:
+                    opts = set() # un menu ne doit pas avoir un seul élément vide
+                df_display.at[i, "__options_date"] = dump_options_date(opts)
                 changed_idx.append(i)
-            continue
 
-        # si le jour n'était pas présent ET que la règle ne le concerne pas, on peut sauter
-        # (mais on doit tout de même appeler la règle si tu veux ajouter quand c'est possible)
-        allowed = est_jour_possible(df, activites_programmees, i, int(jour))
-
-        # remove si plus possible
-        if not allowed and jour in opts:
-            opts.remove(jour)
-            if len(opts) == 1 and '' in opts:
-                opts = set() # un menu ne doit pas avoir un seul élément vide
-            df_display.at[i, "__options_date"] = dump_options_date(opts)
-            changed_idx.append(i)
-
-        # add si maintenant possible
-        elif allowed and jour not in opts:
-            opts.add(jour)
-            if len(opts) == 1:
-                opts.add('') # il faut un item vide dans un menu avec des jours valides pour permettre la déprogrammation
-            df_display.at[i, "__options_date"] = dump_options_date(opts)
-            changed_idx.append(i)
+            # add si maintenant possible
+            elif allowed and jour not in opts:
+                opts.add(jour)
+                if len(opts) == 1:
+                    opts.add('') # il faut un item vide dans un menu avec des jours valides pour permettre la déprogrammation
+                df_display.at[i, "__options_date"] = dump_options_date(opts)
+                changed_idx.append(i)
 
     return changed_idx
 
@@ -4292,7 +4295,7 @@ def get_jours_possibles_from_activite_programmee(row: pd.Series):
             jours = [jour_courant] + jours + [""] if jours != [] else [jour_courant] + [""]
         else: 
             jours = []
-    return [str(j) for j in jours] if isinstance(jours, list) else []
+    return sorted([str(j) for j in jours]) if isinstance(jours, list) else []
 
 # idem get_jours_possibles avec en paramètre une row d'activité non programmée contenant en colonne __index l'index du df de base
 # Les paramètres df et activites_programmees de get_jours_possibles sont supposés etre stockés dans st.session_state
