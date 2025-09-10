@@ -1090,10 +1090,12 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
             gb.configure_column(
                 col,
                 filter=False,
-                resize=False,
-                autosize=False,
+                resizable=False,
+                width=width,
+                minWidth=width,
+                maxWidth=width,
+                flex=0,
                 suppressSizeToFit=True,
-                width=width
             )
 
     # header names
@@ -4505,7 +4507,7 @@ def afficher_creneaux_disponibles():
                 "Créneaux disponibles", 
                 creneaux_disponibles, 
                 header_names={"Debut": "Début"},
-                # fixed_columns={"Date": 50, "Début": 55, "Fin": 55}, 
+                fixed_columns={"Date": 55, "Debut": 55, "Fin": 55}, 
                 hide=["__type_creneau", "__index", "__uuid"], 
                 key="creneaux_disponibles", 
                 hide_label=True, 
@@ -4550,7 +4552,7 @@ def afficher_creneaux_disponibles():
                         "Activités programmables", 
                         proposables, 
                         header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité"},
-                        # fixed_columns={"Date": 50, "Début": 55, "Fin": 55, "Durée": 55}, 
+                        fixed_columns={"Date": 55, "Debut": 55, "Fin": 55, "Duree": 55}, 
                         hide=["__type_activite", "__index", "__uuid"], 
                         key="activites_programmables_dans_creneau_selectionne", 
                         hide_label=True, 
