@@ -2643,6 +2643,13 @@ def init_activites_programmees_grid_options(df_display):
         onGridReady=JS_SELECT_DESELECT_ONCE,
     )
 
+    # Mise en page de la grille
+    gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
+        function(params) {{
+            params.api.sizeColumnsToFit();
+        }}
+    """))
+
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
     return grid_options
@@ -3090,6 +3097,13 @@ def init_activites_non_programmees_grid_options(df_display):
         columnTypes={"textColumn": {}},  # évite l'erreur #36
         onGridReady=JS_SELECT_DESELECT_ONCE,
     )
+
+    # Mise en page de la grille
+    gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
+        function(params) {{
+            params.api.sizeColumnsToFit();
+        }}
+    """))
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
@@ -4561,7 +4575,7 @@ def afficher_creneaux_disponibles():
                 creneaux_disponibles, 
                 header_names={"Debut": "Début"},
                 fixed_columns={"Date": 55, "Debut": 55, "Fin": 55}, 
-                hide=["__type_creneau", "__index", "__uuid"], 
+                hide=["__type_creneau", "__index", "__uuid", "__desel_ver", "__desel_id", "__sel_ver", "__sel_id"], 
                 key="creneaux_disponibles", 
                 hide_label=True, 
                 colorisation=True)
@@ -4615,7 +4629,7 @@ def afficher_creneaux_disponibles():
                         proposables, 
                         header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité"},
                         fixed_columns={"Date": 55, "Debut": 55, "Fin": 55, "Duree": 55}, 
-                        hide=["__type_activite", "__index", "__uuid"], 
+                        hide=["__type_activite", "__index", "__uuid", "__desel_ver", "__desel_id", "__sel_ver", "__sel_id"], 
                         key="activites_programmables_dans_creneau_selectionne", 
                         hide_label=True, 
                         background_color=COULEUR_ACTIVITE_PROGRAMMABLE)
