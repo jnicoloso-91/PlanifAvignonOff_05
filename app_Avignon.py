@@ -27,18 +27,23 @@ from urllib.parse import quote_plus
 from time import monotonic
 import copy
 import streamlit.components.v1 as components
+import inspect
 # import pkg_resources
 
 # Debug
 DEBUG_TRACE_MODE = False
-DEBUG_TRACE_TYPE = ["all"]
+DEBUG_TRACE_TYPE = ["main", "event", "demander_selection"]  # "all" ou liste des types de trace / noms de fonctions à afficher
 
 def debug_trace(trace, trace_type=["all"]):
+    def get_caller_name():
+        return inspect.stack()[2].function
     logger = logging.getLogger("_app")
+    caller_name = get_caller_name()
     trace_type_requested = [s.lower() for s in DEBUG_TRACE_TYPE]
     trace_type = [s.lower() for s in trace_type]
+    trace_type.append(caller_name)
     if DEBUG_TRACE_MODE and ("all" in trace_type_requested or any(x in trace_type_requested for x in trace_type)):
-        logger.debug(trace) 
+        logger.debug(f"{caller_name}: {trace}") 
 
 # Variables globales
 BASE_DATE = datetime.date(2000, 1, 1)
@@ -119,17 +124,15 @@ PALETTE_COULEURS_JOURS = {
 # Couleur des activités programmables
 COULEUR_ACTIVITE_PROGRAMMABLE = "#d9fcd9"  # ("#ccffcc" autre vert clair  "#cfe2f3" bleu clair)
 
-CRITICAL_VARS = [
-    "periode_a_programmer_debut",
-    "periode_a_programmer_fin",
-    "MARGE",
-    "DUREE_REPAS",
-    "DUREE_CAFE"]
-    # "sidebar_menus"]
-
 DEBOUNCE_S = 0.30
 
-# JsCode pour gérer la sélection/déselection programmée de lignes dans AgGrid
+# JsCode chargé de gérer la sélection/déselection programmée de lignes dans AgGrid.
+# Il exploite les colonnes de travail __sel_id, __sel_ver, __desel_id, __desel_ver:
+# __sel_id = id de la ligne à sélectionner (None si pas de contrainte de sélection)
+# __sel_ver = version de la demande de sélection (doit être incrémentée à chaque demande)
+# __desel_id = id de la ligne devant rester visible lors de la déselection (None si aucune contrainte de visibilité lors de la désélection)
+# __desel_ver = version de la demande de désélection (doit être incrémentée à chaque demande)
+# Ces colonnes sont configurées par les fonctions utilisateur demander_selection() et demander_deselection()
 JS_SELECT_DESELECT_ONCE = JsCode("""
 function(p){
   var api=p&&p.api; if(!api) return;
@@ -896,10 +899,10 @@ def est_heure_valide(val):
     
 # Renvoie val sous la forme "1h00" si timedelta, "" si None, str(val).strip() sinon
 def duree_str(val):
-    from datetime import datetime, time
+    from datetime import timedelta
     if pd.isna(val):
         return ""
-    if isinstance(val, pd.Timedelta):
+    if isinstance(val, (timedelta, pd.Timedelta)):
         total_minutes = minutes(val)
         h = total_minutes // 60
         m = total_minutes % 60
@@ -908,7 +911,7 @@ def duree_str(val):
 
 # Renvoie un timedelta si h est timedelta, datetime, time, str de la forme 1h00, 1:00 ou 1:00:00, None dans les autres cas
 def duree_parse(d):
-    from datetime import datetime, time
+    from datetime import datetime, time, timedelta
 
     if pd.isna(d) or str(d).strip() == "":
         return pd.Timedelta(0)
@@ -1007,10 +1010,10 @@ def image_to_base64(path):
 
 # Ajoute les colonnes non présentes du df dans une row (hors colonnes de travail ["Debut_dt", "Duree_dt", "__uuid"])
 def completer_ligne(ligne_partielle):
-    colonnes_df_utiles = [col for col in st.session_state.df if col not in ["Debut_dt", "Duree_dt", "__uuid"]]
+    colonnes_df_utiles = [col for col in st.session_state.df if col not in ["Debut_dt", "Duree_dt"]]
     colonnes_supplementaires = [col for col in ligne_partielle.keys() if col not in colonnes_df_utiles]
     colonnes_finales = colonnes_df_utiles + colonnes_supplementaires
-    return {col: ligne_partielle.get(col, None) for col in colonnes_finales}
+    return {col: ligne_partielle.get(col, np.nan) for col in colonnes_finales}
 
 # Selectbox avec items non editables (contrairement à st.selectbox())
 def selectbox_aggrid(label, options, key="aggrid_selectbox", height=100):
@@ -1069,12 +1072,12 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
     max_height = 150
     height = min(nb_lignes * ligne_px + 50, max_height)
 
-    # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
+    # Initialisation du compteur qui permet de forcer le réaffichage de l'aggrid après une suppression de ligne 
     session_state_key_counter = key + "_key_counter"
     if session_state_key_counter not in st.session_state:
         st.session_state[session_state_key_counter] = 0
     
-    # Initialisation du flag permettant de savoir si l'on est en mode réaffichage complet de l'aggrid
+    # Initialisation du flag indiquant si l'on est en mode réaffichage complet de l'aggrid
     session_state_forcer_reaffichage = key + "_forcer_reaffichage"
     if session_state_forcer_reaffichage not in st.session_state:
         st.session_state[session_state_forcer_reaffichage] = False
@@ -1144,52 +1147,69 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
         )
 
     # Configuration de la sélection
-    pre_selected_row = 0  # par défaut
+    current_selected_row_idx = None
+    current_selected_row_pos = 0  
     session_state_selected_row = key + "_selected_row"
     if session_state_selected_row in st.session_state and st.session_state[session_state_selected_row] is not None:
-        selected_row_courante = st.session_state[session_state_selected_row]
-        position = trouver_position_ligne(df, selected_row_courante.to_dict())
-        pre_selected_row = position if position is not None else pre_selected_row
-    gb.configure_selection(selection_mode="single", use_checkbox=False) # , pre_selected_rows=[pre_selected_row]) ) -> inutile en mode immutableData
+        current_selected_row = st.session_state[session_state_selected_row]
+        current_selected_row_idx, position = trouver_ligne(df, current_selected_row.to_dict())
+        current_selected_row_pos = position if position is not None else current_selected_row_pos
+    gb.configure_selection(selection_mode="single", use_checkbox=False) #, pre_selected_rows=[current_selected_row_pos]) 
 
-    # Configuration de la sélection par JsCode rendu nécessaire par le mode immutableData, 
-    # car danc ce cas le paramètre pre_selected_row du gb.configure_selection est inefficient
-    if st.session_state[session_state_forcer_reaffichage] == True:
-        target_idx = str(st.session_state[session_state_selected_row])
-        js_select_by_key = JsCode(f"""
-            function selectRowByKey(params) {{
-                var wanted = {json.dumps(target_idx)};
-                if (wanted === null) return;
-                var api = params.api, found = null;
-                api.forEachNodeAfterFilterAndSort(function(node) {{
-                    if (String(node.data["__index"]) === String(wanted)) {{
-                    found = node;
-                    }}
-                }});
-                if (found) {{
-                    api.deselectAll();
-                    api.ensureIndexVisible(found.rowIndex, 'middle');
-                    found.setSelected(true);
-                }}
-            }}
-        """)
-        gb.configure_grid_options(
-            onRowDataUpdated=js_select_by_key,
-        )
-        
-    # Retaillage auto des largeurs de colonnes
-    gb.configure_grid_options(onGridReady=JsCode(f"""
+    # Gestion des sélections / désélections demandées via demander_selection() demander_deselection()
+    # Utilise le JS code JS_SELECT_DESELECT_ONCE lequel exploite les colonnes de travail __sel_id, __sel_ver, __desel_id, __desel_ver
+    # __sel_id = id de la ligne à sélectionner (None si pas de contrainte de sélection)
+    # __sel_ver = version de la demande de sélection (doit être incrémentée à chaque demande)
+    # __desel_id = id de la ligne devant rester visible lors de la déselection (None si aucune contrainte de visibilité lors de la désélection)
+    # __desel_ver = version de la demande de désélection (doit être incrémentée à chaque demande)
+    sel_request_key = key + "_sel_request"
+    sel_request = st.session_state.get(sel_request_key)
+    if "__desel_ver" not in df.columns:
+        df["__desel_ver"] = sel_request["desel"]["ver"] if sel_request is not None else 0
+    if "__desel_id" not in df.columns:
+        df["__desel_id"] =  get_uuid(df, sel_request["desel"]["id"]) if sel_request is not None else None
+    if "__sel_ver" not in df.columns:
+        df["__sel_ver"] = sel_request["sel"]["ver"] if sel_request is not None else 0
+    if "__sel_id" not in df.columns:
+        df["__sel_id"] =  get_uuid(df, sel_request["sel"]["id"]) if sel_request is not None else None
+        row = None
+    
+    row = None
+    selection_demandee = False
+    if sel_request is not None and sel_request["sel"]["pending"]:
+        if sel_request["sel"]["id"] is not None:
+            reqid = sel_request["sel"]["id"]
+            # debug_trace(f"{key}: Traitement de la requête de sélection {sel_request["sel"]["id"]} {sel_request["sel"]["ver"]}")
+            df["__sel_id"] = get_uuid(df, reqid)
+            df["__sel_ver"] = sel_request["sel"]["ver"]
+            if reqid in df.index: 
+                row = df.loc[reqid]
+                # debug_trace(f"{key}: row = df.loc[{reqid}]")
+            selection_demandee = True
+        st.session_state[sel_request_key]["sel"]["pending"] = False
+
+    deselection_demandee = False
+    if sel_request is not None and sel_request["desel"]["pending"]:
+        # debug_trace(f"{key}: Traitement de la requête de desélection {sel_request["desel"]["ver"]}")
+        df["__desel_ver"] = sel_request["desel"]["ver"]
+        df["__desel_id"] = get_uuid(df, sel_request["desel"]["id"]) # id visible après déselection, None si pas de contrainte de visibilité
+        df["__sel_id"] = None
+        deselection_demandee = True
+        st.session_state[sel_request_key]["desel"]["pending"] = False
+
+    gb.configure_grid_options(
+        onGridReady=JS_SELECT_DESELECT_ONCE,
+    )
+    
+    # Mise en page de la grille
+    gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
         function(params) {{
             params.api.sizeColumnsToFit();
-            params.api.ensureIndexVisible({pre_selected_row}, 'middle');
-            params.api.getDisplayedRowAtIndex({pre_selected_row}).setSelected(true);
+            params.api.ensureIndexVisible({current_selected_row_pos}, 'middle');
         }}
     """))
 
     # Permet de gérer les modifications de df_display dans avoir à redessiner l'aggrid complètement par changement de key
-    if "__index" not in df.columns:
-        df["__index"] = df.index
-        gb.configure_column("__index", hide=True)
     gb.configure_grid_options(
         immutableData=True,
         deltaRowDataMode=True,
@@ -1212,23 +1232,24 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
     )
 
     selected_rows = response["selected_rows"]
-    if st.session_state[session_state_forcer_reaffichage] == True:
-        row = df.iloc[pre_selected_row]
-    else:
+    if not selection_demandee:
         if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
+            # debug_trace("{key}: row = selected_rows.iloc[0]")
             row = selected_rows.iloc[0] 
         elif isinstance(selected_rows, list) and len(selected_rows) > 0:
+            # debug_trace("{key}: row = selected_rows[0]")
             row = selected_rows[0]
-        else: 
-            row = df.iloc[pre_selected_row]
-    st.session_state[session_state_forcer_reaffichage] = False
+        else:
+            row = df.iloc[current_selected_row_pos]
 
     st.session_state[session_state_selected_row] = row
+
+    # debug_trace(f"{key} : selected_row {st.session_state[session_state_selected_row].to_dict()['Debut'] if st.session_state[session_state_selected_row] is not None else None} à {st.session_state[session_state_selected_row].to_dict()['Fin'] if st.session_state[session_state_selected_row] is not None else None}")
 
     return row
 
 # Renvoie le numero de ligne d'un df qui matche des valeurs
-def trouver_position_ligne(df, valeurs):
+def trouver_ligne(df, valeurs):
     for i, row in df.iterrows():
         match = True
         for col, val in valeurs.items():
@@ -1237,8 +1258,8 @@ def trouver_position_ligne(df, valeurs):
                     match = False
                     break
         if match:
-            return df.index.get_loc(i)
-    return None
+            return i, df.index.get_loc(i)
+    return None, None
 
 # Renvoie l'index de la ligne la plus proche dans un df_display d'aggrid
 # Le df_display est supposé contenir dans la colonne __index l'index du df de base
@@ -1387,13 +1408,13 @@ def make_grid_key_suffix(df):
     sig = hashlib.sha1(json.dumps(ids_set).encode()).hexdigest()
     return sig
 
-# renvoie l'uuid stocké dans la colonne __uuid
-def get_uuid(df_display, idx):
-    if len(df_display) == 0:
+# renvoie l'uuid stocké dans la colonne __uuid d'un df à partir de l'index de ligne (idx)
+def get_uuid(df, idx):
+    if len(df) == 0:
         return None
     try:
-        if idx in df_display.index:
-            return str(df_display.loc[idx, "__uuid"])   # idx est un label d’index
+        if idx in df.index:
+            return str(df.loc[idx, "__uuid"])   # idx est un label d’index
         else:
             return None
     except KeyError:
@@ -2505,7 +2526,7 @@ def show_dialog_programmer_activite_non_programmee(df, index_df, df_display, jou
 # Demande de sélection d'une ligne sur une grille
 def demander_selection(grid_name: str, target_id: str | None, deselect=None, visible_id: str | None=None):
     if grid_name is not None:
-        debug_trace(f"demander_selection {grid_name} {target_id} {st.session_state.df.loc[target_id]['Activite'] if target_id in st.session_state.df.index else ''}")
+        debug_trace(f"{grid_name} {target_id}")
         k = f"{grid_name}_sel_request"
         st.session_state.setdefault(k, copy.deepcopy(SEL_REQUEST_DEFAUT))
         st.session_state[k]["sel"]["ver"] += 1
@@ -2516,7 +2537,7 @@ def demander_selection(grid_name: str, target_id: str | None, deselect=None, vis
 # Demande de désélection de la ligne sélectionnée sur une grille
 def demander_deselection(grid_name: str, visible_id: str | None=None):
     if grid_name is not None:
-        debug_trace(f"demander_deselection {grid_name}")
+        debug_trace(f"{grid_name}")
         k = f"{grid_name}_sel_request"
         st.session_state.setdefault(k, copy.deepcopy(SEL_REQUEST_DEFAUT))
         st.session_state[k]["desel"]["ver"] += 1
@@ -2652,24 +2673,30 @@ def afficher_activites_programmees():
     # Initialisation de la variable d'état contenant la requête de selection / déselection
     st.session_state.setdefault("activites_programmees_sel_request", copy.deepcopy(SEL_REQUEST_DEFAUT))
    
+    # Gestion des sélections / désélections demandées via demander_selection() demander_deselection()
+    # Utilise le JS code JS_SELECT_DESELECT_ONCE lequel exploite les colonnes de travail __sel_id, __sel_ver, __desel_id, __desel_ver
+    # __sel_id = id de la ligne à sélectionner (None si pas de contrainte de sélection)
+    # __sel_ver = version de la demande de sélection (doit être incrémentée à chaque demande)
+    # __desel_id = id de la ligne devant rester visible lors de la déselection (None si aucune contrainte de visibilité lors de la désélection)
+    # __desel_ver = version de la demande de désélection (doit être incrémentée à chaque demande)
     row = None
     selection_demandee = False
     sel_request = st.session_state.get("activites_programmees_sel_request")
     if sel_request["sel"]["pending"]:
         if sel_request["sel"]["id"] is not None:
             reqid = sel_request["sel"]["id"]
-            # debug_trace(f"PROG ________________traitement de la requête de sélection {sel_request["sel"]["id"]} {sel_request["sel"]["ver"]}")
+            # debug_trace(f"Traitement de la requête de sélection {sel_request["sel"]["id"]} {sel_request["sel"]["ver"]}")
             df_display["__sel_id"] = get_uuid(df_display, reqid)
             df_display["__sel_ver"] = sel_request["sel"]["ver"]
             if reqid in df_display.index: 
                 row = df_display.loc[reqid]
-                # debug_trace(f"PROG row = df_display.loc[{reqid}]")
+                # debug_trace(f"row = df_display.loc[{reqid}]")
             selection_demandee = True
         st.session_state.activites_programmees_sel_request["sel"]["pending"] = False
 
     deselection_demandee = False
     if sel_request["desel"]["pending"]:
-        # debug_trace(f"PROG ________________traitement de la requête de desélection {sel_request["desel"]["ver"]}")
+        # debug_trace(f"Traitement de la requête de desélection {sel_request["desel"]["ver"]}")
         df_display["__desel_ver"] = sel_request["desel"]["ver"]
         df_display["__desel_id"] = get_uuid(df_display, sel_request["desel"]["id"]) # id visible après déselection, None si pas de contrainte de visibilité
         df_display["__sel_id"] = None
@@ -2677,7 +2704,7 @@ def afficher_activites_programmees():
         st.session_state.activites_programmees_sel_request["desel"]["pending"] = False
         
     # if len(df_display) > 0:
-    #     debug_trace(f"PROG ________________df_display['__sel_id'] {df_display.iloc[0]["__sel_id"]} df_display['__sel_ver'] {df_display.iloc[0]["__sel_ver"]} df_display['__desel_ver'] {df_display.iloc[0]["__desel_ver"]}")
+    #     debug_trace(f"df_display['__sel_id'] {df_display.iloc[0]["__sel_id"]} df_display['__sel_ver'] {df_display.iloc[0]["__sel_ver"]} df_display['__desel_ver'] {df_display.iloc[0]["__desel_ver"]}")
 
     grid_options = init_activites_programmees_grid_options(df_display)
 
@@ -2696,7 +2723,7 @@ def afficher_activites_programmees():
         event_data = response.get("event_data")
         event_type = event_data["type"] if isinstance(event_data, dict) else None
 
-        debug_trace(f"PROG {event_type}", trace_type=["gen", "event"])
+        debug_trace(f"{event_type}", trace_type=["gen", "event"])
 
         # Pas d'event aggrid à traiter si event_type is None (i.e. le script python est appelé pour autre chose qu'un event aggrid)
         if event_type is None:
@@ -2712,10 +2739,10 @@ def afficher_activites_programmees():
         selected_rows = response["selected_rows"]
         if not selection_demandee:
             if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
-                # debug_trace("PROG row = selected_rows.iloc[0]")
+                # debug_trace("row = selected_rows.iloc[0]")
                 row = selected_rows.iloc[0] 
             elif isinstance(selected_rows, list) and len(selected_rows) > 0:
-                # debug_trace("PROG row = selected_rows[0]")
+                # debug_trace("row = selected_rows[0]")
                 row = selected_rows[0]
 
         # 🟡 Traitement si ligne sélectionnée et index correspondant non vide
@@ -2727,9 +2754,9 @@ def afficher_activites_programmees():
             # Evènement de type "selectionChanged" 
             if event_type == "selectionChanged":
                 if index_df != st.session_state.activites_programmees_sel_request["sel"]["id"] and not deselection_demandee:
-                    # debug_trace(f"PROG ***activites_programmees_sel_request[id] de  {st.session_state.activites_programmees_sel_request["sel"]["id"]} à {index_df}")
+                    # debug_trace(f"***activites_programmees_sel_request[id] de {st.session_state.activites_programmees_sel_request["sel"]["id"]} à {index_df}")
                     st.session_state.activites_programmees_sel_request["sel"]["id"] = index_df
-                    # debug_trace("PROG ***demander_deselection activites_non_programmees")
+                    # debug_trace(f"***demander_deselection activites_non_programmees")
                     demander_deselection("activites_non_programmees")
                     
                     # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
@@ -2824,7 +2851,7 @@ def activites_programmees_deprogrammer(idx):
         }
     )
 
-    debug_trace(f"Début activites_programmees_deprogrammer {idx}")
+    debug_trace(f"Début {idx}")
 
     st.session_state.forcer_menu_activites_non_programmees = True
     bd_deprogrammer_activite_programmee(idx)
@@ -2836,7 +2863,7 @@ def activites_programmees_deprogrammer(idx):
     forcer_reaffichage_df("creneaux_disponibles")
     sauvegarder_row_ds_gsheet(idx)
 
-    debug_trace(f"Fin activites_programmees_deprogrammer {idx}")
+    debug_trace(f"Fin {idx}")
     del st.session_state["activites_programmees_deprogrammer_cmd"]
 
 # Section critique pour la reprogrammation d'une activité programmée.
@@ -2855,7 +2882,7 @@ def activites_programmees_reprogrammer(idx, jour):
         }
     )
 
-    debug_trace(f"Début activites_programmees_reprogrammer {idx} {jour}")
+    debug_trace(f"Début {idx} {jour}")
 
     bd_modifier_cellule(idx, "Date", jour)
 
@@ -2865,7 +2892,7 @@ def activites_programmees_reprogrammer(idx, jour):
 
     sauvegarder_row_ds_gsheet(idx)
 
-    debug_trace(f"Fin activites_programmees_reprogrammer {idx} {jour}")
+    debug_trace(f"Fin {idx} {jour}")
     del st.session_state["activites_programmees_reprogrammer_cmd"]
 
 # Section critique pour la modification de cellules d'une activité programmée.
@@ -2885,7 +2912,7 @@ def activites_programmees_modifier_cellule(idx, col, val):
         }
     )
 
-    debug_trace(f"Début activites_programmees_modifier_cellule {idx} {col} {val}")
+    debug_trace(f"Début {idx} {col} {val}")
 
     erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
 
@@ -2899,7 +2926,7 @@ def activites_programmees_modifier_cellule(idx, col, val):
     else:
         st.session_state.aggrid_activites_programmees_erreur = erreur
 
-    debug_trace(f"Fin activites_programmees_modifier_cellule {idx} {col} {val}")
+    debug_trace(f"Fin {idx} {col} {val}")
     del st.session_state["activites_programmees_modifier_cellule_cmd"]
 
 def reprogrammation_request_set(idx, jour):
@@ -2933,7 +2960,7 @@ def menu_activites_programmees(index_df):
     afficher_nom_activite(df, index_df, nom_activite)
 
     # Affichage du contrôle recherche sur le Web
-    afficher_bouton_web(nom_activite, disabled=boutons_disabled or est_pause_str(nom_activite))
+    afficher_bouton_web(nom_activite, disabled=boutons_disabled or est_nom_pause(nom_activite))
 
     # Affichage du contrôle recherche itinéraire
     afficher_bouton_itineraire(df.loc[index_df, "Lieu"] if pd.notna(index_df) and len(df) > 0 else "")
@@ -2949,7 +2976,7 @@ def menu_activites_programmees(index_df):
         st.rerun()
 
     # Affichage contrôle Déprogrammer
-    if st.button(LABEL_BOUTON_DEPROGRAMMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled or activite_reservee, key="menu_activite_deprogrammer"):
+    if st.button(LABEL_BOUTON_DEPROGRAMMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled or activite_reservee or est_nom_pause(nom_activite), key="menu_activite_deprogrammer"):
         undo_redo_save()
         demander_selection("activites_non_programmees", index_df, deselect="activites_programmees")
         st.session_state.forcer_menu_activites_non_programmees = True
@@ -2959,7 +2986,7 @@ def menu_activites_programmees(index_df):
         st.rerun()
 
     # Affichage contrôle Reprogrammer
-    if st.button(LABEL_BOUTON_REPROGRAMMER, use_container_width=True, disabled=boutons_disabled or activite_reservee or not jours_possibles, key="menu_activite_programmer"):
+    if st.button(LABEL_BOUTON_REPROGRAMMER, use_container_width=True, disabled=boutons_disabled or activite_reservee or est_nom_pause(nom_activite) or not jours_possibles, key="menu_activite_programmer"):
         if "activites_programmees_jour_choisi" in st.session_state:
             jour_choisi = st.session_state.activites_programmees_jour_choisi
             undo_redo_save()
@@ -3097,24 +3124,30 @@ def afficher_activites_non_programmees():
     # Initialisation de la variable d'état contenant la requête de selection / déselection
     st.session_state.setdefault("activites_non_programmees_sel_request", copy.deepcopy(SEL_REQUEST_DEFAUT))
 
+    # Gestion des sélections / désélections demandées via demander_selection() demander_deselection()
+    # Utilise le JS code JS_SELECT_DESELECT_ONCE lequel exploite les colonnes de travail __sel_id, __sel_ver, __desel_id, __desel_ver
+    # __sel_id = id de la ligne à sélectionner (None si pas de contrainte de sélection)
+    # __sel_ver = version de la demande de sélection (doit être incrémentée à chaque demande)
+    # __desel_id = id de la ligne devant rester visible lors de la déselection (None si aucune contrainte de visibilité lors de la désélection)
+    # __desel_ver = version de la demande de désélection (doit être incrémentée à chaque demande)
     row = None
     selection_demandee = False
     sel_request = st.session_state.get("activites_non_programmees_sel_request")
     if sel_request["sel"]["pending"]:
         if sel_request["sel"]["id"] is not None:
             reqid = sel_request["sel"]["id"]
-            # debug_trace(f"NONPROG ________________traitement de la requête de sélection {sel_request["sel"]["id"]} {sel_request["sel"]["ver"]}")
+            # debug_trace(f"Traitement de la requête de sélection {sel_request["sel"]["id"]} {sel_request["sel"]["ver"]}")
             df_display["__sel_id"] = get_uuid(df_display, reqid)
             df_display["__sel_ver"] = sel_request["sel"]["ver"]
             if reqid in df_display.index: 
                 row = df_display.loc[reqid]
-                # debug_trace(f"NONPROG row = df_display.loc[{reqid}]")
+                # debug_trace(f"row = df_display.loc[{reqid}]")
             selection_demandee = True
         st.session_state.activites_non_programmees_sel_request["sel"]["pending"] = False
 
     deselection_demandee = False
     if sel_request["desel"]["pending"]:
-        # debug_trace(f"NONPROG ________________traitement de la requête de desélection {sel_request["desel"]["ver"]}")
+        # debug_trace(f"Traitement de la requête de desélection {sel_request["desel"]["ver"]}")
         df_display["__desel_ver"] = sel_request["desel"]["ver"]
         df_display["__desel_id"] = get_uuid(df_display, sel_request["desel"]["id"]) # id visible après déselection, None si pas de contrainte de visibilité
         df_display["__sel_id"] = None
@@ -3122,7 +3155,7 @@ def afficher_activites_non_programmees():
         st.session_state.activites_non_programmees_sel_request["desel"]["pending"] = False
 
     # if len(df_display) > 0:
-    #     debug_trace(f"NONPROG ________________df_display['__sel_id'] {df_display.iloc[0]["__sel_id"]} df_display['__sel_ver'] {df_display.iloc[0]["__sel_ver"]} df_display['__desel_ver'] {df_display.iloc[0]["__desel_ver"]}")
+    #     debug_trace(f"df_display['__sel_id'] {df_display.iloc[0]["__sel_id"]} df_display['__sel_ver'] {df_display.iloc[0]["__sel_ver"]} df_display['__desel_ver'] {df_display.iloc[0]["__desel_ver"]}")
 
     grid_options = init_activites_non_programmees_grid_options(df_display)
 
@@ -3141,7 +3174,7 @@ def afficher_activites_non_programmees():
         event_data = response.get("event_data")
         event_type = event_data["type"] if isinstance(event_data, dict) else None
 
-        debug_trace(f"NONPROG {event_type}", trace_type=["gen", "event"])
+        debug_trace(f"{event_type}", trace_type=["gen", "event"])
 
         # Pas d'event aggrid à traiter si event_type is None (i.e. le script python est appelé pour autre chose qu'un event aggrid)
         if event_type is None:
@@ -3158,10 +3191,10 @@ def afficher_activites_non_programmees():
         row = None
         if not selection_demandee:
             if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
-                # debug_trace("NONPROG row = selected_rows.iloc[0]")
+                # debug_trace("row = selected_rows.iloc[0]")
                 row = selected_rows.iloc[0] 
             elif isinstance(selected_rows, list) and len(selected_rows) > 0:
-                # debug_trace("NONPROG row = selected_rows[0]")
+                # debug_trace("row = selected_rows[0]")
                 row = selected_rows[0]
 
         # 🟡 Traitement si ligne sélectionnée et index correspondant non vide
@@ -3173,9 +3206,9 @@ def afficher_activites_non_programmees():
             # Evènement de type "selectionChanged"
             if event_type == "selectionChanged":
                 if index_df != st.session_state.activites_non_programmees_sel_request["sel"]["id"] and not deselection_demandee:
-                    # debug_trace(f"NONPROG ***activites_non_programmees_sel_request[id] de  {st.session_state.activites_non_programmees_sel_request["sel"]["id"]} à {index_df}")
+                    # debug_trace(f"***activites_non_programmees_sel_request[id] de {st.session_state.activites_non_programmees_sel_request["sel"]["id"]} à {index_df}")
                     st.session_state.activites_non_programmees_sel_request["sel"]["id"] = index_df
-                    # debug_trace("NONPROG ***demander_deselection activites_programmees")
+                    # debug_trace(f"***demander_deselection activites_programmees")
                     demander_deselection("activites_programmees")
 
                     # time.sleep(0.05) # Hack défensif pour éviter les erreurs Connection error Failed to process a Websocket message Cached ForwardMsg MISS
@@ -3252,7 +3285,7 @@ def activites_non_programmees_programmer(idx, jour):
         }
     )
 
-    debug_trace(f"Début activites_non_programmees_programmer {idx} {jour}")
+    debug_trace(f"Début {idx} {jour}")
 
     st.session_state.forcer_menu_activites_programmees = True
     bd_modifier_cellule(idx, "Date", int(jour))
@@ -3264,7 +3297,7 @@ def activites_non_programmees_programmer(idx, jour):
     forcer_reaffichage_df("creneaux_disponibles")
     sauvegarder_row_ds_gsheet(idx)
 
-    debug_trace(f"Fin activites_non_programmees_programmer {idx} {jour}")
+    debug_trace(f"Fin {idx} {jour}")
     del st.session_state["activites_non_programmees_programmer_cmd"]
 
 # Section critique pour la modification de cellules d'une activité non programmée.
@@ -3284,9 +3317,9 @@ def activites_non_programmees_modifier_cellule(idx, col, val):
         }
     )
 
-    debug_trace(f"Début activites_non_programmees_modifier_cellule {idx} {col} {val}")
+    debug_trace(f"Début {idx} {col} {val}")
 
-    erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
+    erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_non_programmees_modifier_cellule_cmd)
 
     # Workaround pour forcer le réaffichage de la grille.
     # Sinon figeage grille après modification de cellule.
@@ -3297,7 +3330,7 @@ def activites_non_programmees_modifier_cellule(idx, col, val):
     else:
         st.session_state.aggrid_activites_non_programmees_erreur = erreur
 
-    debug_trace(f"Fin activites_non_programmees_modifier_cellule {idx} {col} {val}")
+    debug_trace(f"Fin {idx} {col} {val}")
     del st.session_state["activites_non_programmees_modifier_cellule_cmd"]
 
 # Menu activité à afficher dans la sidebar si click dans aggrid d'activités non programmées         }
@@ -3315,7 +3348,7 @@ def menu_activites_non_programmees(index_df):
     afficher_nom_activite(df, index_df, nom_activite)
 
     # Affichage du contrôle recherche sur le Web
-    afficher_bouton_web(nom_activite, disabled=boutons_disabled or est_pause_str(nom_activite))
+    afficher_bouton_web(nom_activite, disabled=boutons_disabled or est_nom_pause(nom_activite))
 
     # Affichage du contrôle recherche itinéraire
     afficher_bouton_itineraire(df.loc[index_df, "Lieu"] if pd.notna(index_df) and len(df) > 0 else "")
@@ -3498,7 +3531,7 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=None):
     df = st.session_state.df
     valeur_courante = df.at[index, colonne]
     step = section_critique["step"] if section_critique is not None else 0
-    debug_trace(f"affecter_valeur_df step {step}")
+    debug_trace(f"step {step}")
     erreur = None
 
     if step == 0:
@@ -3855,14 +3888,40 @@ def get_activites_programmables_apres(df, activites_programmees, ligne_ref, trai
     return proposables
 
 # Renvoie les activités programmables sur une journée entière donc les activités qui ne sont pas relache ce jour
-def get_activites_programmables(date_ref):
+def get_activites_programmables_sur_journee_entiere(date_ref):
     proposables = []
+
     for _, row in st.session_state.activites_non_programmees.iterrows():
         if est_hors_relache(row["Relache"], date_ref):
             nouvelle_ligne = row.drop(labels=["Debut_dt", "Duree_dt"]).to_dict()
             nouvelle_ligne["__type_activite"] = "ActiviteExistante"
             nouvelle_ligne["__index"] = row.name
             proposables.append(nouvelle_ligne)
+    
+    h_dej = datetime.datetime.combine(BASE_DATE, datetime.time(12, 0))
+    type_repas = "déjeuner"
+    proposables.append(
+        completer_ligne({
+            "Debut": datetime.datetime.combine(BASE_DATE, datetime.time(12, 0)).strftime('%Hh%M'),
+            "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
+            "Duree": duree_str(st.session_state.DUREE_REPAS),
+            "Activite": f"Pause {type_repas}",
+            "__type_activite": type_repas,
+            "__uuid": str(uuid.uuid4()),
+        }))
+    
+    h_dej = datetime.datetime.combine(BASE_DATE, datetime.time(12, 0))
+    type_repas = "dîner"
+    proposables.append(
+        completer_ligne({
+            "Debut": datetime.datetime.combine(BASE_DATE, datetime.time(20, 0)).strftime('%Hh%M'),
+            "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
+            "Duree": duree_str(st.session_state.DUREE_REPAS),
+            "Activite": f"Pause {type_repas}",
+            "__type_activite": type_repas,
+            "__uuid": str(uuid.uuid4()),
+        }))
+    
     return proposables
 
 # Renvoie True s'il existe des activités programmables sur une journée entière donc des activités qui ne sont pas relache ce jour
@@ -3893,7 +3952,8 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                         "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
                         "Duree": duree_str(st.session_state.DUREE_REPAS),
                         "Activite": f"Pause {type_repas}",
-                        "__type_activite": type_repas
+                        "__type_activite": type_repas,
+                        "__uuid": str(uuid.uuid4()),
                     })
                     proposables.append(nouvelle_ligne)
             elif type_creneau == "Après": # Attention : dans ce cas fin_max est None si le créneau se termine apres 23h59
@@ -3906,7 +3966,8 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                         "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
                         "Duree": duree_str(st.session_state.DUREE_REPAS),
                         "Activite": f"Pause {type_repas}",
-                        "__type_activite": type_repas
+                        "__type_activite": type_repas,
+                        "__uuid": str(uuid.uuid4()),
                     })
                     proposables.append(nouvelle_ligne)
     
@@ -3925,7 +3986,8 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                             "Fin": (h_cafe + st.session_state.DUREE_CAFE).strftime('%Hh%M'),
                             "Duree": duree_str(st.session_state.DUREE_CAFE),
                             "Activite": f"Pause café",
-                            "__type_activite": "café"
+                            "__type_activite": "café",
+                            "__uuid": str(uuid.uuid4()),
                         })
                         proposables.append(nouvelle_ligne)
                 else: 
@@ -3937,7 +3999,8 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                             "Fin": (h_cafe + st.session_state.DUREE_CAFE).strftime('%Hh%M'),
                             "Duree": duree_str(st.session_state.DUREE_CAFE),
                             "Activite": "Pause café",
-                            "__type_activite": "café"
+                            "__type_activite": "café",
+                            "__uuid": str(uuid.uuid4()),
                         })
                         proposables.append(nouvelle_ligne)
             elif type_creneau == "Après": # Attention : dans ce cas fin_max est None si le créneau se termine apres 23h59
@@ -3952,7 +4015,8 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                             "Fin": (h_cafe + st.session_state.DUREE_CAFE).strftime('%Hh%M'),
                             "Duree": duree_str(st.session_state.DUREE_CAFE),
                             "Activite": "Pause café",
-                            "__type_activite": "café"
+                            "__type_activite": "café",
+                            "__uuid": str(uuid.uuid4()),
                         })
                         proposables.append(nouvelle_ligne)
                 else: 
@@ -3964,7 +4028,8 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                             "Fin": (h_cafe + st.session_state.DUREE_CAFE).strftime('%Hh%M'),
                             "Duree": duree_str(st.session_state.DUREE_CAFE),
                             "Activite": "Pause café",
-                            "__type_activite": "café"
+                            "__type_activite": "café",
+                            "__uuid": str(uuid.uuid4()),
                         })
                         proposables.append(nouvelle_ligne)
 
@@ -3994,7 +4059,7 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
     # Pause café
     ajouter_pause_cafe(proposables, debut_min, fin_max)
 
-def est_pause_str(val):
+def est_nom_pause(val):
     valeurs = val.split()
     if not valeurs:
         return False
@@ -4002,7 +4067,7 @@ def est_pause_str(val):
 
 def est_pause(ligne_ref):
     val = str(ligne_ref["Activite"]).strip()
-    return est_pause_str(val)
+    return est_nom_pause(val)
 
 def est_pause_cafe(ligne_ref):
     if not est_pause(ligne_ref):
@@ -4475,30 +4540,18 @@ def afficher_creneaux_disponibles():
     if df is None or len(df) <= 0:
         return
     
-    st.session_state.menu_creneaux_disponibles = {
-        "date": None,
-        "creneau": None,
-        "activite": None,
-    }
-
     creneaux_disponibles = st.session_state.get("creneaux_disponibles")
     if creneaux_disponibles is None or creneaux_disponibles.empty:
         return 
 
     if not creneaux_disponibles.empty:
+        proposables = []
         with st.expander("**Créneaux disponibles**", expanded=True):
 
             st.session_state.creneaux_disponibles_choix_activite = None
 
             # Gestion du flag de traitement des pauses
             traiter_pauses = st.checkbox("Tenir compte des pauses", value=st.session_state.get("traiter_pauses", False), key="traiter_pauses_cb", on_change=on_toggle_pauses)  
-            # if traiter_pauses != traiter_pauses_courant:
-            #     st.session_state.traiter_pauses = traiter_pauses
-            #     bd_maj_creneaux_disponibles()
-            #     forcer_reaffichage_df("creneaux_disponibles")
-            #     sauvegarder_param_ds_gsheet("traiter_pauses")
-            #     st.session_state.creneaux_disponibles_choix_activite = None
-            #     st.rerun()
 
             # Affichage de la grille des créneaux disponibles
             choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
@@ -4514,38 +4567,47 @@ def afficher_creneaux_disponibles():
                 colorisation=True)
 
             if choix_creneau is not None:
-                if choix_creneau_pred is not None and choix_creneau_pred.to_dict() != choix_creneau.to_dict():
-                    forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
                 type_creneau = choix_creneau["__type_creneau"]
                 idx = choix_creneau["__index"]
-
                 date_ref = int(choix_creneau["Date"]) # date_ref doit être en int !
                 activites_programmees = st.session_state.get("activites_programmees")
 
                 # Choix d'une activité à programmer dans le creneau choisi
-                if type_creneau == "Avant":
-                    try:
-                        ligne_ref = activites_programmees.loc[idx]
-                    except Exception as e:
-                        print(f"Erreur afficher_creneaux_disponibles : {e}")
-                        return
-                    proposables = get_activites_programmables_avant(df, activites_programmees, ligne_ref, traiter_pauses)
+                if choix_creneau_pred is not None and choix_creneau_pred.to_dict() != choix_creneau.to_dict():
+                    forcer_reaffichage_df("activites_programmables_dans_creneau_selectionne")
+                
+                if (choix_creneau_pred is not None and choix_creneau_pred.to_dict() != choix_creneau.to_dict()) or \
+                    "activites_proposables_dans_creneau_selectionne" not in st.session_state:
+                    if type_creneau == "Avant":
+                        try:
+                            ligne_ref = activites_programmees.loc[idx]
+                        except Exception as e:
+                            print(f"Erreur afficher_creneaux_disponibles : {e}")
+                            return
+                        proposables = get_activites_programmables_avant(df, activites_programmees, ligne_ref, traiter_pauses)
 
-                elif type_creneau == "Après":
-                    try:
-                        ligne_ref = activites_programmees.loc[idx]
-                    except Exception as e:
-                        print(f"Erreur afficher_creneaux_disponibles : {e}")
-                        return
-                    proposables = get_activites_programmables_apres(df, activites_programmees, ligne_ref, traiter_pauses)
+                    elif type_creneau == "Après":
+                        try:
+                            ligne_ref = activites_programmees.loc[idx]
+                        except Exception as e:
+                            print(f"Erreur afficher_creneaux_disponibles : {e}")
+                            return
+                        proposables = get_activites_programmables_apres(df, activites_programmees, ligne_ref, traiter_pauses)
 
-                elif type_creneau == "Journée":
-                    proposables = get_activites_programmables(date_ref)
+                    elif type_creneau == "Journée":
+                        proposables = get_activites_programmables_sur_journee_entiere(date_ref)
 
-        if proposables:
-            with st.expander("**Activités programmables**", expanded=True):
                     proposables = pd.DataFrame(proposables).sort_values(by=["Debut"], ascending=[True]) if proposables else pd.DataFrame(proposables)
                     proposables["Date"] = choix_creneau["Date"] # ou str(date_ref) car col Date au format string dans les df_display !
+                    proposables["__index"] = proposables.index
+
+                    st.session_state.activites_proposables_dans_creneau_selectionne = proposables
+                    demander_selection("activites_programmables_dans_creneau_selectionne", proposables.index[0])
+                else: 
+                    proposables = st.session_state.get("activites_proposables_dans_creneau_selectionne", [])
+
+        if not proposables.empty:
+            with st.expander("**Activités programmables**", expanded=True):
                     st.markdown(f"Sur le créneau du {int(date_ref)} de {choix_creneau["Debut"]} à {choix_creneau["Fin"]}")
 
                     activite = afficher_df(
@@ -4558,73 +4620,12 @@ def afficher_creneaux_disponibles():
                         hide_label=True, 
                         background_color=COULEUR_ACTIVITE_PROGRAMMABLE)
 
-                    st.markdown(f"{activite["Activite"]} le {activite["Date"]} à {activite["Debut"]}")
-
-                    st.session_state.menu_creneaux_disponibles = {
-                        "date": date_ref,
-                        "creneau": choix_creneau,
-                        "activite": activite
-                    }
+                    st.markdown(f"{activite["Activite"]} le {activite["Date"]} à {activite["Debut"]}" if activite is not None else "Aucune activité sélectionnée")
 
                     # Gestion du bouton Programmer
                     if st.button(LABEL_BOUTON_PROGRAMMER, disabled=activite is None, key="PagePrincipaleProgrammerParCréneau"):
-
-                        # if MENU_ACTIVITE_UNIQUE:
                         st.session_state.forcer_menu_activites_programmees = True
-
                         programmer_activite_non_programmee(date_ref, activite)
-
-# Menu de gestion des créneaux disponibles
-def menu_creneaux_disponibles(date, creneau, activite):
-
-    df = st.session_state.get("df")
-    if df is None or len(df) <= 0:
-        return
-    
-    if not est_float_valide(date):
-        st.error(f"Le paramètre `date` doit être de type numérique : {type(date)}")
-        return
-    
-    # Gestion du flag de traitement des pauses
-    if "traiter_pauses" not in st.session_state: 
-        st.session_state.traiter_pauses = False
-    traiter_pauses = st.checkbox("Tenir compte des pauses", value=False)  
-    if traiter_pauses != st.session_state.traiter_pauses:
-        st.session_state.traiter_pauses = traiter_pauses
-        forcer_reaffichage_df("creneaux_disponibles")
-        st.session_state.creneaux_disponibles_choix_activite = None
-        st.rerun()
-
-    # Affichage du créneau sélectionné et de l'activité sélectionnées dans le créneau
-    date = int(date)
-
-    # if st.session_state.sidebar_menus:
-    if creneau is not None and not creneau.empty:
-        debut_creneau = creneau['Debut'] 
-        activite_avant = creneau['Activité avant']
-        fin_creneau = creneau['Fin'] 
-        activite_apres = creneau['Activité après'] 
-    else:
-        debut_creneau = ""
-        activite_avant = ""
-        fin_creneau = ""
-        activite_apres = ""
-
-    if activite is not None and not activite.empty:
-        debut_activite = activite['Debut']
-        nom_activite = activite['Activite']
-    else:
-        debut_activite = ""
-        nom_activite = ""
-
-    st_info_avec_label("Le", f"{date}")
-    st_info_avec_label(f"Entre {debut_creneau}", activite_avant)
-    st_info_avec_label(f"Et {fin_creneau}", activite_apres)
-    st_info_avec_label(f"A {debut_activite}", nom_activite)
-
-    # Gestion du bouton Programmer
-    if st.button(LABEL_BOUTON_PROGRAMMER, use_container_width=CENTRER_BOUTONS, disabled=activite is None, key="MenuCreneauxDisposProgrammerParCreneau"):
-        programmer_activite_non_programmee(date, activite)
 
 # Force le reaffichage de l'agrid des activités programmées
 def forcer_reaffichage_activites_programmees():
@@ -4646,7 +4647,6 @@ def initialiser_etat_contexte(df, wb, fn, lnk, ca):
     st.session_state.menu_activites = {"menu": "menu_activites_non_programmees", "index_df": None}
     st.session_state.menu_activites_programmees = None
     st.session_state.menu_activites_non_programmees = None
-    st.session_state.menu_creneaux_disponibles = None
     st.session_state.forcer_menu_activites_programmees = False
     st.session_state.forcer_menu_activites_non_programmees = False
     st.session_state.forcer_maj_menu_activites_programmees = False
@@ -4934,13 +4934,13 @@ def bd_maj_activites_programmees():
 # Met à jour le contexte complet (activités programmées, non programmées et créneaux disponibles)
 def bd_maj_contexte(maj_donnees_calculees=True):
     st.session_state.setdefault("bd_maj_contexte_cmd", {"maj_donnees_calculees": maj_donnees_calculees})
-    debug_trace(f"Debut bd_maj_contexte", trace_type=["gen"])
+    debug_trace(f"Debut", trace_type=["gen"])
     if maj_donnees_calculees:
         bd_maj_donnees_calculees()
     bd_maj_activites_programmees() # pour mise à jour menus options date
     bd_maj_activites_non_programmees() # pour mise à jour menus options date
     bd_maj_creneaux_disponibles()
-    debug_trace(f"Fin bd_maj_contexte", trace_type=["gen"])
+    debug_trace(f"Fin", trace_type=["gen"])
     del st.session_state["bd_maj_contexte_cmd"]
 
 # Met à jour la variable d'état qui donne la liste des créneaux disponibles
@@ -4955,8 +4955,9 @@ def bd_maj_creneaux_disponibles():
         return
     
     traiter_pauses = st.session_state.get("traiter_pauses", False)
-    
     st.session_state.creneaux_disponibles = get_creneaux(df, activites_programmees, traiter_pauses) 
+    if st.session_state.creneaux_disponibles is not None and len(st.session_state.creneaux_disponibles) > 0:
+        demander_selection("creneaux_disponibles", st.session_state.creneaux_disponibles.index[0])
 
 # Met à jour les données calculées d'une ligne
 def bd_maj_donnees_calculees_row(idx, full=True):
@@ -5038,7 +5039,7 @@ def bd_modifier_cellule(idx, col, val, section_critique=False):
             }
         )
 
-    debug_trace(f"Debut bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
+    debug_trace(f"Debut {idx} {col} {val}", trace_type=["gen"])
 
     df = st.session_state.df
     oldval = df.loc[idx, col]
@@ -5101,7 +5102,7 @@ def bd_modifier_cellule(idx, col, val, section_critique=False):
                 
         bd_maj_creneaux_disponibles()
 
-    debug_trace(f"Fin bd_modifier_cellule {idx} {col} {val}", trace_type=["gen"])
+    debug_trace(f"Fin {idx} {col} {val}", trace_type=["gen"])
     
     if section_critique:
         del st.session_state["bd_modifier_cellule_cmd"]
