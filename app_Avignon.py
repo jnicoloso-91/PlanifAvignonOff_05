@@ -4613,7 +4613,6 @@ def afficher_creneaux_disponibles():
 
                     proposables = pd.DataFrame(proposables).sort_values(by=["Debut"], ascending=[True]) if proposables else pd.DataFrame(proposables)
                     proposables["Date"] = choix_creneau["Date"] # ou str(date_ref) car col Date au format string dans les df_display !
-                    proposables["__index"] = proposables.index
 
                     st.session_state.activites_proposables_dans_creneau_selectionne = proposables
                     demander_selection("activites_programmables_dans_creneau_selectionne", proposables.index[0])
