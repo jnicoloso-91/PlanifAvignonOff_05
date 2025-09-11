@@ -4627,7 +4627,7 @@ def afficher_creneaux_disponibles():
                     activite = afficher_df(
                         "Activités programmables", 
                         proposables, 
-                        header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité"},
+                        header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité", "Relache": "Relâche", "Priorite": "Prio", "Reserve": "Réservé"},
                         fixed_columns={"Date": 55, "Debut": 55, "Fin": 55, "Duree": 55}, 
                         hide=["__type_activite", "__index", "__uuid", "__desel_ver", "__desel_id", "__sel_ver", "__sel_id"], 
                         key="activites_programmables_dans_creneau_selectionne", 
