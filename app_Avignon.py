@@ -4959,7 +4959,8 @@ def afficher_creneaux_disponibles():
                     st.session_state.setdefault("activites_programmables_select_auto", True)
                     if st.session_state["activites_programmables_select_auto"]:
                         current_selected_row = st.session_state.get("activites_programmables_selected_row")
-                        current_selected_row_idx = get_index_from_uuid(proposables, current_selected_row["__uuid"]) if current_selected_row is not None else proposables.index[0] if isinstance(proposables, pd.DataFrame) else None
+                        current_selected_row_idx = get_index_from_uuid(proposables, current_selected_row["__uuid"]) 
+                        current_selected_row_idx = current_selected_row_idx if current_selected_row_idx is not None else proposables.index[0] if isinstance(proposables, pd.DataFrame) else None
                         demander_selection("activites_programmables", current_selected_row_idx)
                     else:
                         st.session_state["activites_programmables_select_auto"] = True
