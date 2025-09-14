@@ -1238,17 +1238,21 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
     # __desel_ver = version de la demande de désélection (doit être incrémentée à chaque demande)
     sel_request_key = key + "_sel_request"
     sel_request = st.session_state.get(sel_request_key)
+    gb.configure_column("__desel_ver", hide=True)
     if "__desel_ver" not in df.columns:
         df["__desel_ver"] = sel_request["desel"]["ver"] if sel_request is not None else 0
+    gb.configure_column("__desel_id", hide=True)
     if "__desel_id" not in df.columns:
         df["__desel_id"] =  get_uuid(df, sel_request["desel"]["id"]) if sel_request is not None else None
+    gb.configure_column("__sel_ver", hide=True)
     if "__sel_ver" not in df.columns:
         df["__sel_ver"] = sel_request["sel"]["ver"] if sel_request is not None else 0
+    gb.configure_column("__sel_id", hide=True)
     if "__sel_id" not in df.columns:
         df["__sel_id"] =  get_uuid(df, sel_request["sel"]["id"]) if sel_request is not None else None
+    gb.configure_column("__sel_source", hide=True)
     if "__sel_source" not in df.columns:
         df["__sel_source"] = "api"
-    row = None
     
     row = None
     selection_demandee = False
@@ -4937,7 +4941,7 @@ def afficher_creneaux_disponibles():
                 creneaux_disponibles, 
                 header_names={"Debut": "Début"},
                 fixed_columns={"Date": 55, "Debut": 55, "Fin": 55}, 
-                hide=["__type_creneau", "__index", "__uuid", "__desel_ver", "__desel_id", "__sel_ver", "__sel_id"], 
+                hide=["__type_creneau", "__index", "__uuid"], 
                 key="creneaux_disponibles", 
                 hide_label=True, 
                 colorisation=True)
@@ -4979,7 +4983,7 @@ def afficher_creneaux_disponibles():
                         proposables, 
                         header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité", "Relache": "Relâche", "Priorite": "Prio", "Reserve": "Réservé"},
                         fixed_columns={"Date": 55, "Debut": 55, "Fin": 55, "Duree": 55}, 
-                        hide=["__type_activite", "__index", "__uuid", "__desel_ver", "__desel_id", "__sel_ver", "__sel_id"], 
+                        hide=["__type_activite", "__index", "__uuid"], 
                         key="activites_programmables", 
                         hide_label=True, 
                         colorisation=True,
