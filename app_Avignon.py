@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 import streamlit as st
 import pandas as pd
@@ -327,19 +328,201 @@ function(p){
 
 SEL_REQUEST_DEFAUT = {"sel": {"ver": 0, "id": None, "pending": False}, "desel": {"ver": 0, "id": None, "pending": False}}
 
-# Permet de mesurer le temps d'exécution d'une fonction avec le décorateur # @chrono
-def chrono(func):
-    def wrapper(*args, **kwargs):
-        start = time.perf_counter()
-        result = func(*args, **kwargs)
-        end = time.perf_counter()
-        print(f"{func.__name__} exécutée en {end - start:.6f} s")
-        return result
-    return wrapper
 
-# En ce qui concerne la gestion des cellValueChanged impossible de gérer la mise à jour de l'aggrid en mode immutableData=True 
-# (defaut dans versions récentes de AgGrid). Donc en l'état on est obligé d'incrementer la key pour forcer un réaffichage complet 
-# à chaque cellValueChanged, deltaRowDataMode à éviter car sinon le forçage par incrémentation de key ne fonctionne pas sur Iphone...
+
+##################
+# Sqlite Manager #
+##################
+
+import sqlite3
+from pathlib import Path
+from contextlib import contextmanager
+import sqlite3
+
+DATA_DIR = Path.home() / "app_data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "app_avignon.db"
+
+# Colonnes "coeur" PERSISTÉES (df principal)
+CORE_COLS = COLONNES_ATTENDUES.extend([
+    "__uuid",          # clé
+    "Debut_dt",        # ISO string (texte)
+    "Duree_dt",        # durée -> on la garde en TEXT pour flexibilité
+    "Hyperliens",      # URL si dispo (sinon construit à la volée côté JS)
+    "Autres",
+])
+
+# Colonnes non persistées
+VOLATILE_COLS = {
+    # ajoute ici toute autre colonne strictement "df_display"
+}
+
+# Appel unique au boot du conteneur
+@st.cache_resource
+def app_boot():
+    with sqlite3.connect(DB_PATH) as con:
+        cur = con.cursor()
+        # supprime les tables si elles existent
+        cur.executescript("""
+            DROP TABLE IF EXISTS planifies;
+            DROP TABLE IF EXISTS meta;
+            DROP TABLE IF EXISTS carnet;
+        """)
+        con.commit()
+
+    init_db()                 # crée les tables si besoin
+    if not db_exists():
+        # Optionnel : restauration depuis Google Sheets ou Excel
+        pass
+    return True
+
+@contextmanager
+def conn_rw():
+    con = sqlite3.connect(DB_PATH)
+    con.execute("PRAGMA foreign_keys=ON;")
+    con.execute("PRAGMA journal_mode=WAL;")
+    con.execute("PRAGMA synchronous=NORMAL;")
+    try:
+        yield con
+        con.commit()
+    finally:
+        con.close()
+
+def init_db():
+    ddl = """
+    PRAGMA foreign_keys=ON;
+
+    CREATE TABLE IF NOT EXISTS planifies (
+      __uuid      TEXT PRIMARY KEY,
+      Date        INTEGER,
+      Debut       TEXT,
+      Duree       TEXT,
+      Activite    TEXT,
+      Lieu        TEXT,
+      Relache     INTEGER,
+      Reserve     TEXT,
+      Autres      TEXT,
+      Debut_dt    TEXT,
+      Duree_dt    TEXT,
+      Hyperliens  TEXT,
+
+      -- toutes les colonnes libres (non listées ci-dessus) sont sérialisées ici :
+      extras_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS meta (
+      type TEXT PRIMARY KEY,
+      payload_json TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS carnet (
+      id TEXT PRIMARY KEY,
+      nom TEXT,
+      email TEXT,
+      tel TEXT,
+      autres_json TEXT
+    );
+    """
+    with conn_rw() as con:
+        con.executescript(ddl)
+
+def db_exists() -> bool:
+    return DB_PATH.exists() and DB_PATH.stat().st_size > 0
+
+@contextmanager
+def conn_rw():
+    con = sqlite3.connect(DB_PATH)
+    con.execute("PRAGMA foreign_keys=ON;")
+    con.execute("PRAGMA journal_mode=WAL;")
+    con.execute("PRAGMA synchronous=NORMAL;")
+    try:
+        yield con
+        con.commit()
+    finally:
+        con.close()
+
+def _strip_display_cols(df: pd.DataFrame) -> pd.DataFrame:
+    # enlève les colonnes strictement d'affichage
+    keep = [c for c in df.columns if c not in VOLATILE_COLS]
+    return df[keep].copy()
+
+def _split_core_extras(row: dict):
+    core = {k: row.get(k) for k in CORE_COLS if k in row}
+    extras = {k: v for k, v in row.items() if (k not in CORE_COLS and k not in VOLATILE_COLS)}
+    return core, extras
+
+def _merge_core_extras(df_core: pd.DataFrame) -> pd.DataFrame:
+    if "extras_json" not in df_core.columns or df_core.empty:
+        return df_core.drop(columns=[c for c in ("extras_json",) if c in df_core.columns], errors="ignore")
+    extras_df = pd.json_normalize(
+        df_core["extras_json"].apply(lambda s: json.loads(s) if isinstance(s, str) and s.startswith("{") else (s or {}))
+    )
+    out = pd.concat(
+        [df_core.drop(columns=["extras_json"]).reset_index(drop=True),
+         (extras_df if not extras_df.empty else pd.DataFrame(index=df_core.index)).reset_index(drop=True)],
+        axis=1
+    )
+    return out
+
+# ---------- API alignée avec ton app ----------
+def load_global():
+    with conn_rw() as con:
+        df_core = pd.read_sql_query("SELECT * FROM planifies", con)
+        df = _merge_core_extras(df_core)
+        meta_rows = pd.read_sql_query("SELECT type, payload_json FROM meta", con)
+        carnet = pd.read_sql_query("SELECT * FROM carnet", con)
+    meta = {t: json.loads(p) for t, p in meta_rows.values} if len(meta_rows) else {}
+    return df, meta, carnet
+
+def save_global(df: pd.DataFrame, meta: dict=None, carnet: pd.DataFrame=None):
+    df = _strip_display_cols(df)
+    if "__uuid" not in df.columns:
+        raise ValueError("save_global: __uuid manquant dans df")
+
+    # upsert planifies
+    cols_sql = [c for c in CORE_COLS if c != "__uuid"] + ["extras_json"]
+    set_sql  = ",".join([f"{c}=excluded.{c}" for c in cols_sql])
+    sql = f"INSERT INTO planifies (__uuid,{','.join(cols_sql)}) VALUES ({','.join(['?']*(len(cols_sql)+1))}) " \
+          f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
+
+    with conn_rw() as con:
+        for _, row in df.iterrows():
+            core, extras = _split_core_extras(row.to_dict())
+            extras_json = json.dumps(extras, ensure_ascii=False)
+            vals = [core.get("__uuid")] + [core.get(c) for c in CORE_COLS if c != "__uuid"] + [extras_json]
+            con.execute(sql, [None if (isinstance(v, float) and pd.isna(v)) else v for v in vals])
+
+        # meta upsert
+        if meta is not None:
+            for t, payload in (meta or {}).items():
+                con.execute(
+                    "INSERT INTO meta(type,payload_json) VALUES(?,?) "
+                    "ON CONFLICT(type) DO UPDATE SET payload_json=excluded.payload_json",
+                    (t, json.dumps(payload, ensure_ascii=False))
+                )
+
+        # carnet (simple: clear+insert ; fais un upsert si besoin)
+        if carnet is not None:
+            con.execute("DELETE FROM carnet")
+            if len(carnet):
+                cols = carnet.columns.tolist()
+                con.executemany(
+                    f"INSERT INTO carnet ({','.join(cols)}) VALUES ({','.join(['?']*len(cols))})",
+                    carnet.where(pd.notna(carnet), None).itertuples(index=False, name=None)
+                )
+
+def save_df_row(row: dict | pd.Series):
+    if hasattr(row, "to_dict"): row = row.to_dict()
+    if "__uuid" not in row: raise ValueError("save_df_row: __uuid manquant")
+    core, extras = _split_core_extras(row)
+    extras_json = json.dumps(extras, ensure_ascii=False)
+    cols_sql = [c for c in CORE_COLS if c != "__uuid"] + ["extras_json"]
+    set_sql  = ",".join([f"{c}=excluded.{c}" for c in cols_sql])
+    sql = f"INSERT INTO planifies (__uuid,{','.join(cols_sql)}) VALUES ({','.join(['?']*(len(cols_sql)+1))}) " \
+          f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
+    with conn_rw() as con:
+        vals = [core.get("__uuid")] + [core.get(c) for c in CORE_COLS if c != "__uuid"] + [extras_json]
+        con.execute(sql, [None if (isinstance(v, float) and pd.isna(v)) else v for v in vals])
 
 ######################
 # User Sheet Manager #
@@ -450,17 +633,6 @@ def charger_contexte_depuis_gsheet():
                 initialiser_dtypes(df)
 
             try:
-                worksheet = gsheets["links"]
-                rows = worksheet.get_all_values()
-                lnk = {}
-                if len(rows) > 1:
-                    data_rows = rows[1:]
-                    lnk = {row[0]: row[1] for row in data_rows if len(row) >= 2}
-            except Exception as e:
-                print(f"Erreur au chargement des hyperliens depuis la Google Sheet : {e}")
-                lnk = {}
-
-            try:
                 worksheet = gsheets["meta"]
                 fn  = worksheet.acell("A1").value
                 fp  = worksheet.acell("A2").value
@@ -500,9 +672,10 @@ def charger_contexte_depuis_gsheet():
                 print(f"Erreur au chargement des paramètres depuis la Google Sheet : {e}")
                 ca = pd.DataFrame(columns=COLONNES_ATTENDUES_CARNET_ADRESSES)
 
-            df = add_persistent_uuid(df)
             df = nettoyer_donnees(df, fn)
-            initialiser_etat_contexte(df, wb, fn, lnk, ca)
+            df = add_persistent_uuid(df)
+            df = add_hyperliens(df)
+            initialiser_etat_contexte(df, wb, fn, ca)
             undo_redo_init(verify=False)
             bd_maj_contexte(maj_donnees_calculees=True) 
             selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
@@ -528,22 +701,6 @@ def sauvegarder_df_ds_gsheet(df: pd.DataFrame):
             set_with_dataframe(worksheet, df)
         except Exception as e:
             print(f"Erreur sauvegarder_df_ds_gsheet : {e}")
-
-# 📤 Sauvegarde les hyperliens dans la Google Sheet
-def sauvegarder_lnk_ds_gsheet(lnk=None):
-    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
-        try:
-            gsheets = st.session_state.gsheets
-            worksheet = gsheets["links"]
-            worksheet.clear()
-            if lnk is None:
-                lnk = st.session_state.get("liens_activites")
-                if lnk is None:
-                    return
-            rows = [[k, v] for k, v in lnk.items()]
-            worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
-        except Exception as e:
-            print(f"Erreur sauvegarder_lnk_ds_gsheet : {e}")
 
 # Sauvegarde une ligne dans la Google Sheet
 def sauvegarder_row_ds_gsheet(index_df):
@@ -597,7 +754,7 @@ def sauvegarder_param_ds_gsheet(param):
             print(f"Erreur sauvegarder_param_ds_gsheet : {e}")
 
 # 📤 Sauvegarde l'ensemble des infos persistées dans la Google Sheet
-def sauvegarder_contexte_ds_gsheet(df: pd.DataFrame, lnk, fd=None, ca=None):
+def sauvegarder_contexte_ds_gsheet(df: pd.DataFrame, fd=None, ca=None):
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
         try:
             gsheets = st.session_state.gsheets
@@ -605,11 +762,6 @@ def sauvegarder_contexte_ds_gsheet(df: pd.DataFrame, lnk, fd=None, ca=None):
             worksheet = gsheets["data"]
             worksheet.clear()
             set_with_dataframe(worksheet, df)
-
-            worksheet = gsheets["links"]
-            worksheet.clear()
-            rows = [[k, v] for k, v in lnk.items()]
-            worksheet.update(range_name="A1", values=[["Clé", "Valeur"]] + rows)
 
             worksheet = gsheets["meta"]
             if fd is not None:
@@ -734,7 +886,6 @@ def undo_redo_save():
     if df is None or df.empty:
         return      
     df_copy = st.session_state.df.copy(deep=True)
-    liens_copy = st.session_state.liens_activites.copy()
     menu_activites_copy = st.session_state.menu_activites.copy()
     menu_activites_copy["df"] = df_copy
     activites_programmees_sel_request_copy = copy.deepcopy(st.session_state.activites_programmees_sel_request)
@@ -744,7 +895,6 @@ def undo_redo_save():
 
     snapshot = {
         "df": df_copy,
-        "liens": liens_copy,
         "activites_programmees_sel_request": activites_programmees_sel_request_copy,
         "activites_non_programmees_sel_request": activites_non_programmees_sel_request_copy,
         "creneaux_disponibles_sel_request": creneaux_disponibles_sel_request_copy,
@@ -770,7 +920,6 @@ def undo_redo_undo():
     if st.session_state.historique_undo:
     
         df_copy = st.session_state.df.copy(deep=True)
-        liens_copy = st.session_state.liens_activites.copy()
         menu_activites_copy = st.session_state.menu_activites.copy()
         menu_activites_copy["df"] = df_copy
         activites_programmees_sel_request_copy = copy.deepcopy(st.session_state.activites_programmees_sel_request)
@@ -780,7 +929,6 @@ def undo_redo_undo():
 
         current = {
             "df": df_copy,
-            "liens": liens_copy,
             "activites_programmees_sel_request": activites_programmees_sel_request_copy,
             "activites_non_programmees_sel_request": activites_non_programmees_sel_request_copy,
             "creneaux_disponibles_sel_request": creneaux_disponibles_sel_request_copy,
@@ -791,7 +939,6 @@ def undo_redo_undo():
         
         snapshot = st.session_state.historique_undo.pop()
         st.session_state.df = snapshot["df"]
-        st.session_state.liens_activites = snapshot["liens"]
         undo_redo_sel_request_update_from_snapshot(snapshot)
         st.session_state.menu_activites = snapshot["menu_activites"]
         st.session_state.activites_programmables_select_auto = False 
@@ -804,7 +951,6 @@ def undo_redo_undo():
 def undo_redo_redo():
     if st.session_state.historique_redo:
         df_copy = st.session_state.df.copy(deep=True)
-        liens_copy = st.session_state.liens_activites.copy()
         menu_activites_copy = st.session_state.menu_activites.copy()
         menu_activites_copy["df"] = df_copy
         activites_programmees_sel_request_copy = copy.deepcopy(st.session_state.activites_programmees_sel_request)
@@ -814,7 +960,6 @@ def undo_redo_redo():
 
         current = {
             "df": df_copy,
-            "liens": liens_copy,
             "activites_programmees_sel_request": activites_programmees_sel_request_copy,
             "activites_non_programmees_sel_request": activites_non_programmees_sel_request_copy,
             "creneaux_disponibles_sel_request": creneaux_disponibles_sel_request_copy,
@@ -825,7 +970,6 @@ def undo_redo_redo():
         
         snapshot = st.session_state.historique_redo.pop()
         st.session_state.df = snapshot["df"]
-        st.session_state.liens_activites = snapshot["liens"]
         undo_redo_sel_request_update_from_snapshot(snapshot)
         st.session_state.menu_activites = snapshot["menu_activites"]
         st.session_state.activites_programmables_select_auto = False 
@@ -837,6 +981,16 @@ def undo_redo_redo():
 #########################
 # Fonctions utilitaires #
 #########################
+
+# Permet de mesurer le temps d'exécution d'une fonction avec le décorateur # @chrono
+def chrono(func):
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        end = time.perf_counter()
+        print(f"{func.__name__} exécutée en {end - start:.6f} s")
+        return result
+    return wrapper
 
 # Essai de boutons html (à creuser -> permettrait d'avoir des boutons horizontaux avec grisés sur mobile)
 def boutons_html():
@@ -1215,10 +1369,9 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
     session_state_forcer_reaffichage = key + "_forcer_reaffichage"
     st.session_state.setdefault(session_state_forcer_reaffichage, )
        
-
     # Initialisation de la variable d'état contenant la requête de selection / déselection
-    session_state_forcer_reaffichage = key + "_sel_request"
-    st.session_state.setdefault(session_state_forcer_reaffichage, copy.deepcopy(SEL_REQUEST_DEFAUT))
+    session_state_sel_request = key + "_sel_request"
+    st.session_state.setdefault(session_state_sel_request, copy.deepcopy(SEL_REQUEST_DEFAUT))
 
     gb = GridOptionsBuilder.from_dataframe(df)
 
@@ -1554,6 +1707,15 @@ def add_persistent_uuid(df, idx=None):
         return df
     else:
         df.at[idx, "__uuid"] = str(uuid.uuid4())
+
+# Ajout d'une colonne Hyperlien au df
+def add_hyperliens(df, lnk=None):
+    if "Hyperlien" not in df.columns:
+        if lnk is None or "Activite" not in df.columns:
+            df["Hyperlien"] = pd.NA
+        else:  
+            df["Hyperlien"] = df["Activite"].map(lambda a: lnk.get(a, ""))
+    return df
 
 # Renvoie un hash sur les uuid pour faire une key qui ne change que si une ligne est supprimée / ajoutée
 # Pas utilisé car l'aggrid sait se débrouiller de cette situation sans changer la key
@@ -2135,8 +2297,8 @@ def get_liens_activites(wb):
         ws = wb.worksheets[0]
         for cell in ws[1]:
             if cell.value and str(cell.value).strip().lower() in ["activité"]:
-                col_excel_index = cell.column
-        for row in ws.iter_rows(min_row=2, min_col=col_excel_index, max_col=col_excel_index):
+                col_activite_index = cell.column
+        for row in ws.iter_rows(min_row=2, min_col=col_activite_index, max_col=col_activite_index):
             cell = row[0]
             if cell.hyperlink:
                 liens_activites[cell.value] = cell.hyperlink.target
@@ -2223,7 +2385,7 @@ def verifier_coherence(df):
             if pd.notna(row["Date"]) and not est_entier(row["Date"]):
                 bloc_format.append(f"Date invalide à la ligne {idx + 2} : {row['Date']}")
 
-            # Ne tester Heure/Duree que si Spectacle ou Autres est renseigné
+            # Ne tester Heure/Duree que si Activite ou Autres est renseigné
             if str(row["Activite"]).strip() != "":
                 if not re.match(r"^\d{1,2}h\d{2}$", str(row["Debut"]).strip()):
                     bloc_format.append(f"Heure invalide à la ligne {idx + 2} : {row['Debut']}")
@@ -2934,14 +3096,14 @@ def afficher_activites_programmees():
         # Cette information est passée à la valeur "user" par le JsCode JS_SELECT_DESELECT_ONCE si le cellValueChanged provient d'un click utilisateur.
         # Elle permet de n'effectuer les traitements de cellValueChanged que sur les seuls évènements utilisateurs et de bypasser ceux provenant d'une
         # demande de sélection programmée via demander_selection().
-        df_dom = pd.DataFrame(response["data"])
+        df_dom = pd.DataFrame(response["data"]) if "data" in response and isinstance(response["data"], pd.DataFrame) else pd.DataFrame()       
         if not df_dom.empty:
             first_row = df_dom.iloc[0]
             sel_source = (first_row.get("__sel_source") or "api") # 'user' ou 'api'
             debug_trace(f"sel_source {sel_source}", trace_type=["sel_source"])
 
         # Récupération de la ligne sélectionnée courante
-        selected_rows = response["selected_rows"]
+        selected_rows = response["selected_rows"] if "selected_rows" in response else None
         if not selection_demandee:
             if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
                 # debug_trace("row = selected_rows.iloc[0]")
@@ -3449,14 +3611,14 @@ def afficher_activites_non_programmees():
         # Cette information est passée à la valeur "user" par le JsCode JS_SELECT_DESELECT_ONCE si le cellValueChanged provient d'un click utilisateur.
         # Elle permet de n'effectuer les traitements de cellValueChanged que sur les seuls évènements utilisateurs et de bypasser ceux provenant d'une
         # demande de sélection programmée via demander_selection().
-        df_dom = pd.DataFrame(response["data"])
+        df_dom = pd.DataFrame(response["data"]) if "data" in response and isinstance(response["data"], pd.DataFrame) else pd.DataFrame()       
         if not df_dom.empty:
             first_row = df_dom.iloc[0]
             sel_source = (first_row.get("__sel_source") or "api") # 'user' ou 'api'
             debug_trace(f"sel_source {sel_source}", trace_type=["sel_source"])
 
         # Récupération de la ligne sélectionnée
-        selected_rows = response["selected_rows"]
+        selected_rows = response["selected_rows"] if "selected_rows" in response else None
         row = None
         if not selection_demandee:
             if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
@@ -3751,7 +3913,6 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
             "colonne_courante": None,
             "nouvelle_valeur": None,
             "col_modif": [],
-            "lien_modif": False,
             "forcer_reaffichage_activites_programmees": False,
             "forcer_reaffichage_activites_non_programmees": False,
             "forcer_reaffichage_creneaux_disponibles": False,
@@ -3765,16 +3926,6 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
             colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt", "Debut", "Duree", "__uuid"]]
         else:
             colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt", "__uuid"]]
-
-        # Ajout de l'hyperlien aux infos éditables
-        if "Lien Web" not in colonnes_editables:
-            colonnes_editables.append("Lien Web")
-            row["Lien Web"] = ""
-            liens_activites = st.session_state.get("liens_activites")
-            if isinstance(liens_activites, dict):
-                if row["Activite"] in liens_activites:
-                    lien = liens_activites.get(row["Activite"])
-                    row["Lien Web"] = lien
 
         # Traitement de l'accentuation
         colonnes_editables_avec_accents = [RENOMMAGE_COLONNES.get(col, col) for col in colonnes_editables]
@@ -3793,14 +3944,9 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
         erreur = enregistrer_modification_dans_row(df, row, colonne_df, row[colonne_df], st.session_state.editeur_activite_etat.get("nouvelle_valeur"))
 
         if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS):
-            if not erreur and (st.session_state.editeur_activite_etat["col_modif"] or st.session_state.editeur_activite_etat["lien_modif"]):
+            if not erreur and st.session_state.editeur_activite_etat["col_modif"]:
                 undo_redo_save()
                 try:
-                    if st.session_state.editeur_activite_etat["lien_modif"]: 
-                        st.session_state.setdefault("liens_activites", {})
-                        liens_activites = st.session_state.liens_activites
-                        liens_activites[row["Activite"]] = row["Lien Web"] if "Lien Web" in row else ""
-                        
                     if st.session_state.editeur_activite_etat["col_modif"]:
                         cols = {}
                         for col in st.session_state.editeur_activite_etat["col_modif"]:
@@ -3823,9 +3969,6 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
                         if est_activite_non_programmee(row): signaler_df_push("activites_non_programmees")
                         
                         sauvegarder_row_ds_gsheet(index_df)
-
-                    if st.session_state.editeur_activite_etat["lien_modif"] or "Activite" in st.session_state.editeur_activite_etat["col_modif"]:
-                        sauvegarder_lnk_ds_gsheet()
 
                     st.rerun()
                 except Exception as e:
@@ -3886,8 +4029,6 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=None):
                     undo_redo_save()
                     bd_modifier_cellule(index, colonne, nouvelle_valeur)
                     sauvegarder_row_ds_gsheet(index)
-                    if colonne == "Activite":
-                        sauvegarder_lnk_ds_gsheet()
     elif step == 1:
         if colonne == "Debut" :
             heures, minutes = nouvelle_valeur.split("h")
@@ -3903,15 +4044,11 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=None):
                 undo_redo_save()
                 bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
                 sauvegarder_row_ds_gsheet(index)
-                if colonne == "Activite":
-                    sauvegarder_lnk_ds_gsheet()
     elif step == 2:
         df.at[index, colonne] = valeur_courante
         undo_redo_save()
         bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
         sauvegarder_row_ds_gsheet(index)
-        if colonne == "Activite":
-            sauvegarder_lnk_ds_gsheet()
         
     return erreur
 
@@ -3951,7 +4088,7 @@ def est_relache_valide(val):
 
     return re.fullmatch(motif, val_str) is not None
 
-# Vérifie si une date de référence est compatible avec la valeur de la colonne Relache qui donne les jours de relache pour un spectacle donné
+# Vérifie si une date de référence est compatible avec la valeur de la colonne Relache qui donne les jours de relache pour une activité donnée
 def est_hors_relache(relache_val, date_val):
     if pd.isna(relache_val) or pd.isna(date_val):
         return True  # Aucune relâche spécifiée ou date absente
@@ -4049,8 +4186,8 @@ def get_creneaux(df, activites_programmees, traiter_pauses):
         st.session_state.get("MARGE", MARGE).total_seconds(), 
         st.session_state.get("DUREE_REPAS", DUREE_REPAS).total_seconds(), 
         st.session_state.get("DUREE_CAFE", DUREE_CAFE).total_seconds(),
-        st.session_state.get("periode_a_programmer_debut").isoformat(),
-        st.session_state.get("periode_a_programmer_fin").isoformat(),
+        st.session_state.get("periode_a_programmer_debut", BASE_DATE).isoformat(),
+        st.session_state.get("periode_a_programmer_fin", BASE_DATE).isoformat(),
     ]
 
     hash_val  = hash_df(df, colonnes_a_garder=[col for col in df.columns if col not in ["Debut_dt", "Duree_dt", "__uuid"]], params=params_to_hash)
@@ -4068,7 +4205,7 @@ def get_creneaux(df, activites_programmees, traiter_pauses):
             if jour not in activites_programmees["Date"].values:
                 jours_libres.append(jour)
         for jour in jours_libres:
-            if exist_activites_programmables(jour):
+            if exist_activites_programmables(jour, traiter_pauses):
                 row = pd.Series({col: None for col in df.columns})
                 row["Date"] = jour
                 borne_min = datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
@@ -4183,7 +4320,7 @@ def get_activites_programmables_avant(df, activites_programmees, ligne_ref, trai
             continue
         h_debut = datetime.datetime.combine(BASE_DATE, row["Debut_dt"].time())
         h_fin = h_debut + row["Duree_dt"]
-        # Le spectacle doit commencer après debut_min et finir avant fin_max
+        # L'activité doit commencer après debut_min et finir avant fin_max
         if h_debut >= debut_min + st.session_state.MARGE and h_fin <= fin_max - st.session_state.MARGE and est_hors_relache(row["Relache"], date_ref):
             nouvelle_ligne = row.drop(labels=["Debut_dt", "Duree_dt"]).to_dict()
             nouvelle_ligne["__type_activite"] = "ActiviteExistante"
@@ -4214,7 +4351,7 @@ def get_activites_programmables_apres(df, activites_programmees, ligne_ref, trai
             continue
         h_debut = datetime.datetime.combine(BASE_DATE, row["Debut_dt"].time())
         h_fin = h_debut + row["Duree_dt"]
-        # Le spectacle doit commencer après debut_min et finir avant fin_max en tenant compte des marges et des relaches
+        # L'activité doit commencer après debut_min et finir avant fin_max en tenant compte des marges et des relaches
         if h_debut >= debut_min + st.session_state.MARGE and (fin_max is None or h_fin <= fin_max - st.session_state.MARGE) and est_hors_relache(row["Relache"], date_ref):
             nouvelle_ligne = row.drop(labels=["Debut_dt", "Duree_dt"]).to_dict()
             nouvelle_ligne["__type_activite"] = "ActiviteExistante"
@@ -4225,7 +4362,7 @@ def get_activites_programmables_apres(df, activites_programmees, ligne_ref, trai
     return proposables
 
 # Renvoie les activités programmables sur une journée entière donc les activités qui ne sont pas relache ce jour
-def get_activites_programmables_sur_journee_entiere(date_ref):
+def get_activites_programmables_sur_journee_entiere(date_ref, traiter_pauses=True):
     proposables = []
 
     for _, row in st.session_state.activites_non_programmees.iterrows():
@@ -4235,34 +4372,37 @@ def get_activites_programmables_sur_journee_entiere(date_ref):
             nouvelle_ligne["__index"] = row.name
             proposables.append(nouvelle_ligne)
     
-    h_dej = datetime.datetime.combine(BASE_DATE, datetime.time(12, 0))
-    type_repas = "déjeuner"
-    proposables.append(
-        completer_ligne({
-            "Debut": datetime.datetime.combine(BASE_DATE, datetime.time(12, 0)).strftime('%Hh%M'),
-            "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
-            "Duree": duree_str(st.session_state.DUREE_REPAS),
-            "Activite": f"Pause {type_repas}",
-            "__type_activite": type_repas,
-            "__uuid": str(uuid.uuid4()),
-        }))
-    
-    h_dej = datetime.datetime.combine(BASE_DATE, datetime.time(12, 0))
-    type_repas = "dîner"
-    proposables.append(
-        completer_ligne({
-            "Debut": datetime.datetime.combine(BASE_DATE, datetime.time(20, 0)).strftime('%Hh%M'),
-            "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
-            "Duree": duree_str(st.session_state.DUREE_REPAS),
-            "Activite": f"Pause {type_repas}",
-            "__type_activite": type_repas,
-            "__uuid": str(uuid.uuid4()),
-        }))
+    if traiter_pauses:
+        h_dej = datetime.datetime.combine(BASE_DATE, datetime.time(12, 0))
+        type_repas = "déjeuner"
+        proposables.append(
+            completer_ligne({
+                "Debut": datetime.datetime.combine(BASE_DATE, datetime.time(12, 0)).strftime('%Hh%M'),
+                "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
+                "Duree": duree_str(st.session_state.DUREE_REPAS),
+                "Activite": f"Pause {type_repas}",
+                "__type_activite": type_repas,
+                "__uuid": str(uuid.uuid4()),
+            }))
+        
+        h_dej = datetime.datetime.combine(BASE_DATE, datetime.time(12, 0))
+        type_repas = "dîner"
+        proposables.append(
+            completer_ligne({
+                "Debut": datetime.datetime.combine(BASE_DATE, datetime.time(20, 0)).strftime('%Hh%M'),
+                "Fin": (h_dej + st.session_state.DUREE_REPAS).strftime('%Hh%M'),
+                "Duree": duree_str(st.session_state.DUREE_REPAS),
+                "Activite": f"Pause {type_repas}",
+                "__type_activite": type_repas,
+                "__uuid": str(uuid.uuid4()),
+            }))
     
     return proposables
 
 # Renvoie True s'il existe des activités programmables sur une journée entière donc des activités qui ne sont pas relache ce jour
-def exist_activites_programmables(date_ref):
+def exist_activites_programmables(date_ref, traiter_pauses=False):
+    if traiter_pauses:
+        return True
     for _, row in st.session_state.activites_non_programmees.iterrows():
         if est_hors_relache(row["Relache"], date_ref):
             return True
@@ -4316,7 +4456,7 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                 Lieu_ref_prev = activites_programmees.iloc[i - 1]["Lieu"] if i > 0 else None
                 h_cafe = fin_max - st.session_state.DUREE_CAFE
                 if not pd.isna(Lieu_ref) and not pd.isna(Lieu_ref_prev) and Lieu_ref == Lieu_ref_prev: 
-                    # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle précédent 
+                    # Dans ce cas pas la peine de tenir compte de la marge avec l'activité précédente
                     if h_cafe >= debut_min: 
                         nouvelle_ligne = completer_ligne({
                             "Debut": h_cafe.strftime('%Hh%M'),
@@ -4328,7 +4468,7 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                         })
                         proposables.append(nouvelle_ligne)
                 else: 
-                    # Dans ce cas on tient compte de la marge avec le spectacle précédent sauf si debut_min = 0h00
+                    # Dans ce cas on tient compte de la marge avec l'activité précédente sauf si debut_min = 0h00
                     marge_cafe = st.session_state.MARGE if debut_min != datetime.datetime.combine(BASE_DATE, datetime.time(0, 0)) else datetime.timedelta(minutes=0) 
                     if h_cafe >= debut_min + marge_cafe:
                         nouvelle_ligne = completer_ligne({
@@ -4345,7 +4485,7 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                 Lieu_ref_suiv = activites_programmees.iloc[i + 1]["Lieu"] if i < len(activites_programmees) - 1 else None
                 h_cafe = debut_min
                 if not pd.isna(Lieu_ref) and not pd.isna(Lieu_ref_suiv) and Lieu_ref == Lieu_ref_suiv: 
-                    # Dans ce cas pas la peine de tenir compte de la marge avec le spectacle suivant 
+                    # Dans ce cas pas la peine de tenir compte de la marge avec l'activité suivante 
                     if fin_max is None or h_cafe + st.session_state.DUREE_CAFE <= fin_max: 
                         nouvelle_ligne = completer_ligne({
                             "Debut": h_cafe.strftime('%Hh%M'),
@@ -4357,7 +4497,7 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                         })
                         proposables.append(nouvelle_ligne)
                 else: 
-                    # Dans ce cas on tient compte de la marge avec le spectacle suivant sauf si fin_max is None (créneau se termine après 23h59)
+                    # Dans ce cas on tient compte de la marge avec l'activité suivante sauf si fin_max is None (créneau se termine après 23h59)
                     marge_cafe = st.session_state.MARGE if fin_max is not None else datetime.timedelta(minutes=0)
                     if fin_max is None or h_cafe + st.session_state.DUREE_CAFE <= fin_max - marge_cafe:
                         nouvelle_ligne = completer_ligne({
@@ -4431,7 +4571,6 @@ def sauvegarder_contexte(df_hash=None):
 
         if wb is not None:
             ws = wb.worksheets[0]
-            liens_activites = st.session_state.get("liens_activites")
 
             # Effacer le contenu de la feuille Excel existante
             for row in ws.iter_rows(min_row=2, max_row=ws.max_row, max_col=ws.max_column):
@@ -4467,10 +4606,10 @@ def sauvegarder_contexte(df_hash=None):
                         except (ValueError, TypeError):
                             cell.value = value
 
-                        # Ajout d'hyperlien pour la colonne Activite
+                        # Ajout d'hyperliens pour la colonne Activite
                         if col_activite is not None:
-                            if col_idx == col_activite and isinstance(liens_activites, dict):
-                                lien = liens_activites.get(value)
+                            if col_idx == col_activite and "Hyperlien" in df.columns:
+                                lien = row["Hyperlien"]
                                 if lien:
                                     cell.hyperlink = lien
                                     cell.font = Font(color="0000EE", underline="single")
@@ -5020,15 +5159,14 @@ def get_proposables(creneau, traiter_pauses=False):
     if df is None or len(df) <= 0:
         return proposables
 
-    activites_programmees = st.session_state.get("activites_programmees")
-    if activites_programmees is None:
-        return proposables
-
     type_creneau = creneau["__type_creneau"]
     idx = creneau["__index"]
     date_ref = int(creneau["Date"]) # date_ref doit être en int !
 
     if type_creneau == "Avant":
+        activites_programmees = st.session_state.get("activites_programmees")
+        if activites_programmees is None:
+            return proposables
         try:
             ligne_ref = activites_programmees.loc[idx]
         except Exception as e:
@@ -5037,6 +5175,9 @@ def get_proposables(creneau, traiter_pauses=False):
         proposables = get_activites_programmables_avant(df, activites_programmees, ligne_ref, traiter_pauses)
 
     elif type_creneau == "Après":
+        activites_programmees = st.session_state.get("activites_programmees")
+        if activites_programmees is None:
+            return proposables
         try:
             ligne_ref = activites_programmees.loc[idx]
         except Exception as e:
@@ -5045,7 +5186,7 @@ def get_proposables(creneau, traiter_pauses=False):
         proposables = get_activites_programmables_apres(df, activites_programmees, ligne_ref, traiter_pauses)
 
     elif type_creneau == "Journée":
-        proposables = get_activites_programmables_sur_journee_entiere(date_ref)
+        proposables = get_activites_programmables_sur_journee_entiere(date_ref, traiter_pauses)
 
     proposables = pd.DataFrame(proposables).sort_values(by=["Debut"], ascending=[True]) if proposables else pd.DataFrame(proposables)
     proposables["Date"] = creneau["Date"] # ou str(date_ref) car col Date au format string dans les df_display !
@@ -5056,9 +5197,9 @@ def get_proposables(creneau, traiter_pauses=False):
 def afficher_creneaux_disponibles():
 
     def on_toggle_pauses():
+        st.session_state.traiter_pauses_change = True
         st.session_state.traiter_pauses = st.session_state.traiter_pauses_cb
         bd_maj_creneaux_disponibles()
-        forcer_reaffichage_df("creneaux_disponibles")
         sauvegarder_param_ds_gsheet("traiter_pauses")
         st.session_state.creneaux_disponibles_choix_activite = None
 
@@ -5066,83 +5207,86 @@ def afficher_creneaux_disponibles():
     if df is None or len(df) <= 0:
         return
     
-    creneaux_disponibles = st.session_state.get("creneaux_disponibles")
-    if creneaux_disponibles is None or creneaux_disponibles.empty:
-        return 
+    with st.expander("**Créneaux disponibles**", expanded=True):
 
-    if not creneaux_disponibles.empty:
+        # Gestion du flag de traitement des pauses
+        traiter_pauses = st.checkbox("Tenir compte des pauses", value=st.session_state.get("traiter_pauses", False), key="traiter_pauses_cb", on_change=on_toggle_pauses)  
+        traiter_pauses_change = st.session_state.get("traiter_pauses_change", False)
+        st.session_state["traiter_pauses_change"] = False
+
+        creneaux_disponibles = st.session_state.get("creneaux_disponibles")
+        if creneaux_disponibles is None or creneaux_disponibles.empty:
+            return 
+
         proposables = []
-        with st.expander("**Créneaux disponibles**", expanded=True):
 
-            st.session_state.creneaux_disponibles_choix_activite = None
+        st.session_state.creneaux_disponibles_choix_activite = None
 
-            # Gestion du flag de traitement des pauses
-            traiter_pauses = st.checkbox("Tenir compte des pauses", value=st.session_state.get("traiter_pauses", False), key="traiter_pauses_cb", on_change=on_toggle_pauses)  
+        # Récupération du creneau enregistré au run précédent
+        choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
 
-            # Récupération du creneau enregistré au run précédent
-            choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
+        # Affichage de la grille des créneaux disponibles
+        choix_creneau = afficher_df(
+            "Créneaux disponibles", 
+            creneaux_disponibles, 
+            header_names={"Debut": "Début"},
+            fixed_columns={"Date": 55, "Debut": 55, "Fin": 55}, 
+            hide=["__type_creneau", "__index", "__uuid"], 
+            key="creneaux_disponibles", 
+            hide_label=True, 
+            colorisation=True)
 
-            # Affichage de la grille des créneaux disponibles
-            choix_creneau = afficher_df(
-                "Créneaux disponibles", 
-                creneaux_disponibles, 
-                header_names={"Debut": "Début"},
-                fixed_columns={"Date": 55, "Debut": 55, "Fin": 55}, 
-                hide=["__type_creneau", "__index", "__uuid"], 
-                key="creneaux_disponibles", 
-                hide_label=True, 
-                colorisation=True)
+        if choix_creneau is not None:
 
-            if choix_creneau is not None:
+            # Choix d'une activité à programmer dans le creneau choisi
+            if (choix_creneau_pred is not None and choix_creneau_pred["__uuid"] != choix_creneau["__uuid"]) or \
+                traiter_pauses_change or \
+                "activites_programmables" not in st.session_state:
 
-                # Choix d'une activité à programmer dans le creneau choisi
-                if (choix_creneau_pred is not None and choix_creneau_pred["__uuid"] != choix_creneau["__uuid"]) or \
-                    "activites_programmables" not in st.session_state:
+                if choix_creneau_pred is not None and choix_creneau_pred["__uuid"] != choix_creneau["__uuid"]:
+                    forcer_reaffichage_df("activites_programmables")
+            
+                proposables = get_proposables(choix_creneau, traiter_pauses)
 
-                    if choix_creneau_pred is not None and choix_creneau_pred["__uuid"] != choix_creneau["__uuid"]:
-                        forcer_reaffichage_df("activites_programmables")
-                
-                    proposables = get_proposables(choix_creneau, traiter_pauses)
+                st.session_state.activites_programmables = proposables
 
-                    st.session_state.activites_programmables = proposables
+                # Resélection automatique de l'activité précédemment séléectionnée si elle existe dans la nouvelle liste de proposables
+                st.session_state.setdefault("activites_programmables_select_auto", True)
+                if st.session_state["activites_programmables_select_auto"]:
+                    current_selected_row = st.session_state.get("activites_programmables_selected_row")
+                    current_selected_row_idx = get_index_from_uuid(proposables, current_selected_row["__uuid"]) if current_selected_row is not None else None
+                    current_selected_row_idx = current_selected_row_idx if current_selected_row_idx is not None else proposables.index[0] if isinstance(proposables, pd.DataFrame) else None
+                    demander_selection("activites_programmables", current_selected_row_idx)
+                else:
+                    st.session_state["activites_programmables_select_auto"] = True
+            else: 
+                proposables = st.session_state.get("activites_programmables", [])
+        else:
+            st.session_state.activites_programmables = None
 
-                    # Resélection automatique de l'activité précédemment séléectionnée si elle existe dans la nouvelle liste de proposables
-                    st.session_state.setdefault("activites_programmables_select_auto", True)
-                    if st.session_state["activites_programmables_select_auto"]:
-                        current_selected_row = st.session_state.get("activites_programmables_selected_row")
-                        current_selected_row_idx = get_index_from_uuid(proposables, current_selected_row["__uuid"]) if current_selected_row is not None else None
-                        current_selected_row_idx = current_selected_row_idx if current_selected_row_idx is not None else proposables.index[0] if isinstance(proposables, pd.DataFrame) else None
-                        demander_selection("activites_programmables", current_selected_row_idx)
-                    else:
-                        st.session_state["activites_programmables_select_auto"] = True
-                else: 
-                    proposables = st.session_state.get("activites_programmables", [])
-            else:
-                st.session_state.activites_programmables = None
+    if isinstance(proposables, pd.DataFrame) and not proposables.empty:
+        with st.expander("**Activités programmables**", expanded=True):
+                date_ref = int(choix_creneau["Date"]) # date_ref doit être en int !
+                st.markdown(f"Sur le créneau du {int(date_ref)} de {choix_creneau["Debut"]} à {choix_creneau["Fin"]}")
 
-        if isinstance(proposables, pd.DataFrame) and not proposables.empty:
-            with st.expander("**Activités programmables**", expanded=True):
-                    date_ref = int(choix_creneau["Date"]) # date_ref doit être en int !
-                    st.markdown(f"Sur le créneau du {int(date_ref)} de {choix_creneau["Debut"]} à {choix_creneau["Fin"]}")
+                activite = afficher_df(
+                    "Activités programmables", 
+                    proposables, 
+                    header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité", "Relache": "Relâche", "Priorite": "Prio", "Reserve": "Réservé"},
+                    fixed_columns={"Date": 55, "Debut": 55, "Fin": 55, "Duree": 55}, 
+                    hide=["__type_activite", "__index", "__uuid"], 
+                    key="activites_programmables", 
+                    hide_label=True, 
+                    colorisation=True,
+                )
 
-                    activite = afficher_df(
-                        "Activités programmables", 
-                        proposables, 
-                        header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité", "Relache": "Relâche", "Priorite": "Prio", "Reserve": "Réservé"},
-                        fixed_columns={"Date": 55, "Debut": 55, "Fin": 55, "Duree": 55}, 
-                        hide=["__type_activite", "__index", "__uuid"], 
-                        key="activites_programmables", 
-                        hide_label=True, 
-                        colorisation=True,
-                    )
+                st.markdown(f"{activite["Activite"]} le {activite["Date"]} à {activite["Debut"]}" if activite is not None else "Aucune activité sélectionnée")
 
-                    st.markdown(f"{activite["Activite"]} le {activite["Date"]} à {activite["Debut"]}" if activite is not None else "Aucune activité sélectionnée")
-
-                    # Gestion du bouton Programmer
-                    if st.button(LABEL_BOUTON_PROGRAMMER, disabled=activite is None, key="PagePrincipaleProgrammerParCréneau"):
-                        if activite is not None:
-                            st.session_state.forcer_menu_activites_programmees = True
-                            programmer_activite_non_programmee(date_ref, activite)
+                # Gestion du bouton Programmer
+                if st.button(LABEL_BOUTON_PROGRAMMER, disabled=activite is None, key="PagePrincipaleProgrammerParCréneau"):
+                    if activite is not None:
+                        st.session_state.forcer_menu_activites_programmees = True
+                        programmer_activite_non_programmee(date_ref, activite)
 
 # Force le reaffichage de l'agrid des activités programmées
 def forcer_reaffichage_activites_programmees():
@@ -5161,11 +5305,10 @@ def signaler_df_push(grid_name):
         df_display.loc[df_display.index[0], "__df_push_ver"] = int(df_display.iloc[0]["__df_push_ver"] or 0) + 1
 
 # Initialisation des variables d'état du contexte après chargement des données du contexte
-def initialiser_etat_contexte(df, wb, fn, lnk, ca):
+def initialiser_etat_contexte(df, wb, fn, ca):
     st.session_state.df = df
     st.session_state.wb = wb
     st.session_state.fn = fn
-    st.session_state.liens_activites = lnk
     st.session_state.carnet_adresses = ca
     st.session_state.nouveau_fichier = True
     st.session_state.compteur_activite = 0
@@ -5236,11 +5379,13 @@ def charger_contexte_depuis_fichier():
 
                 if "contexte_invalide" not in st.session_state:
                     df = add_persistent_uuid(df)
-                    initialiser_etat_contexte(df, wb, fd.name, lnk, ca)
+                    df = add_hyperliens(df, lnk)
+                    initialiser_etat_contexte(df, wb, fd.name, ca)
                     initialiser_periode_programmation(df)
                     undo_redo_init(verify=False)
                     bd_maj_contexte(maj_donnees_calculees=True)
-                    sauvegarder_contexte_ds_gsheet(df, lnk, fd, ca)
+                    # sauvegarder_contexte_ds_gsheet(df, fd, ca)
+                    save_global(df)
                     selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
                     demander_selection("activites_non_programmees", selection, deselect="activites_programmees")
                     st.session_state.menu_activites = {
@@ -5282,16 +5427,16 @@ def initialiser_nouveau_contexte(avec_sauvegarde=True):
 
     df = pd.DataFrame(columns=COLONNES_ATTENDUES)
     df = add_persistent_uuid(df)
+    df = add_hyperliens(df)
     initialiser_dtypes(df)
     wb = None
     fn = "planning_avignon.xlsx"
-    lnk = {}
     ca = pd.DataFrame(columns=COLONNES_ATTENDUES_CARNET_ADRESSES)
     
-    initialiser_etat_contexte(df, wb, fn, lnk, ca)
+    initialiser_etat_contexte(df, wb, fn, ca)
     initialiser_periode_programmation(df)
     if avec_sauvegarde:
-        sauvegarder_contexte_ds_gsheet(df, lnk, fd=None, ca=ca)
+        sauvegarder_contexte_ds_gsheet(df, fd=None, ca=ca)
 
 # Création d'un nouveau contexte
 def creer_nouveau_contexte():
@@ -5338,6 +5483,7 @@ def bd_ajouter_activite(idx=None, nom=None, jour=None, debut=None, duree=None):
     df.at[idx, "Debut"] = debut
     df.at[idx, "Duree"] = duree
     df.at[idx, "Activite"] = nom
+    df.at[idx, "Hyperlien"] = f"https://www.festivaloffavignon.com/resultats-recherche?recherche={nom.replace(' ', '+')}"
     add_persistent_uuid(df, idx)
     bd_maj_donnees_calculees_row(idx, full=False)
 
@@ -5545,6 +5691,7 @@ def bd_maj_donnees_calculees():
             df["Debut_dt"] = df["Debut"].apply(heure_parse)
             df["Duree_dt"] = df["Duree"].apply(duree_parse)
             df["Fin"] = df.apply(calculer_fin_row, axis=1)    
+            df["Hyperlien"] = get_liens_activites()   
     except:
         pass        
 
@@ -5607,6 +5754,20 @@ def bd_modifier_cellule(idx, col, val, section_critique=False):
     
     else:
         
+        if col == "Activite":
+            lnk = df.loc[idx, "Hyperlien"]
+            if isinstance(lnk, str) and isinstance(oldval, str) and isinstance(val, str):
+                ancien_nom_dans_lnk = oldval.replace(' ', '+')
+                if ancien_nom_dans_lnk in lnk:
+                    lnk = lnk.replace(ancien_nom_dans_lnk, val.replace(' ', '+'))
+                    modifier_df_cell(df, idx, "Hyperlien", lnk)
+                    if est_activite_programmee(df.loc[idx]):
+                        modifier_df_cell(st.session_state.activites_programmees, idx, "Hyperlien", lnk)
+                        modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, "Hyperlien", lnk)
+                    if est_activite_non_programmee(df.loc[idx]):
+                        modifier_df_cell(st.session_state.activites_non_programmees, idx, "Hyperlien", lnk)
+                        modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, "Hyperlien", lnk)
+    
         if est_activite_programmee(df.loc[idx]):
             modifier_df_cell(st.session_state.activites_programmees, idx, col, val)
             modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, df_display_col_nom(col), val)
@@ -5638,12 +5799,6 @@ def bd_modifier_cellule(idx, col, val, section_critique=False):
                 maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_programmees_df_display, jour)
                 maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
 
-        if col == "Activite":
-            lnk = st.session_state.get("liens_activites")
-            if isinstance(lnk, dict):
-                if oldval in lnk:
-                    lnk[df.loc[idx, col]] = lnk.pop(oldval)
-        
         bd_maj_creneaux_disponibles()
 
     debug_trace(f"Fin {idx} {col} {val}", trace_type=["gen"])
@@ -5938,6 +6093,22 @@ def main():
     # Gestion du chargement de contexte depuis la Google Sheet en charge de la persistence 
     # debug_trace("charger_contexte_depuis_gsheet", trace_type=["gen"])
     charger_contexte_depuis_gsheet()
+    
+    # Chargement via SqLite
+    # app_boot()
+    # df, meta, carnet = load_global()
+    # df = add_hyperliens(df)
+    # st.session_state.periode_a_programmer_debut = BASE_DATE
+    # st.session_state.periode_a_programmer_fin = BASE_DATE
+    # initialiser_etat_contexte(df, None, None, None)
+    # undo_redo_init(verify=False)
+    # bd_maj_contexte(maj_donnees_calculees=True) 
+    # selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
+    # demander_selection("activites_non_programmees", selection, deselect="activites_programmees")
+    # st.session_state.menu_activites = {
+    #     "menu": "menu_activites_non_programmees",
+    #     "index_df": selection
+    # }
 
     # Affichage de la sidebar
     # debug_trace("afficher_sidebar", trace_type=["gen"])
