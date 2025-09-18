@@ -1,4 +1,3 @@
-from __future__ import annotations
 import logging
 import streamlit as st
 import pandas as pd
@@ -134,6 +133,12 @@ PALETTE_COULEURS_JOURS = {
 COULEUR_ACTIVITE_PROGRAMMABLE = "#d9fcd9"  # ("#ccffcc" autre vert clair  "#cfe2f3" bleu clair)
 
 DEBOUNCE_S = 0.30
+
+SEL_REQUEST_DEFAUT = {"sel": {"ver": 0, "id": None, "pending": False}, "desel": {"ver": 0, "id": None, "pending": False}}
+
+###########
+# JsCodes #
+###########
 
 # JsCode chargé de gérer la sélection/déselection programmée de lignes dans les AgGrid, 
 # le flip-flop entre grilles "activites_programmees" et "activites_non_programmees" via __sel_source
@@ -325,11 +330,6 @@ function(p){
 }
 """)
 
-
-SEL_REQUEST_DEFAUT = {"sel": {"ver": 0, "id": None, "pending": False}, "desel": {"ver": 0, "id": None, "pending": False}}
-
-
-
 ##################
 # Sqlite Manager #
 ##################
@@ -337,44 +337,76 @@ SEL_REQUEST_DEFAUT = {"sel": {"ver": 0, "id": None, "pending": False}, "desel": 
 import sqlite3
 from pathlib import Path
 from contextlib import contextmanager
-import sqlite3
+from pandas.api.types import is_scalar
 
 DATA_DIR = Path.home() / "app_data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "app_avignon.db"
 
-# Colonnes "coeur" PERSISTÉES (df principal)
-CORE_COLS = COLONNES_ATTENDUES.extend([
-    "__uuid",          # clé
-    "Debut_dt",        # ISO string (texte)
-    "Duree_dt",        # durée -> on la garde en TEXT pour flexibilité
-    "Hyperliens",      # URL si dispo (sinon construit à la volée côté JS)
-    "Autres",
-])
+# Colonnes persistées
+CORE_COLS_DICO = {
+    "Date": "INTEGER",
+    "Debut": "TEXT",
+    "Fin": "TEXT",
+    "Duree": "TEXT",
+    "Activite": "TEXT",
+    "Lieu": "TEXT",
+    "Relache": "TEXT",
+    "Reserve": "TEXT",
+    "Priorite": "INTEGER",
+    "Debut_dt": "TEXT",
+    "Duree_dt": "TEXT",
+    "Hyperlien": "TEXT",
+    "Autres": "TEXT",
+    "__options_date": "TEXT",
+    "__uuid": "TEXT PRIMARY KEY",
+}
+
+CORE_COLS = list(CORE_COLS_DICO.keys())
 
 # Colonnes non persistées
 VOLATILE_COLS = {
     # ajoute ici toute autre colonne strictement "df_display"
 }
 
+META_COLS_DICO = {
+    "id": "INTEGER PRIMARY KEY DEFAULT 1",
+    "fn": "TEXT",
+    "fp": "TEXT",
+    "MARGE": "INTEGER",
+    "DUREE_REPAS": "INTEGER",
+    "DUREE_CAFE": "INTEGER",
+    "itineraire_app": "TEXT",
+    "city_default": "TEXT",
+    "traiter_pauses": "TEXT",
+    "periode_a_programmer_debut": "TEXT",
+    "periode_a_programmer_fin": "TEXT",
+}
+
+DEFAULT_META = {col: None for col in META_COLS_DICO}
+
+META_COLS = list(META_COLS_DICO.keys())
+
 # Appel unique au boot du conteneur
 @st.cache_resource
 def app_boot():
-    with sqlite3.connect(DB_PATH) as con:
-        cur = con.cursor()
-        # supprime les tables si elles existent
-        cur.executescript("""
-            DROP TABLE IF EXISTS planifies;
-            DROP TABLE IF EXISTS meta;
-            DROP TABLE IF EXISTS carnet;
-        """)
-        con.commit()
+
+    # DEBUG ONLY
+    # with sqlite3.connect(DB_PATH) as con:
+    #     cur = con.cursor()
+    #     # supprime les tables si elles existent
+    #     cur.executescript("""
+    #         DROP TABLE IF EXISTS df_principal;
+    #         DROP TABLE IF EXISTS meta;
+    #         DROP TABLE IF EXISTS carnet;
+    #     """)
+    #     con.commit()
+    # DEBUG ONLY
 
     init_db()                 # crée les tables si besoin
     if not db_exists():
         # Optionnel : restauration depuis Google Sheets ou Excel
         pass
-    return True
 
 @contextmanager
 def conn_rw():
@@ -389,38 +421,26 @@ def conn_rw():
         con.close()
 
 def init_db():
-    ddl = """
+    ddl_cols = ",\n  ".join(f"{col} {sqltype}" for col, sqltype in CORE_COLS_DICO.items())
+    meta_cols = ",\n  ".join(f"{col} {sqltype}" for col, sqltype in META_COLS_DICO.items())
+    ddl = f"""
     PRAGMA foreign_keys=ON;
 
-    CREATE TABLE IF NOT EXISTS planifies (
-      __uuid      TEXT PRIMARY KEY,
-      Date        INTEGER,
-      Debut       TEXT,
-      Duree       TEXT,
-      Activite    TEXT,
-      Lieu        TEXT,
-      Relache     INTEGER,
-      Reserve     TEXT,
-      Autres      TEXT,
-      Debut_dt    TEXT,
-      Duree_dt    TEXT,
-      Hyperliens  TEXT,
-
-      -- toutes les colonnes libres (non listées ci-dessus) sont sérialisées ici :
-      extras_json TEXT NOT NULL DEFAULT '{}'
+    CREATE TABLE IF NOT EXISTS df_principal (
+      {ddl_cols},
+      extras_json TEXT NOT NULL DEFAULT '{{}}'
     );
-
+    
     CREATE TABLE IF NOT EXISTS meta (
-      type TEXT PRIMARY KEY,
-      payload_json TEXT NOT NULL
+      {meta_cols},
+      extras_json TEXT NOT NULL DEFAULT '{{}}'
     );
 
     CREATE TABLE IF NOT EXISTS carnet (
       id TEXT PRIMARY KEY,
-      nom TEXT,
-      email TEXT,
-      tel TEXT,
-      autres_json TEXT
+      Nom TEXT,
+      Adresse TEXT,
+      extras_json TEXT NOT NULL DEFAULT '{{}}'
     );
     """
     with conn_rw() as con:
@@ -428,18 +448,6 @@ def init_db():
 
 def db_exists() -> bool:
     return DB_PATH.exists() and DB_PATH.stat().st_size > 0
-
-@contextmanager
-def conn_rw():
-    con = sqlite3.connect(DB_PATH)
-    con.execute("PRAGMA foreign_keys=ON;")
-    con.execute("PRAGMA journal_mode=WAL;")
-    con.execute("PRAGMA synchronous=NORMAL;")
-    try:
-        yield con
-        con.commit()
-    finally:
-        con.close()
 
 def _strip_display_cols(df: pd.DataFrame) -> pd.DataFrame:
     # enlève les colonnes strictement d'affichage
@@ -464,44 +472,136 @@ def _merge_core_extras(df_core: pd.DataFrame) -> pd.DataFrame:
     )
     return out
 
-# ---------- API alignée avec ton app ----------
-def load_global():
+def _to_sql(v):
+    """Convertit toute valeur pandas/numpy 'missing' en None, et numpy scalars en Python natifs."""
+    # manquants pandas / numpy
+    try:
+        if pd.isna(v):
+            return None
+    except Exception:
+        pass
+    # numpy scalars -> python
+    if isinstance(v, (np.integer,)):
+        return int(v)
+    if isinstance(v, (np.floating,)):
+        # garde None déjà traité plus haut
+        return float(v)
+    # pandas Timestamp/Timedelta -> string
+    if hasattr(v, "isoformat"):  # Timestamp / datetime
+        try:
+            return v.isoformat()
+        except Exception:
+            pass
+    if str(type(v)).endswith("Timedelta'>"):
+        return str(v)
+    return v
+
+def _clean_jsonable(x):
+    """Nettoie récursivement pour que json.dumps fonctionne (NaN/NA->None, numpy->python)."""
+    # scalaires
+    if is_scalar(x) or x is None:
+        return _to_sql(x)
+    # dict
+    if isinstance(x, dict):
+        return {str(k): _clean_jsonable(v) for k, v in x.items()}
+    # list/tuple/set
+    if isinstance(x, (list, tuple, set)):
+        return [_clean_jsonable(v) for v in x]
+    # fallback objet
+    return _to_sql(x)
+
+def sql_charger_data():
     with conn_rw() as con:
-        df_core = pd.read_sql_query("SELECT * FROM planifies", con)
+        df_core = pd.read_sql_query("SELECT * FROM df_principal", con)
         df = _merge_core_extras(df_core)
-        meta_rows = pd.read_sql_query("SELECT type, payload_json FROM meta", con)
+        meta_df = pd.read_sql_query("SELECT * FROM meta", con)
         carnet = pd.read_sql_query("SELECT * FROM carnet", con)
-    meta = {t: json.loads(p) for t, p in meta_rows.values} if len(meta_rows) else {}
+    
+    if meta_df.empty:
+        # ✅ renvoie un dict avec toutes les clés mais valeurs None
+        meta = DEFAULT_META.copy()
+    else:
+        # on prend la première ligne (ou adapte si plusieurs types)
+        meta = {**DEFAULT_META, **meta_df.iloc[0].to_dict()}
+
+        # décodage JSON éventuel
+        if meta.get("extras_json"):
+            try:
+                meta["extras_json"] = json.loads(meta["extras_json"])
+            except Exception:
+                pass    
     return df, meta, carnet
 
-def save_global(df: pd.DataFrame, meta: dict=None, carnet: pd.DataFrame=None):
+def sql_sauvegarder_data(df: pd.DataFrame, meta: dict = None, carnet: pd.DataFrame = None):
+    # 0) Préparation du DF (copie colonnes, options_date…)
     df = _strip_display_cols(df)
+    df = ajouter_options_date(df)
     if "__uuid" not in df.columns:
-        raise ValueError("save_global: __uuid manquant dans df")
+        raise ValueError("sql_sauvegarder_data: __uuid manquant dans df")
 
-    # upsert planifies
+    # 1) Prépare UPSERT pour df_principal
     cols_sql = [c for c in CORE_COLS if c != "__uuid"] + ["extras_json"]
     set_sql  = ",".join([f"{c}=excluded.{c}" for c in cols_sql])
-    sql = f"INSERT INTO planifies (__uuid,{','.join(cols_sql)}) VALUES ({','.join(['?']*(len(cols_sql)+1))}) " \
-          f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
+    sql_df = (
+        f"INSERT INTO df_principal (__uuid,{','.join(cols_sql)}) "
+        f"VALUES ({','.join(['?']*(len(cols_sql)+1))}) "
+        f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
+    )
 
+    # Prépare les lignes à insérer en lot (executemany)
+    rows_params = []
+    for _, row in df.iterrows():
+        core, extras = _split_core_extras(row.to_dict())
+        extras_json = json.dumps(_clean_jsonable(extras), ensure_ascii=False)
+        vals = [core.get("__uuid")] \
+             + [_to_sql(core.get(c)) for c in CORE_COLS if c != "__uuid"] \
+             + [extras_json]
+        rows_params.append(vals)
+
+    # 2) Prépare UPSERT pour meta (clé: id=1)
+    sql_meta = None
+    meta_vals = None
+    if meta is not None:
+        # ATTENTION: ta liste doit correspondre aux colonnes SQL réelles
+        # (pas de 'id' dedans)
+        placeholders = ",".join(["?"] * len(META_COLS))
+        set_clause   = ",".join([f"{c}=excluded.{c}" for c in META_COLS])
+
+        # sérialise payload_json si dict/list
+        vals = []
+        for col in META_COLS:
+            v = meta.get(col)
+            if col == "payload_json" and isinstance(v, (dict, list)):
+                v = json.dumps(v, ensure_ascii=False)
+            vals.append(v)
+        sql_meta = (
+            f"INSERT INTO meta (id,{','.join(META_COLS)}) "
+            f"VALUES (1,{placeholders}) "
+            f"ON CONFLICT(id) DO UPDATE SET {set_clause}"
+        )
+        meta_vals = vals
+
+    # 3) Écritures en UNE transaction
+    #    -> évite les locks inter-connexions
     with conn_rw() as con:
-        for _, row in df.iterrows():
-            core, extras = _split_core_extras(row.to_dict())
-            extras_json = json.dumps(extras, ensure_ascii=False)
-            vals = [core.get("__uuid")] + [core.get(c) for c in CORE_COLS if c != "__uuid"] + [extras_json]
-            con.execute(sql, [None if (isinstance(v, float) and pd.isna(v)) else v for v in vals])
+        # (Optionnel) allonger le busy timeout si tu veux
+        try:
+            con.execute("PRAGMA busy_timeout=30000")
+        except Exception:
+            pass
 
-        # meta upsert
-        if meta is not None:
-            for t, payload in (meta or {}).items():
-                con.execute(
-                    "INSERT INTO meta(type,payload_json) VALUES(?,?) "
-                    "ON CONFLICT(type) DO UPDATE SET payload_json=excluded.payload_json",
-                    (t, json.dumps(payload, ensure_ascii=False))
-                )
+        # Verrouille l'écriture tout de suite
+        con.execute("BEGIN IMMEDIATE")
 
-        # carnet (simple: clear+insert ; fais un upsert si besoin)
+        # df_principal en lot (beaucoup plus rapide et atomique)
+        if rows_params:
+            con.executemany(sql_df, rows_params)
+
+        # meta upsert (aucun DELETE ici)
+        if sql_meta is not None:
+            con.execute(sql_meta, meta_vals)
+
+        # carnet (si fourni) : clear + insert dans LA MÊME transaction
         if carnet is not None:
             con.execute("DELETE FROM carnet")
             if len(carnet):
@@ -510,19 +610,164 @@ def save_global(df: pd.DataFrame, meta: dict=None, carnet: pd.DataFrame=None):
                     f"INSERT INTO carnet ({','.join(cols)}) VALUES ({','.join(['?']*len(cols))})",
                     carnet.where(pd.notna(carnet), None).itertuples(index=False, name=None)
                 )
+        # commit automatique par le context manager
 
-def save_df_row(row: dict | pd.Series):
-    if hasattr(row, "to_dict"): row = row.to_dict()
-    if "__uuid" not in row: raise ValueError("save_df_row: __uuid manquant")
+def sql_sauvegarder_contexte(df: pd.DataFrame, fd=None, ca=None):
+    meta = {
+        "fn": fd.name if fd is not None else "",
+        "fp": upload_excel_to_dropbox(fd.getvalue(), fd.name) if fd is not None else "",
+        "MARGE": minutes(st.session_state.MARGE),
+        "DUREE_REPAS": minutes(st.session_state.DUREE_REPAS),
+        "DUREE_CAFE": minutes(st.session_state.DUREE_CAFE),
+        "itineraire_app": st.session_state.itineraire_app,
+        "city_default": st.session_state.city_default,
+        "traiter_pauses": str(st.session_state.traiter_pauses),
+        "periode_a_programmer_debut": to_iso_date(st.session_state.periode_a_programmer_debut),
+        "periode_a_programmer_fin": to_iso_date(st.session_state.periode_a_programmer_fin),
+    }
+    sql_sauvegarder_data(df, meta=meta, carnet=ca)
+
+def sql_sauvegarder_row(index_df):
+    # Récupère UNE ligne sous forme de Series
+    s = st.session_state.df.loc[index_df]      # Series si index_df est un label d'index
+    if isinstance(s, pd.DataFrame):            # sécurité si loc renvoie 1-row DataFrame
+        s = s.iloc[0]
+    row = s.to_dict()                           # dict plat {col: val}
+
+    if "__uuid" not in row:
+        raise ValueError("sql_sauvegarder_row: __uuid manquant")
+
+    # (optionnel) si tu dois y injecter __options_date depuis les df_display :
+    # row["__options_date"] = _get_options_date_for_uuid(row["__uuid"])
+
     core, extras = _split_core_extras(row)
-    extras_json = json.dumps(extras, ensure_ascii=False)
+    extras_json = json.dumps(_clean_jsonable(extras), ensure_ascii=False)
+
     cols_sql = [c for c in CORE_COLS if c != "__uuid"] + ["extras_json"]
     set_sql  = ",".join([f"{c}=excluded.{c}" for c in cols_sql])
-    sql = f"INSERT INTO planifies (__uuid,{','.join(cols_sql)}) VALUES ({','.join(['?']*(len(cols_sql)+1))}) " \
-          f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
+    sql = (
+        f"INSERT INTO df_principal (__uuid,{','.join(cols_sql)}) "
+        f"VALUES ({','.join(['?']*(len(cols_sql)+1))}) "
+        f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
+    )
+
     with conn_rw() as con:
-        vals = [core.get("__uuid")] + [core.get(c) for c in CORE_COLS if c != "__uuid"] + [extras_json]
-        con.execute(sql, [None if (isinstance(v, float) and pd.isna(v)) else v for v in vals])
+        vals = [ core.get("__uuid") ] \
+             + [ _to_sql(core.get(c)) for c in CORE_COLS if c != "__uuid" ] \
+             + [ extras_json ]
+        con.execute(sql, vals)
+
+def sqlite_sauvegarder_param(param: str):
+    """
+    Sauvegarde un paramètre précis de st.session_state
+    dans la table 'meta' de SQLite (clé = nom du param).
+    """
+    try:
+        # Récupère la valeur dans session_state
+        if param == "MARGE":
+            value = minutes(st.session_state.MARGE)
+        elif param == "DUREE_REPAS":
+            value = minutes(st.session_state.DUREE_REPAS)
+        elif param == "DUREE_CAFE":
+            value = minutes(st.session_state.DUREE_CAFE)
+        elif param == "itineraire_app":
+            value = st.session_state.itineraire_app
+        elif param == "city_default":
+            value = st.session_state.city_default
+        elif param == "traiter_pauses":
+            value = str(st.session_state.traiter_pauses)
+        elif param == "periode_a_programmer_debut":
+            value = to_iso_date(st.session_state.periode_a_programmer_debut)
+        elif param == "periode_a_programmer_fin":
+            value = to_iso_date(st.session_state.periode_a_programmer_fin)
+        else:
+            raise ValueError(f"Paramètre inconnu : {param}")
+
+        # Sauvegarde dans SQLite (upsert)
+        sql = f"""
+            INSERT INTO meta (id, {param})
+            VALUES (1, ?)
+            ON CONFLICT(id) DO UPDATE SET {param} = excluded.{param}
+        """
+        with conn_rw() as con:
+            con.execute(sql, (value,))
+
+    except Exception as e:
+        print(f"Erreur sqlite_sauvegarder_param : {e}")
+
+def sql_charger_contexte():
+    def to_timedelta(value, default):
+        try:
+            minutes = int(str(value).strip())
+            return datetime.timedelta(minutes=minutes)    
+        except (ValueError, TypeError, AttributeError):
+            return default
+
+    if "df" not in st.session_state:
+        df, meta, ca = sql_charger_data()
+
+        fn  = meta["fn"]
+        fp  = meta["fp"]
+        if fp is None or str(fp).strip() == "":
+            wb = download_excel_from_dropbox(fp)
+
+        st.session_state.MARGE = to_timedelta(meta["MARGE"], default=MARGE)
+        st.session_state.DUREE_REPAS = to_timedelta(meta["DUREE_REPAS"], default=DUREE_REPAS)
+        st.session_state.DUREE_CAFE = to_timedelta(meta["DUREE_CAFE"], default=DUREE_CAFE)
+        st.session_state.itineraire_app = meta["itineraire_app"]
+        st.session_state.city_default = meta["city_default"]
+        st.session_state.traiter_pauses = str(meta["traiter_pauses"]).strip().lower() == "true"
+
+        val = meta["periode_a_programmer_debut"]
+        if val is not None and str(val).strip() != "":
+            st.session_state.periode_a_programmer_debut = datetime.date.fromisoformat(val.split(" ")[0])
+        val = meta["periode_a_programmer_fin"]
+        if val is not None and str(val).strip() != "":
+            st.session_state.periode_a_programmer_fin = datetime.date.fromisoformat(val.split(" ")[0])
+      
+        if "periode_a_programmer_debut" not in st.session_state or "periode_a_programmer_fin" not in st.session_state:
+            initialiser_periode_programmation(df) # rattrapage via init standard à partir des activités programmées du contexte que l'on vient de charger
+
+        initialiser_etat_contexte(df, wb, fn, ca)
+        undo_redo_init(verify=False)
+        bd_maj_contexte(maj_donnees_calculees=True) 
+
+        st.session_state.df = st.session_state.df.drop(columns="__options_date", errors="ignore")
+        st.session_state.activites_programmees = st.session_state.activites_programmees.drop(columns="__options_date", errors="ignore")
+        st.session_state.activites_non_programmees = st.session_state.activites_non_programmees.drop(columns="__options_date", errors="ignore")
+        
+        selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
+        demander_selection("activites_non_programmees", selection, deselect="activites_programmees")
+        st.session_state.menu_activites = {
+            "menu": "menu_activites_non_programmees",
+            "index_df": selection
+        }
+
+def ajouter_options_date(df_save: pd.DataFrame):
+    """
+    Copie la colonne __options_date issue des deux df_display
+    dans le DataFrame à sauvegarder en SQLite.
+    """
+    # 1️⃣  Récupère les deux df_display depuis session_state
+    df_prog  = st.session_state.activites_programmees_df_display
+    df_non   = st.session_state.activites_non_programmees_df_display
+
+    # 2️⃣  Concatène uniquement les colonnes utiles
+    src = pd.concat([df_prog, df_non], ignore_index=True)[["__uuid", "__options_date"]]
+
+    # 3️⃣  Aligne par __uuid
+    if "__uuid" not in df_save.columns:
+        raise ValueError("__uuid manquant dans le DataFrame à sauvegarder")
+
+    # left join pour récupérer les valeurs
+    df_save = df_save.merge(src, on="__uuid", how="left", suffixes=("", "_src"))
+
+    # si la colonne existait déjà, on écrase avec la version issue des df_display
+    if "__options_date_src" in df_save.columns:
+        df_save["__options_date"] = df_save["__options_date_src"]
+        df_save.drop(columns="__options_date_src", inplace=True)
+
+    return df_save
 
 ######################
 # User Sheet Manager #
@@ -602,7 +847,7 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
 ####################
 
 # 📥 Charge les infos persistées depuis la Google Sheet
-def charger_contexte_depuis_gsheet():
+def gsheet_charger_contexte():
 
     def to_timedelta(value, default):
         try:
@@ -692,7 +937,7 @@ def charger_contexte_depuis_gsheet():
             # st.stop()
 
 # 📤 Sauvegarde le DataFrame dans la Google Sheet
-def sauvegarder_df_ds_gsheet(df: pd.DataFrame):
+def gsheet_sauvegarder_df(df: pd.DataFrame):
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
         try:
             gsheets = st.session_state.gsheets
@@ -700,10 +945,10 @@ def sauvegarder_df_ds_gsheet(df: pd.DataFrame):
             worksheet.clear()
             set_with_dataframe(worksheet, df)
         except Exception as e:
-            print(f"Erreur sauvegarder_df_ds_gsheet : {e}")
+            print(f"Erreur gsheet_sauvegarder_df : {e}")
 
 # Sauvegarde une ligne dans la Google Sheet
-def sauvegarder_row_ds_gsheet(index_df):
+def gsheet_sauvegarder_row(index_df):
     
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
         try:
@@ -724,10 +969,10 @@ def sauvegarder_row_ds_gsheet(index_df):
                 )
 
         except Exception as e:
-            print(f"Erreur sauvegarder_row_ds_gsheet : {e}")
+            print(f"Erreur gsheet_sauvegarder_row : {e}")
 
 # 📤 Sauvegarde des params dans la Google Sheet
-def sauvegarder_param_ds_gsheet(param):
+def gsheet_sauvegarder_param(param):
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
         try:
             gsheets = st.session_state.gsheets
@@ -751,10 +996,10 @@ def sauvegarder_param_ds_gsheet(param):
                 worksheet.update_acell("A10", to_iso_date(st.session_state.periode_a_programmer_fin))
 
         except Exception as e:
-            print(f"Erreur sauvegarder_param_ds_gsheet : {e}")
+            print(f"Erreur gsheet_sauvegarder_param : {e}")
 
 # 📤 Sauvegarde l'ensemble des infos persistées dans la Google Sheet
-def sauvegarder_contexte_ds_gsheet(df: pd.DataFrame, fd=None, ca=None):
+def gsheet_sauvegarder_contexte(df: pd.DataFrame, fd=None, ca=None):
     if "gsheets" in st.session_state and st.session_state.gsheets is not None:
         try:
             gsheets = st.session_state.gsheets
@@ -786,7 +1031,7 @@ def sauvegarder_contexte_ds_gsheet(df: pd.DataFrame, fd=None, ca=None):
             set_with_dataframe(worksheet, ca)
 
         except Exception as e:
-            print(f"Erreur sauvegarder_contexte_ds_gsheet : {e}")
+            print(f"Erreur gsheet_sauvegarder_contexte : {e}")
 
 ####################
 # API Google Drive #
@@ -944,7 +1189,7 @@ def undo_redo_undo():
         st.session_state.activites_programmables_select_auto = False 
         bd_maj_contexte(maj_donnees_calculees=False)
         forcer_reaffichage_df("creneaux_disponibles")
-        sauvegarder_df_ds_gsheet(st.session_state.df)
+        gsheet_sauvegarder_df(st.session_state.df)
         st.rerun()
 
 # Redo
@@ -975,7 +1220,7 @@ def undo_redo_redo():
         st.session_state.activites_programmables_select_auto = False 
         bd_maj_contexte(maj_donnees_calculees=False)
         forcer_reaffichage_df("creneaux_disponibles")
-        sauvegarder_df_ds_gsheet(st.session_state.df)
+        gsheet_sauvegarder_df(st.session_state.df)
         st.rerun()
 
 #########################
@@ -2081,7 +2326,7 @@ def afficher_periode_programmation():
             if changed_keys:
                 for k in changed_keys:
                     try:
-                        sauvegarder_param_ds_gsheet(k)  # ou une version batch si tu as
+                        gsheet_sauvegarder_param(k)  # ou une version batch si tu as
                     except Exception:
                         pass  # log/ignorer selon besoin
 
@@ -2243,7 +2488,7 @@ def afficher_parametres():
             if changed_keys:
                 for k in changed_keys:
                     try:
-                        sauvegarder_param_ds_gsheet(k)  # ou une version batch si tu as
+                        gsheet_sauvegarder_param(k)  # ou une version batch si tu as
                     except Exception:
                         pass  # log/ignorer selon besoin
 
@@ -2805,7 +3050,8 @@ def show_dialog_supprimer_activite(df, index_df, df_display):
                 demander_selection("activites_non_programmees", ligne_voisine_index(df_display, index_df), deselect="activites_programmees")
             forcer_reaffichage_df("creneaux_disponibles")
             supprimer_activite(index_df)
-            sauvegarder_row_ds_gsheet(index_df)
+            # gsheet_sauvegarder_row(index_df)
+            sql_sauvegarder_row(index_df)
             st.rerun()
     with col2:
         if st.button(LABEL_BOUTON_ANNULER, use_container_width=CENTRER_BOUTONS):
@@ -2827,7 +3073,8 @@ def show_dialog_reprogrammer_activite_programmee(df, activites_programmees, inde
                 demander_selection("activites_non_programmees", index_df, deselect="activites_programmees")
                 bd_deprogrammer_activite_programmee(index_df)
                 forcer_reaffichage_df("creneaux_disponibles")
-                sauvegarder_row_ds_gsheet(index_df)
+                # gsheet_sauvegarder_row(index_df)
+                sql_sauvegarder_row(index_df)
                 st.rerun()
             else:
                 # Reprogrammation 
@@ -2835,7 +3082,8 @@ def show_dialog_reprogrammer_activite_programmee(df, activites_programmees, inde
                 undo_redo_save()
                 demander_selection("activites_programmees", index_df, deselect="activites_non_programmees")
                 df.at[index_df, "Date"] = jour_choisi
-                sauvegarder_row_ds_gsheet(index_df)
+                # gsheet_sauvegarder_row(index_df)
+                sql_sauvegarder_row(index_df)
                 st.rerun()
     with col2:
         if st.button(LABEL_BOUTON_ANNULER, use_container_width=CENTRER_BOUTONS):
@@ -2855,7 +3103,8 @@ def show_dialog_programmer_activite_non_programmee(df, index_df, df_display, jou
             demander_selection("activites_programmees", index_df, deselect="activites_non_programmees")
             df.at[index_df, "Date"] = jour_choisi
             forcer_reaffichage_df("creneaux_disponibles")
-            sauvegarder_row_ds_gsheet(index_df)
+            # gsheet_sauvegarder_row(index_df)
+            sql_sauvegarder_row(index_df)
             st.rerun()
     with col2:
         if st.button(LABEL_BOUTON_ANNULER, use_container_width=CENTRER_BOUTONS):
@@ -3245,7 +3494,8 @@ def activites_programmees_deprogrammer(idx):
     forcer_reaffichage_activites_programmees() 
 
     forcer_reaffichage_df("creneaux_disponibles")
-    sauvegarder_row_ds_gsheet(idx)
+    # gsheet_sauvegarder_row(idx)
+    sql_sauvegarder_row(idx)
 
     debug_trace(f"Fin {idx}")
     del st.session_state["activites_programmees_deprogrammer_cmd"]
@@ -3274,7 +3524,8 @@ def activites_programmees_reprogrammer(idx, jour):
     # Sinon figeage grille après modification de cellule.
     forcer_reaffichage_activites_programmees() 
 
-    sauvegarder_row_ds_gsheet(idx)
+    # gsheet_sauvegarder_row(idx)
+    sql_sauvegarder_row(idx)
 
     debug_trace(f"Fin {idx} {jour}")
     del st.session_state["activites_programmees_reprogrammer_cmd"]
@@ -3372,7 +3623,8 @@ def menu_activites_programmees(index_df):
         supprimer_activite(index_df)
         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
         forcer_reaffichage_df("creneaux_disponibles")
-        sauvegarder_row_ds_gsheet(index_df)
+        # gsheet_sauvegarder_row(index_df)
+        sql_sauvegarder_row(index_df)
         st.rerun()
 
     # Affichage contrôle Déprogrammer
@@ -3384,7 +3636,8 @@ def menu_activites_programmees(index_df):
         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
         st.session_state["activites_programmables_selected_row"] = df.loc[index_df]
         forcer_reaffichage_df("creneaux_disponibles")
-        sauvegarder_row_ds_gsheet(index_df)
+        # gsheet_sauvegarder_row(index_df)
+        sql_sauvegarder_row(index_df)
         st.rerun()
 
     # Affichage contrôle Reprogrammer
@@ -3396,7 +3649,8 @@ def menu_activites_programmees(index_df):
             reprogrammation_request_set(index_df, int(jour_choisi)) # inhibe les cellValuChanged résultant de cette modification et qui inverseraient l'opération
             bd_modifier_cellule(index_df, "Date", int(jour_choisi))
             demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
-            sauvegarder_row_ds_gsheet(index_df)
+            # gsheet_sauvegarder_row(index_df)
+            sql_sauvegarder_row(index_df)
             st.rerun()
     
     # Affichage Liste des jours possibles
@@ -3748,7 +4002,8 @@ def activites_non_programmees_programmer(idx, jour):
     forcer_reaffichage_activites_non_programmees() 
 
     forcer_reaffichage_df("creneaux_disponibles")
-    sauvegarder_row_ds_gsheet(idx)
+    # gsheet_sauvegarder_row(idx)
+    sql_sauvegarder_row(idx)
 
     debug_trace(f"Fin {idx} {jour}")
     del st.session_state["activites_non_programmees_programmer_cmd"]
@@ -3814,7 +4069,8 @@ def menu_activites_non_programmees(index_df):
         supprimer_activite(index_df)
         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
         forcer_reaffichage_df("activites_programmable_dans_creneau_selectionne")
-        sauvegarder_row_ds_gsheet(index_df)
+        # gsheet_sauvegarder_row(index_df)
+        sql_sauvegarder_row(index_df)
         st.rerun()
 
     # Affichage contrôle Deprogrammer
@@ -3830,7 +4086,8 @@ def menu_activites_non_programmees(index_df):
             bd_modifier_cellule(index_df, "Date", int(jour_choisi))
             demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
             forcer_reaffichage_df("creneaux_disponibles")
-            sauvegarder_row_ds_gsheet(index_df)
+            # gsheet_sauvegarder_row(index_df)
+            sql_sauvegarder_row(index_df)
             st.rerun()
 
     # Affichage Liste des jours possibles
@@ -3968,7 +4225,8 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
                         if est_activite_programmee(row): signaler_df_push("activites_programmees")
                         if est_activite_non_programmee(row): signaler_df_push("activites_non_programmees")
                         
-                        sauvegarder_row_ds_gsheet(index_df)
+                        # gsheet_sauvegarder_row(index_df)
+                        sql_sauvegarder_row(index_df)
 
                     st.rerun()
                 except Exception as e:
@@ -4028,7 +4286,8 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=None):
                     df.at[index, colonne] = valeur_courante
                     undo_redo_save()
                     bd_modifier_cellule(index, colonne, nouvelle_valeur)
-                    sauvegarder_row_ds_gsheet(index)
+                    # gsheet_sauvegarder_row(index)
+                    sql_sauvegarder_row(index)
     elif step == 1:
         if colonne == "Debut" :
             heures, minutes = nouvelle_valeur.split("h")
@@ -4043,12 +4302,14 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=None):
                 df.at[index, colonne] = valeur_courante
                 undo_redo_save()
                 bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
-                sauvegarder_row_ds_gsheet(index)
+                # gsheet_sauvegarder_row(index)
+                sql_sauvegarder_row(index)
     elif step == 2:
         df.at[index, colonne] = valeur_courante
         undo_redo_save()
         bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
-        sauvegarder_row_ds_gsheet(index)
+        # gsheet_sauvegarder_row(index)
+        sql_sauvegarder_row(index)
         
     return erreur
 
@@ -4731,7 +4992,8 @@ def programmer_activite_non_programmee(date_ref, activite):
     demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.creneaux_disponibles, activite)[0])
     st.session_state["activites_programmables_selected_row"] = None
     forcer_reaffichage_df("creneaux_disponibles")
-    sauvegarder_row_ds_gsheet(index)
+    # gsheet_sauvegarder_row(index)
+    sql_sauvegarder_row(index)
     st.rerun()
 
 # Renvoie les jours possibles pour programmer une activité donnée par son idx
@@ -4926,7 +5188,7 @@ def get_jours_possibles_from_activite_non_programmee(row: pd.Series):
 
 # Calcule les options des dates pour les activiés programmées
 def calculer_options_date_activites_programmees(df_display):
-    # Hash non pertinent en l'état car cette fonction n'est appelée par bd_maj_activites_non_programmees que si les données d'enrée on changé
+    # Hash non pertinent en l'état car cette fonction n'est appelée par bd_maj_activites_non_programmees que si les données d'entrée on changé
     # hash_val  = hash_df(
     #     df_display, 
     #     colonnes_a_garder=["Date", "Debut", "Duree"], 
@@ -4946,7 +5208,7 @@ def calculer_options_date_activites_programmees(df_display):
 
 # Calcule les options des dates pour les activiés non programmées
 def calculer_options_date_activites_non_programmees(df_display):
-    # Hash non pertinent en l'état car cette fonction n'est appelée par bd_maj_activites_non_programmees que si les données d'enrée on changé
+    # Hash non pertinent en l'état car cette fonction n'est appelée par bd_maj_activites_non_programmees que si les données d'entrée on changé
     # hash_val  = hash_df(
     #     df_display, 
     #     colonnes_a_garder=["Date", "Debut", "Duree"], 
@@ -5200,7 +5462,7 @@ def afficher_creneaux_disponibles():
         st.session_state.traiter_pauses_change = True
         st.session_state.traiter_pauses = st.session_state.traiter_pauses_cb
         bd_maj_creneaux_disponibles()
-        sauvegarder_param_ds_gsheet("traiter_pauses")
+        gsheet_sauvegarder_param("traiter_pauses")
         st.session_state.creneaux_disponibles_choix_activite = None
 
     df = st.session_state.get("df")
@@ -5349,7 +5611,8 @@ def afficher_bouton_nouvelle_activite(disabled=False, key="ajouter_activite"):
         }
 
         forcer_reaffichage_df("activites_programmables")
-        sauvegarder_row_ds_gsheet(new_idx)
+        # gsheet_sauvegarder_row(new_idx)
+        sql_sauvegarder_row(new_idx)
         st.rerun()
 
 # Charge le fichier Excel contenant les activités à programmer
@@ -5384,8 +5647,8 @@ def charger_contexte_depuis_fichier():
                     initialiser_periode_programmation(df)
                     undo_redo_init(verify=False)
                     bd_maj_contexte(maj_donnees_calculees=True)
-                    # sauvegarder_contexte_ds_gsheet(df, fd, ca)
-                    save_global(df)
+                    # gsheet_sauvegarder_contexte(df, fd, ca)
+                    sql_sauvegarder_contexte(df, fd, ca)
                     selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
                     demander_selection("activites_non_programmees", selection, deselect="activites_programmees")
                     st.session_state.menu_activites = {
@@ -5436,7 +5699,8 @@ def initialiser_nouveau_contexte(avec_sauvegarde=True):
     initialiser_etat_contexte(df, wb, fn, ca)
     initialiser_periode_programmation(df)
     if avec_sauvegarde:
-        sauvegarder_contexte_ds_gsheet(df, fd=None, ca=ca)
+        # gsheet_sauvegarder_contexte(df, fd=None, ca=ca)
+        sql_sauvegarder_contexte(df, fd=None, ca=ca)
 
 # Création d'un nouveau contexte
 def creer_nouveau_contexte():
@@ -5512,8 +5776,9 @@ def bd_ajouter_activite(idx=None, nom=None, jour=None, debut=None, duree=None):
 def bd_creer_df_display_activites_non_programmees(activites_non_programmees):
     df_display = activites_non_programmees.copy()
     df_display["__index"] = df_display.index
-    df_display["__options_date"] = calculer_options_date_activites_non_programmees(df_display) 
-    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
+    if "__options_date" not in df_display:
+        df_display["__options_date"] = calculer_options_date_activites_non_programmees(df_display) 
+        df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
     df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
     df_display["__desel_ver"] = st.session_state.activites_programmees_sel_request["desel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
     df_display["__desel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["desel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
@@ -5530,8 +5795,9 @@ def bd_creer_df_display_activites_programmees(activites_programmees):
     df_display = activites_programmees.copy()
     df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
     df_display["__index"] = df_display.index
-    df_display["__options_date"] = calculer_options_date_activites_programmees(df_display) 
-    df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
+    if "__options_date" not in df_display:
+        df_display["__options_date"] = calculer_options_date_activites_programmees(df_display) 
+        df_display["__options_date"] = df_display["__options_date"].map(safe_json_dump)
     df_display["__non_reserve"] = df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
     df_display["Date"] = df_display["Date"].apply(lambda x: str(int(x)) if pd.notna(x) and float(x).is_integer() else "")
     df_display["__desel_ver"] = st.session_state.activites_programmees_sel_request["desel"]["ver"] if "activites_programmees_sel_request" in st.session_state else 0
@@ -6066,75 +6332,62 @@ def traiter_sections_critiques():
     if cmd:
         activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
 
-def main():
-
-    configurer_logger()
-
+# Trace le début d'un rerun
+def tracer_rerun():
     st.session_state.setdefault("main_counter", 0)
     st.session_state.main_counter += 1
     debug_trace(f"____________MAIN {st.session_state.main_counter}______________", trace_type=["gen","main"])
-    
-    # Gestion des sections critiques de traitement
-    traiter_sections_critiques()
 
-    # Configuration de la page HTML
-    # debug_trace("initialiser_page", trace_type=["gen"])
-    initialiser_page()
-
-    # Affichage du titre
-    # debug_trace("afficher_titre", trace_type=["gen"])
-    afficher_titre("Planificateur Avignon Off")
+def main():
 
     # Affichage de la version de streamlit-aggrid
     # import pkg_resources
     # version = pkg_resources.get_distribution("streamlit-aggrid").version
     # st.write("Version streamlit-aggrid :", version)
 
-    # Gestion du chargement de contexte depuis la Google Sheet en charge de la persistence 
-    # debug_trace("charger_contexte_depuis_gsheet", trace_type=["gen"])
-    charger_contexte_depuis_gsheet()
+    # Configuration du logger
+    configurer_logger()
+
+    # Trace le début d'un rerun
+    tracer_rerun()
+  
+    # Opérations à ne réaliser qu'une seule fois au boot de l'appli
+    app_boot()
+
+    # Gestion des sections critiques de traitement
+    traiter_sections_critiques()
+
+    # Configuration de la page HTML
+    initialiser_page()
+
+    # Affichage du titre
+    afficher_titre("Planificateur Avignon Off")
+
+    # Chargement de contexte depuis la Google Sheet en charge de la persistence à froid
+    # gsheet_charger_contexte()
     
-    # Chargement via SqLite
-    # app_boot()
-    # df, meta, carnet = load_global()
-    # df = add_hyperliens(df)
-    # st.session_state.periode_a_programmer_debut = BASE_DATE
-    # st.session_state.periode_a_programmer_fin = BASE_DATE
-    # initialiser_etat_contexte(df, None, None, None)
-    # undo_redo_init(verify=False)
-    # bd_maj_contexte(maj_donnees_calculees=True) 
-    # selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
-    # demander_selection("activites_non_programmees", selection, deselect="activites_programmees")
-    # st.session_state.menu_activites = {
-    #     "menu": "menu_activites_non_programmees",
-    #     "index_df": selection
-    # }
+    # Chargement de contexte depuis SqLite en charge de la persistence à chaud
+    sql_charger_contexte()
 
     # Affichage de la sidebar
-    # debug_trace("afficher_sidebar", trace_type=["gen"])
     afficher_sidebar()
 
    # Si le contexte est valide, on le traite
     if est_contexte_valide():
 
         # Affichage des infos générales
-        # debug_trace("afficher_infos_generales", trace_type=["gen"])
         afficher_infos_generales()
         
         # Affichage des activités programmées
-        # debug_trace("afficher_activites_programmees", trace_type=["gen"])
         afficher_activites_programmees()
 
         # Affichage des activités non programmées
-        # debug_trace("afficher_activites_non_programmees", trace_type=["gen"])
         afficher_activites_non_programmees()
 
         # Affichage des créneaux disponibles et des activités programmables
-        # debug_trace("afficher_creneaux_disponibles", trace_type=["gen"])
         afficher_creneaux_disponibles()      
 
         # # Affichage du menu activité de la sidebar
-        # debug_trace("afficher_menu_activite_sidebar", trace_type=["gen"])
         afficher_menu_activite_sidebar()
     else:
         message = st.session_state.get("contexte_invalide_message")
