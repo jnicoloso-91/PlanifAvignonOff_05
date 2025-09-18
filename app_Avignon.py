@@ -357,7 +357,6 @@ CORE_COLS_DICO = {
     "Debut_dt": "TEXT",
     "Duree_dt": "TEXT",
     "Hyperlien": "TEXT",
-    "Autres": "TEXT",
     "__options_date": "TEXT",
     "__uuid": "TEXT PRIMARY KEY",
 }
@@ -728,6 +727,7 @@ def sql_charger_contexte():
         if "periode_a_programmer_debut" not in st.session_state or "periode_a_programmer_fin" not in st.session_state:
             initialiser_periode_programmation(df) # rattrapage via init standard à partir des activités programmées du contexte que l'on vient de charger
 
+        df = nettoyer_donnees(df, fn)
         initialiser_etat_contexte(df, wb, fn, ca)
         undo_redo_init(verify=False)
         bd_maj_contexte(maj_donnees_calculees=True) 
