@@ -330,6 +330,171 @@ function(p){
 }
 """)
 
+# ACTIVITE_RENDERER = JsCode("""
+# class ActiviteRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+#     e.style.width='100%'; e.style.overflow='hidden';
+
+#     const label = (params.value ?? '').toString();  // ✅ valeur de la colonne (accent ok)
+#     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
+#     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+
+#     const txt = document.createElement('span');
+#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
+#     e.appendChild(txt);
+
+#     const a = document.createElement('a');
+#     a.textContent = '🔎';
+#     a.href = href;                   // ✅ vrai lien
+#     a.target = '_blank';
+#     a.rel = 'noopener';
+#     a.title = 'Rechercher / Ouvrir le lien';
+#     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
+#     // bloque seulement la propagation pour ne pas déclencher sélection/édition
+#     a.addEventListener('mousedown', ev=>ev.stopPropagation());
+#     a.addEventListener('click',     ev=>ev.stopPropagation());
+#     e.appendChild(a);
+
+#     // ✅ forcer l'édition au double-clic
+#     e.addEventListener('dblclick', ()=>{
+#       params.api.startEditingCell({ rowIndex: params.node.rowIndex, colKey: params.colDef.field });
+#     });
+
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
+
+# LIEU_RENDERER = JsCode("""
+# class LieuRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+#     e.style.width='100%'; e.style.overflow='hidden';
+
+#     const label = (params.value ?? '').toString().trim();
+
+#     const txt = document.createElement('span');
+#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
+#     e.appendChild(txt);
+
+#     // URL d'itinéraire universelle (fiable partout)
+#     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
+
+#     // petit SVG boussole (fiable si l'emoji ne s'affiche pas)
+#     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+#       viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
+
+#     const b = document.createElement('a');
+#     b.innerHTML = svg;
+#     b.href = url;                    // ✅ vrai lien
+#     b.target = '_blank';
+#     b.rel = 'noopener';
+#     b.title = 'Itinéraire vers ce lieu';
+#     b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
+#     b.addEventListener('mousedown', ev=>ev.stopPropagation());
+#     b.addEventListener('click',     ev=>ev.stopPropagation());
+#     e.appendChild(b);
+
+#     // ✅ forcer édition au double-clic
+#     e.addEventListener('dblclick', ()=>{
+#       params.api.startEditingCell({ rowIndex: params.node.rowIndex, colKey: params.colDef.field });
+#     });
+
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
+
+ACTIVITE_RENDERER = JsCode("""
+class ActiviteRenderer {
+  init(params){
+    const e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
+
+    const label = (params.value ?? '').toString();
+    const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
+    const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+
+    const txt = document.createElement('span');
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+    txt.textContent = label;
+    // 🔸 pas de handler dblclick ici → AG Grid capte tout seul le double-clic
+    e.appendChild(txt);
+
+    const a = document.createElement('a');
+    a.textContent = '🔎';
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener,noreferrer';
+    a.title = 'Rechercher / Ouvrir le lien';
+    a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
+    // on bloque juste la propagation pour ne pas déclencher sélection/édition
+    a.addEventListener('click', ev=>ev.stopPropagation());
+    e.appendChild(a);
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
+
+
+LIEU_RENDERER = JsCode("""
+class LieuRenderer {
+  init(params){
+    const e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
+
+    const label = (params.value ?? '').toString().trim();
+
+    const txt = document.createElement('span');
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+    txt.textContent = label;
+    // 🔸 pas de handler dblclick ici non plus
+    e.appendChild(txt);
+
+    const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+      viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
+
+    // 📍 épingle (SVG)
+    const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+      viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5
+               a2.5 2.5 0 0 1 0 5z"/></svg>`;
+
+    const b = document.createElement('a');
+    b.textContent = '📍';
+    b.href = url;
+    b.target = '_blank';
+    b.rel = 'noopener,noreferrer';
+    b.title = 'Itinéraire vers ce lieu';
+    b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
+    b.addEventListener('click', ev=>ev.stopPropagation());
+    e.appendChild(b);
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
+    # b.innerHTML = pin;
+
+
 ##################
 # Sqlite Manager #
 ##################
@@ -3146,7 +3311,7 @@ def init_activites_programmees_grid_options(df_display):
     gb = GridOptionsBuilder.from_dataframe(df_display)
 
     # Configuration par défaut des colonnes
-    gb.configure_default_column(resizable=True)
+    gb.configure_default_column(resizable=True) #, editable=True)
 
     # Colonnes à largeur fixe
     colonnes_fixes = {"Date": 55, "Début": 55, "Fin": 55, "Durée": 55}
@@ -3184,7 +3349,7 @@ def init_activites_programmees_grid_options(df_display):
     )
 
     gb.configure_column(
-        "Durée" \
+        "Durée",
         "",
         editable=JsCode("function(params) { return params.data.__non_reserve; }")
     )
@@ -3208,6 +3373,22 @@ def init_activites_programmees_grid_options(df_display):
                 return { values: values };
             }
         """)
+    )
+
+    # Activité avec loupe
+    gb.configure_column(
+        "Activité",
+        editable=True,
+        cellRenderer=ACTIVITE_RENDERER,
+        # minWidth=210,  # laisse de la place pour l’icône
+    )
+
+    # Lieu avec itinéraire
+    gb.configure_column(
+        "Lieu",
+        editable=True,
+        cellRenderer=LIEU_RENDERER,
+        # minWidth=200,
     )
 
     # Colorisation
@@ -3248,6 +3429,7 @@ def init_activites_programmees_grid_options(df_display):
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
+
     return grid_options
 
 # Affiche les activités programmées dans un tableauflag allow_unsafe_jscode is on. AgGrid.tsx:124:15
@@ -6154,11 +6336,50 @@ def afficher_infos_generales():
         # Affichage des paramètres
         afficher_parametres()
 
+# Injecte les scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
+def inject_icons_utils():
+    st.markdown("""
+        <script>
+        (function(){
+        // petit anti-double-tap
+        let _last = 0;
+        window.safeClick = function(fn){
+            const now = Date.now();
+            if (now - _last < 350) return;
+            _last = now; fn();
+        };
+
+        // Détection plateforme pour itinéraires
+        window.openDirections = function(q){
+            // iOS (PWA/Safari)
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+            const u = "https://maps.apple.com/?daddr=" + encodeURIComponent(q);
+            window.open(u, "_blank","noopener");
+            return;
+            }
+            // Android
+            if (/Android/.test(navigator.userAgent)) {
+            // geo: marche souvent côté Android; fallback Google Maps Web
+            const geo = "geo:0,0?q=" + encodeURIComponent(q);
+            const ok = window.open(geo, "_blank");
+            if (!ok) window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q), "_blank","noopener");
+            return;
+            }
+            // Desktop
+            window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q), "_blank","noopener");
+        };
+        })();
+        </script>
+    """, unsafe_allow_html=True)
+
 # Initialisation de la page HTML
 def initialiser_page():
 
     # Evite la surbrillance rose pâle des lignes qui ont le focus sans être sélectionnées dans les AgGrid
     patch_aggrid_css()
+
+    # Injecte les scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
+    inject_icons_utils()
 
 # Affiche le nom d'activité
 def afficher_nom_activite(df, index_df, nom_activite=None, afficher_label=True):
