@@ -532,13 +532,12 @@ def sql_charger_data():
     return df, meta, carnet
 
 def sql_sauvegarder_data(df: pd.DataFrame, meta: dict = None, carnet: pd.DataFrame = None):
-    # 0) Préparation du DF (copie colonnes, options_date…)
     df = _strip_display_cols(df)
     df = ajouter_options_date(df)
     if "__uuid" not in df.columns:
         raise ValueError("sql_sauvegarder_data: __uuid manquant dans df")
 
-    # 1) Prépare UPSERT pour df_principal
+    # upsert pour df_principal
     cols_sql = [c for c in CORE_COLS if c != "__uuid"] + ["extras_json"]
     set_sql  = ",".join([f"{c}=excluded.{c}" for c in cols_sql])
     sql_df = (
@@ -547,7 +546,7 @@ def sql_sauvegarder_data(df: pd.DataFrame, meta: dict = None, carnet: pd.DataFra
         f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
     )
 
-    # Prépare les lignes à insérer en lot (executemany)
+    # préparer les valeurs
     rows_params = []
     for _, row in df.iterrows():
         core, extras = _split_core_extras(row.to_dict())
@@ -557,50 +556,35 @@ def sql_sauvegarder_data(df: pd.DataFrame, meta: dict = None, carnet: pd.DataFra
              + [extras_json]
         rows_params.append(vals)
 
-    # 2) Prépare UPSERT pour meta (clé: id=1)
-    sql_meta = None
-    meta_vals = None
+    # prépa META (upsert id=1, on écrase aussi les colonnes manquantes avec NULL)
+    sql_meta = meta_vals = None
     if meta is not None:
-        # ATTENTION: ta liste doit correspondre aux colonnes SQL réelles
-        # (pas de 'id' dedans)
         placeholders = ",".join(["?"] * len(META_COLS))
         set_clause   = ",".join([f"{c}=excluded.{c}" for c in META_COLS])
-
-        # sérialise payload_json si dict/list
         vals = []
         for col in META_COLS:
             v = meta.get(col)
             if col == "payload_json" and isinstance(v, (dict, list)):
                 v = json.dumps(v, ensure_ascii=False)
             vals.append(v)
-        sql_meta = (
-            f"INSERT INTO meta (id,{','.join(META_COLS)}) "
-            f"VALUES (1,{placeholders}) "
-            f"ON CONFLICT(id) DO UPDATE SET {set_clause}"
-        )
+        sql_meta  = f"INSERT INTO meta (id,{','.join(META_COLS)}) VALUES (1,{placeholders}) " \
+                    f"ON CONFLICT(id) DO UPDATE SET {set_clause}"
         meta_vals = vals
 
-    # 3) Écritures en UNE transaction
-    #    -> évite les locks inter-connexions
     with conn_rw() as con:
-        # (Optionnel) allonger le busy timeout si tu veux
-        try:
-            con.execute("PRAGMA busy_timeout=30000")
-        except Exception:
-            pass
-
-        # Verrouille l'écriture tout de suite
+        con.execute("PRAGMA busy_timeout=30000")
         con.execute("BEGIN IMMEDIATE")
 
-        # df_principal en lot (beaucoup plus rapide et atomique)
+        # 🔥 reset total de df_principal puis réécriture
+        con.execute("DELETE FROM df_principal")
         if rows_params:
             con.executemany(sql_df, rows_params)
 
-        # meta upsert (aucun DELETE ici)
+        # meta : upsert complet (toutes colonnes dans META_COLS sont fixées, y compris à NULL)
         if sql_meta is not None:
             con.execute(sql_meta, meta_vals)
 
-        # carnet (si fourni) : clear + insert dans LA MÊME transaction
+        # carnet : reset puis insert
         if carnet is not None:
             con.execute("DELETE FROM carnet")
             if len(carnet):
@@ -609,60 +593,46 @@ def sql_sauvegarder_data(df: pd.DataFrame, meta: dict = None, carnet: pd.DataFra
                     f"INSERT INTO carnet ({','.join(cols)}) VALUES ({','.join(['?']*len(cols))})",
                     carnet.where(pd.notna(carnet), None).itertuples(index=False, name=None)
                 )
-        # commit automatique par le context manager
-
-def sql_sauvegarder_contexte(df: pd.DataFrame, fd=None, ca=None):
-    meta = {
-        "fn": fd.name if fd is not None else "",
-        "fp": upload_excel_to_dropbox(fd.getvalue(), fd.name) if fd is not None else "",
-        "MARGE": minutes(st.session_state.MARGE),
-        "DUREE_REPAS": minutes(st.session_state.DUREE_REPAS),
-        "DUREE_CAFE": minutes(st.session_state.DUREE_CAFE),
-        "itineraire_app": st.session_state.itineraire_app,
-        "city_default": st.session_state.city_default,
-        "traiter_pauses": str(st.session_state.traiter_pauses),
-        "periode_a_programmer_debut": to_iso_date(st.session_state.periode_a_programmer_debut),
-        "periode_a_programmer_fin": to_iso_date(st.session_state.periode_a_programmer_fin),
-    }
-    sql_sauvegarder_data(df, meta=meta, carnet=ca)
 
 def sql_sauvegarder_row(index_df):
-    # Récupère UNE ligne sous forme de Series
-    s = st.session_state.df.loc[index_df]      # Series si index_df est un label d'index
-    if isinstance(s, pd.DataFrame):            # sécurité si loc renvoie 1-row DataFrame
+    s = st.session_state.df.loc[index_df]
+    if isinstance(s, pd.DataFrame):
         s = s.iloc[0]
-    row = s.to_dict()                           # dict plat {col: val}
-
+    row = s.to_dict()
     if "__uuid" not in row:
         raise ValueError("sql_sauvegarder_row: __uuid manquant")
 
-    # (optionnel) si tu dois y injecter __options_date depuis les df_display :
-    # row["__options_date"] = _get_options_date_for_uuid(row["__uuid"])
+    # 🔹 Injecter __options_date depuis les df_display avant split core/extras
+    opt = get_options_date_for_uuid(row["__uuid"])
+    if opt is not None:
+        row["__options_date"] = opt  # ira dans extras_json
 
     core, extras = _split_core_extras(row)
     extras_json = json.dumps(_clean_jsonable(extras), ensure_ascii=False)
 
     cols_sql = [c for c in CORE_COLS if c != "__uuid"] + ["extras_json"]
     set_sql  = ",".join([f"{c}=excluded.{c}" for c in cols_sql])
-    sql = (
+    sql_one  = (
         f"INSERT INTO df_principal (__uuid,{','.join(cols_sql)}) "
         f"VALUES ({','.join(['?']*(len(cols_sql)+1))}) "
         f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
     )
+    vals = [core.get("__uuid")] \
+         + [_to_sql(core.get(c)) for c in CORE_COLS if c != "__uuid"] \
+         + [extras_json]
 
     with conn_rw() as con:
-        vals = [ core.get("__uuid") ] \
-             + [ _to_sql(core.get(c)) for c in CORE_COLS if c != "__uuid" ] \
-             + [ extras_json ]
-        con.execute(sql, vals)
+        con.execute("PRAGMA busy_timeout=30000")
+        con.execute("BEGIN IMMEDIATE")
+        con.execute(sql_one, vals)
+
+ALLOWED_META_COLS = set(META_COLS)  # ex. définie: ["fn","fp","MARGE",...,"payload_json"]
 
 def sqlite_sauvegarder_param(param: str):
-    """
-    Sauvegarde un paramètre précis de st.session_state
-    dans la table 'meta' de SQLite (clé = nom du param).
-    """
     try:
-        # Récupère la valeur dans session_state
+        if param not in ALLOWED_META_COLS:
+            raise ValueError(f"Paramètre inconnu : {param}")
+
         if param == "MARGE":
             value = minutes(st.session_state.MARGE)
         elif param == "DUREE_REPAS":
@@ -680,19 +650,35 @@ def sqlite_sauvegarder_param(param: str):
         elif param == "periode_a_programmer_fin":
             value = to_iso_date(st.session_state.periode_a_programmer_fin)
         else:
-            raise ValueError(f"Paramètre inconnu : {param}")
+            # si colonne autorisée mais non gérée plus haut
+            value = st.session_state.get(param)
 
-        # Sauvegarde dans SQLite (upsert)
         sql = f"""
             INSERT INTO meta (id, {param})
             VALUES (1, ?)
             ON CONFLICT(id) DO UPDATE SET {param} = excluded.{param}
         """
         with conn_rw() as con:
+            con.execute("PRAGMA busy_timeout=30000")
+            con.execute("BEGIN IMMEDIATE")
             con.execute(sql, (value,))
-
     except Exception as e:
         print(f"Erreur sqlite_sauvegarder_param : {e}")
+
+def sql_sauvegarder_contexte(df: pd.DataFrame, fd=None, ca=None):
+    meta = {
+        "fn": fd.name if fd is not None else "",
+        "fp": upload_excel_to_dropbox(fd.getvalue(), fd.name) if fd is not None else "",
+        "MARGE": minutes(st.session_state.MARGE),
+        "DUREE_REPAS": minutes(st.session_state.DUREE_REPAS),
+        "DUREE_CAFE": minutes(st.session_state.DUREE_CAFE),
+        "itineraire_app": st.session_state.itineraire_app,
+        "city_default": st.session_state.city_default,
+        "traiter_pauses": str(st.session_state.traiter_pauses),
+        "periode_a_programmer_debut": to_iso_date(st.session_state.periode_a_programmer_debut),
+        "periode_a_programmer_fin": to_iso_date(st.session_state.periode_a_programmer_fin),
+    }
+    sql_sauvegarder_data(df, meta=meta, carnet=ca)
 
 def sql_charger_contexte():
     def to_timedelta(value, default):
@@ -768,6 +754,23 @@ def ajouter_options_date(df_save: pd.DataFrame):
         df_save.drop(columns="__options_date_src", inplace=True)
 
     return df_save
+
+def get_options_date_for_uuid(uuid: str) -> object | None:
+    """
+    Cherche __options_date pour un __uuid donné dans les deux df_display.
+    Retourne None si introuvable ou colonne absente.
+    """
+    for key in ("activites_programmees_df_display", "activites_non_programmees_df_display"):
+        df = st.session_state.get(key)
+        if isinstance(df, pd.DataFrame) and "__uuid" in df.columns:
+            try:
+                # sélection rapide
+                sub = df.loc[df["__uuid"] == uuid]
+                if not sub.empty and "__options_date" in sub.columns:
+                    return sub["__options_date"].iloc[0]
+            except Exception:
+                pass
+    return None
 
 ######################
 # User Sheet Manager #
@@ -1131,6 +1134,7 @@ def undo_redo_save():
     if df is None or df.empty:
         return      
     df_copy = st.session_state.df.copy(deep=True)
+    df_copy = ajouter_options_date(df_copy)
     menu_activites_copy = st.session_state.menu_activites.copy()
     menu_activites_copy["df"] = df_copy
     activites_programmees_sel_request_copy = copy.deepcopy(st.session_state.activites_programmees_sel_request)
@@ -1165,6 +1169,7 @@ def undo_redo_undo():
     if st.session_state.historique_undo:
     
         df_copy = st.session_state.df.copy(deep=True)
+        df_copy = ajouter_options_date(df_copy)
         menu_activites_copy = st.session_state.menu_activites.copy()
         menu_activites_copy["df"] = df_copy
         activites_programmees_sel_request_copy = copy.deepcopy(st.session_state.activites_programmees_sel_request)
@@ -1188,6 +1193,7 @@ def undo_redo_undo():
         st.session_state.menu_activites = snapshot["menu_activites"]
         st.session_state.activites_programmables_select_auto = False 
         bd_maj_contexte(maj_donnees_calculees=False)
+        st.session_state.df = st.session_state.df.drop(columns="__options_date", errors="ignore")
         forcer_reaffichage_df("creneaux_disponibles")
         gsheet_sauvegarder_df(st.session_state.df)
         st.rerun()
@@ -1196,6 +1202,7 @@ def undo_redo_undo():
 def undo_redo_redo():
     if st.session_state.historique_redo:
         df_copy = st.session_state.df.copy(deep=True)
+        df_copy = ajouter_options_date(df_copy)
         menu_activites_copy = st.session_state.menu_activites.copy()
         menu_activites_copy["df"] = df_copy
         activites_programmees_sel_request_copy = copy.deepcopy(st.session_state.activites_programmees_sel_request)
@@ -1219,6 +1226,7 @@ def undo_redo_redo():
         st.session_state.menu_activites = snapshot["menu_activites"]
         st.session_state.activites_programmables_select_auto = False 
         bd_maj_contexte(maj_donnees_calculees=False)
+        st.session_state.df = st.session_state.df.drop(columns="__options_date", errors="ignore")
         forcer_reaffichage_df("creneaux_disponibles")
         gsheet_sauvegarder_df(st.session_state.df)
         st.rerun()
