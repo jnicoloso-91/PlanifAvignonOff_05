@@ -498,7 +498,7 @@ function(p){
 
 # V3
 
-ACTIVITÉ_RENDERER = JsCode("""
+ACTIVITE_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
     const e = document.createElement('div');
