@@ -330,7 +330,87 @@ function(p){
 }
 """)
 
-ACTIVITE_RENDERER = JsCode("""
+# ACTIVITE_RENDERER = JsCode("""
+# class ActiviteRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+#     e.style.width='100%'; e.style.overflow='hidden';
+
+#     const label = (params.value ?? '').toString();
+#     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
+#     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+
+#     const txt = document.createElement('span');
+#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
+#     // 🔸 pas de handler dblclick ici → AG Grid capte tout seul le double-clic
+#     e.appendChild(txt);
+
+#     const a = document.createElement('a');
+#     a.textContent = '🔎';
+#     a.href = href;
+#     a.target = '_blank';
+#     a.rel = 'noopener,noreferrer';
+#     a.title = 'Rechercher / Ouvrir le lien';
+#     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
+#     // on bloque juste la propagation pour ne pas déclencher sélection/édition
+#     a.addEventListener('click', ev=>ev.stopPropagation());
+#     e.appendChild(a);
+
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
+
+
+# LIEU_RENDERER = JsCode("""
+# class LieuRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+#     e.style.width='100%'; e.style.overflow='hidden';
+
+#     const label = (params.value ?? '').toString().trim();
+
+#     const txt = document.createElement('span');
+#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
+#     // 🔸 pas de handler dblclick ici non plus
+#     e.appendChild(txt);
+
+#     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
+#     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+#       viewBox="0 0 24 24" aria-hidden="true">
+#       <path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
+
+#     const b = document.createElement('a');
+#     b.textContent = '📍';
+#     b.href = url;
+#     b.target = '_blank';
+#     b.rel = 'noopener,noreferrer';
+#     b.title = 'Itinéraire vers ce lieu';
+#     b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
+#     b.addEventListener('click', ev=>ev.stopPropagation());
+#     e.appendChild(b);
+
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
+#     #  // 📍 épingle (SVG)
+#     # const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+#     #   viewBox="0 0 24 24" aria-hidden="true">
+#     #   <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5
+#     #            a2.5 2.5 0 0 1 0 5z"/></svg>`;
+
+#     # b.innerHTML = pin;
+
+ACTIVITÉ_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
     const e = document.createElement('div');
@@ -344,7 +424,14 @@ class ActiviteRenderer {
     const txt = document.createElement('span');
     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
     txt.textContent = label;
-    // 🔸 pas de handler dblclick ici → AG Grid capte tout seul le double-clic
+    // ✅ sélection immédiate au tap sur le texte
+    txt.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      if (!params.node.isSelected()){
+        params.api.deselectAll();
+        params.node.setSelected(true, true);
+      }
+    });
     e.appendChild(txt);
 
     const a = document.createElement('a');
@@ -354,7 +441,7 @@ class ActiviteRenderer {
     a.rel = 'noopener,noreferrer';
     a.title = 'Rechercher / Ouvrir le lien';
     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
-    // on bloque juste la propagation pour ne pas déclencher sélection/édition
+    // l'icône n'affecte pas la sélection
     a.addEventListener('click', ev=>ev.stopPropagation());
     e.appendChild(a);
 
@@ -364,7 +451,6 @@ class ActiviteRenderer {
   refresh(){ return false; }
 }
 """)
-
 
 LIEU_RENDERER = JsCode("""
 class LieuRenderer {
@@ -378,23 +464,28 @@ class LieuRenderer {
     const txt = document.createElement('span');
     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
     txt.textContent = label;
-    // 🔸 pas de handler dblclick ici non plus
+    // ✅ sélection immédiate au tap sur le texte
+    txt.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      if (!params.node.isSelected()){
+        params.api.deselectAll();
+        params.node.setSelected(true, true);
+      }
+    });
     e.appendChild(txt);
 
+    // Icône “épingle” (ou emoji 📍 si tu préfères)
     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-      viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
-
-    const b = document.createElement('a');
-    b.textContent = '📍';
-    b.href = url;
-    b.target = '_blank';
-    b.rel = 'noopener,noreferrer';
-    b.title = 'Itinéraire vers ce lieu';
-    b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
-    b.addEventListener('click', ev=>ev.stopPropagation());
-    e.appendChild(b);
+    const a = document.createElement('a');
+    a.textContent = '📍';
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener,noreferrer';
+    a.title = 'Itinéraire';
+    a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
+    // l’icône n’affecte pas la sélection
+    a.addEventListener('click', ev=>ev.stopPropagation());
+    e.appendChild(a);
 
     this.eGui = e;
   }
@@ -402,13 +493,6 @@ class LieuRenderer {
   refresh(){ return false; }
 }
 """)
-    #  // 📍 épingle (SVG)
-    # const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-    #   viewBox="0 0 24 24" aria-hidden="true">
-    #   <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5
-    #            a2.5 2.5 0 0 1 0 5z"/></svg>`;
-
-    # b.innerHTML = pin;
 
 
 ##################
@@ -3346,23 +3430,23 @@ def init_activites_programmees_grid_options(df_display):
     grid_options["suppressMovableColumns"] = True
 
     # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (début)
-    grid_options["rowSelection"] = "single"
-    grid_options["rowMultiSelectWithClick"] = False
-    grid_options["suppressRowClickSelection"] = False
+    # grid_options["rowSelection"] = "single"
+    # grid_options["rowMultiSelectWithClick"] = False
+    # grid_options["suppressRowClickSelection"] = False
 
-    grid_options["onCellClicked"] = JsCode("""
-    function(e){
-    const t = e.event && e.event.target;
-    // Si on a cliqué sur l'icône/lien, ne pas sélectionner
-    if (t && (t.tagName === 'A' || t.closest('a'))) return;
+    # grid_options["onCellClicked"] = JsCode("""
+    # function(e){
+    # const t = e.event && e.event.target;
+    # // Si on a cliqué sur l'icône/lien, ne pas sélectionner
+    # if (t && (t.tagName === 'A' || t.closest('a'))) return;
 
-    // Sélectionne immédiatement la ligne si elle ne l'est pas déjà
-    if (!e.node.isSelected()){
-        e.api.deselectAll();
-        e.node.setSelected(true, true); // clear others + select this
-    }
-    }
-    """)
+    # // Sélectionne immédiatement la ligne si elle ne l'est pas déjà
+    # if (!e.node.isSelected()){
+    #     e.api.deselectAll();
+    #     e.node.setSelected(true, true); // clear others + select this
+    # }
+    # }
+    # """)
     # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (fin)
 
     # Supprime le Hover (séléction de survol qui pose problème sur mobile et tablette)
