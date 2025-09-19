@@ -3346,21 +3346,23 @@ def init_activites_programmees_grid_options(df_display):
     grid_options["suppressMovableColumns"] = True
 
     # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (début)
-    # grid_options["suppressRowClickSelection"] = False
-    # grid_options["rowSelection"] = "single"
-    # grid_options["rowMultiSelectWithClick"] = False
+    grid_options["rowSelection"] = "single"
+    grid_options["rowMultiSelectWithClick"] = False
+    grid_options["suppressRowClickSelection"] = False
 
-    # grid_options["onCellClicked"] = JsCode("""
-    #     function(e){
-    #     const t = e.event && e.event.target;
-    #     // si on a cliqué un lien (icône), on laisse faire
-    #     if (t && (t.tagName === 'A' || t.closest('a'))) return;
-    #     if (!e.node.isSelected()){
-    #         e.api.deselectAll();
-    #         e.node.setSelected(true, true); // clear others + select this
-    #     }
-    # }
-    # """)
+    grid_options["onCellClicked"] = JsCode("""
+    function(e){
+    const t = e.event && e.event.target;
+    // Si on a cliqué sur l'icône/lien, ne pas sélectionner
+    if (t && (t.tagName === 'A' || t.closest('a'))) return;
+
+    // Sélectionne immédiatement la ligne si elle ne l'est pas déjà
+    if (!e.node.isSelected()){
+        e.api.deselectAll();
+        e.node.setSelected(true, true); // clear others + select this
+    }
+    }
+    """)
     # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (fin)
 
     # Supprime le Hover (séléction de survol qui pose problème sur mobile et tablette)
