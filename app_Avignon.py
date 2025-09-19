@@ -3465,6 +3465,9 @@ def init_activites_programmees_grid_options(df_display):
         }}
     """))
 
+    grid_options = gb.build()
+    grid_options["suppressMovableColumns"] = True
+
     # 1) quand on clique, si un éditeur est ouvert, on le ferme
     #    puis on sélectionne immédiatement la ligne (hors clic sur l'icône <a>)
     grid_options["onCellClicked"] = JsCode("""
@@ -3493,9 +3496,6 @@ def init_activites_programmees_grid_options(df_display):
     }
     }
     """)
-
-    grid_options = gb.build()
-    grid_options["suppressMovableColumns"] = True
 
     # aide AG Grid à sortir de l'édition dès qu'on clique ailleurs
     grid_options["stopEditingWhenCellsLoseFocus"] = True
