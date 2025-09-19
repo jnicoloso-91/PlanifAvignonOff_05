@@ -3431,21 +3431,21 @@ def init_activites_programmees_grid_options(df_display):
     grid_options["suppressMovableColumns"] = True
 
     # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (début)
-    grid_options["suppressRowClickSelection"] = False
-    grid_options["rowSelection"] = "single"
-    grid_options["rowMultiSelectWithClick"] = False
+    # grid_options["suppressRowClickSelection"] = False
+    # grid_options["rowSelection"] = "single"
+    # grid_options["rowMultiSelectWithClick"] = False
 
-    grid_options["onCellClicked"] = JsCode("""
-        function(e){
-        const t = e.event && e.event.target;
-        // si on a cliqué un lien (icône), on laisse faire
-        if (t && (t.tagName === 'A' || t.closest('a'))) return;
-        if (!e.node.isSelected()){
-            e.api.deselectAll();
-            e.node.setSelected(true, true); // clear others + select this
-        }
-    }
-    """)
+    # grid_options["onCellClicked"] = JsCode("""
+    #     function(e){
+    #     const t = e.event && e.event.target;
+    #     // si on a cliqué un lien (icône), on laisse faire
+    #     if (t && (t.tagName === 'A' || t.closest('a'))) return;
+    #     if (!e.node.isSelected()){
+    #         e.api.deselectAll();
+    #         e.node.setSelected(true, true); // clear others + select this
+    #     }
+    # }
+    # """)
     # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (fin)
 
     # Supprime le Hover (séléction de survol qui pose problème sur mobile et tablette)
@@ -6357,61 +6357,6 @@ def afficher_infos_generales():
         # Affichage des paramètres
         afficher_parametres()
 
-# Injecte les scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
-def inject_icons_utils():
-    st.markdown("""
-        <script>
-        (function(){
-        // petit anti-double-tap
-        let _last = 0;
-        window.safeClick = function(fn){
-            const now = Date.now();
-            if (now - _last < 350) return;
-            _last = now; fn();
-        };
-
-        // Détection plateforme pour itinéraires
-        window.openDirections = function(q){
-            // iOS (PWA/Safari)
-            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-            const u = "https://maps.apple.com/?daddr=" + encodeURIComponent(q);
-            window.open(u, "_blank","noopener");
-            return;
-            }
-            // Android
-            if (/Android/.test(navigator.userAgent)) {
-            // geo: marche souvent côté Android; fallback Google Maps Web
-            const geo = "geo:0,0?q=" + encodeURIComponent(q);
-            const ok = window.open(geo, "_blank");
-            if (!ok) window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q), "_blank","noopener");
-            return;
-            }
-            // Desktop
-            window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q), "_blank","noopener");
-        };
-        })();
-        </script>
-    """, unsafe_allow_html=True)
-
-    # 
-    st.markdown("""
-        <style>
-        @media (hover: none) {
-        .ag-theme-alpine .ag-row-hover { background-color: inherit !important; }
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-
-# Initialisation de la page HTML
-def initialiser_page():
-
-    # Evite la surbrillance rose pâle des lignes qui ont le focus sans être sélectionnées dans les AgGrid
-    patch_aggrid_css()
-
-    # Injecte les scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
-    inject_icons_utils()
-
 # Affiche le nom d'activité
 def afficher_nom_activite(df, index_df, nom_activite=None, afficher_label=True):
 
@@ -6591,6 +6536,61 @@ def traiter_sections_critiques():
     cmd = st.session_state.get("activites_non_programmees_programmer_cmd")
     if cmd:
         activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
+
+# Injecte les scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
+def inject_icons_utils():
+    st.markdown("""
+        <script>
+        (function(){
+        // petit anti-double-tap
+        let _last = 0;
+        window.safeClick = function(fn){
+            const now = Date.now();
+            if (now - _last < 350) return;
+            _last = now; fn();
+        };
+
+        // Détection plateforme pour itinéraires
+        window.openDirections = function(q){
+            // iOS (PWA/Safari)
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+            const u = "https://maps.apple.com/?daddr=" + encodeURIComponent(q);
+            window.open(u, "_blank","noopener");
+            return;
+            }
+            // Android
+            if (/Android/.test(navigator.userAgent)) {
+            // geo: marche souvent côté Android; fallback Google Maps Web
+            const geo = "geo:0,0?q=" + encodeURIComponent(q);
+            const ok = window.open(geo, "_blank");
+            if (!ok) window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q), "_blank","noopener");
+            return;
+            }
+            // Desktop
+            window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q), "_blank","noopener");
+        };
+        })();
+        </script>
+    """, unsafe_allow_html=True)
+
+    # # Supprime le Hover (highlight de survol) sur mobile et tablette
+    # st.markdown("""
+    #     <style>
+    #     @media (hover: none) {
+    #     .ag-theme-alpine .ag-row-hover { background-color: inherit !important; }
+    #     }
+    #     </style>
+    # """, unsafe_allow_html=True)
+
+
+# Initialisation de la page HTML
+def initialiser_page():
+
+    # Evite la surbrillance rose pâle des lignes qui ont le focus sans être sélectionnées dans les AgGrid
+    patch_aggrid_css()
+
+    # Injecte les scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
+    inject_icons_utils()
 
 # Trace le début d'un rerun
 def tracer_rerun():
