@@ -410,7 +410,7 @@ function(p){
 
 #     # b.innerHTML = pin;
 
-ACTIVITÉ_RENDERER = JsCode("""
+ACTIVITE_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
     const e = document.createElement('div');
