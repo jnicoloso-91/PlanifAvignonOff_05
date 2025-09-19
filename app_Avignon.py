@@ -330,86 +330,86 @@ function(p){
 }
 """)
 
-# v0
-# ACTIVITE_RENDERER = JsCode("""
-# class ActiviteRenderer {
-#   init(params){
-#     const e = document.createElement('div');
-#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-#     e.style.width='100%'; e.style.overflow='hidden';
+# V0
+ACTIVITE_RENDERER = JsCode("""
+class ActiviteRenderer {
+  init(params){
+    const e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
 
-#     const label = (params.value ?? '').toString();
-#     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
-#     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+    const label = (params.value ?? '').toString();
+    const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
+    const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
 
-#     const txt = document.createElement('span');
-#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-#     txt.textContent = label;
-#     // 🔸 pas de handler dblclick ici → AG Grid capte tout seul le double-clic
-#     e.appendChild(txt);
+    const txt = document.createElement('span');
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+    txt.textContent = label;
+    // 🔸 pas de handler dblclick ici → AG Grid capte tout seul le double-clic
+    e.appendChild(txt);
 
-#     const a = document.createElement('a');
-#     a.textContent = '🔎';
-#     a.href = href;
-#     a.target = '_blank';
-#     a.rel = 'noopener,noreferrer';
-#     a.title = 'Rechercher / Ouvrir le lien';
-#     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
-#     // on bloque juste la propagation pour ne pas déclencher sélection/édition
-#     a.addEventListener('click', ev=>ev.stopPropagation());
-#     e.appendChild(a);
+    const a = document.createElement('a');
+    a.textContent = '🔎';
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener,noreferrer';
+    a.title = 'Rechercher / Ouvrir le lien';
+    a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
+    // on bloque juste la propagation pour ne pas déclencher sélection/édition
+    a.addEventListener('click', ev=>ev.stopPropagation());
+    e.appendChild(a);
 
-#     this.eGui = e;
-#   }
-#   getGui(){ return this.eGui; }
-#   refresh(){ return false; }
-# }
-# """)
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
 
 
-# LIEU_RENDERER = JsCode("""
-# class LieuRenderer {
-#   init(params){
-#     const e = document.createElement('div');
-#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-#     e.style.width='100%'; e.style.overflow='hidden';
+LIEU_RENDERER = JsCode("""
+class LieuRenderer {
+  init(params){
+    const e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
 
-#     const label = (params.value ?? '').toString().trim();
+    const label = (params.value ?? '').toString().trim();
 
-#     const txt = document.createElement('span');
-#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-#     txt.textContent = label;
-#     // 🔸 pas de handler dblclick ici non plus
-#     e.appendChild(txt);
+    const txt = document.createElement('span');
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+    txt.textContent = label;
+    // 🔸 pas de handler dblclick ici non plus
+    e.appendChild(txt);
 
-#     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
-#     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-#       viewBox="0 0 24 24" aria-hidden="true">
-#       <path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
+    const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+      viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
 
-#     const b = document.createElement('a');
-#     b.textContent = '📍';
-#     b.href = url;
-#     b.target = '_blank';
-#     b.rel = 'noopener,noreferrer';
-#     b.title = 'Itinéraire vers ce lieu';
-#     b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
-#     b.addEventListener('click', ev=>ev.stopPropagation());
-#     e.appendChild(b);
+    const b = document.createElement('a');
+    b.textContent = '📍';
+    b.href = url;
+    b.target = '_blank';
+    b.rel = 'noopener,noreferrer';
+    b.title = 'Itinéraire vers ce lieu';
+    b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
+    b.addEventListener('click', ev=>ev.stopPropagation());
+    e.appendChild(b);
 
-#     this.eGui = e;
-#   }
-#   getGui(){ return this.eGui; }
-#   refresh(){ return false; }
-# }
-# """)
-#     #  // 📍 épingle (SVG)
-#     # const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-#     #   viewBox="0 0 24 24" aria-hidden="true">
-#     #   <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5
-#     #            a2.5 2.5 0 0 1 0 5z"/></svg>`;
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
+    #  // 📍 épingle (SVG)
+    # const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+    #   viewBox="0 0 24 24" aria-hidden="true">
+    #   <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5
+    #            a2.5 2.5 0 0 1 0 5z"/></svg>`;
 
-#     # b.innerHTML = pin;
+    # b.innerHTML = pin;
 
 # V1
 # ACTIVITE_RENDERER = JsCode("""
@@ -497,90 +497,89 @@ function(p){
 # """)
 
 # V3
+# ACTIVITE_RENDERER = JsCode("""
+# class ActiviteRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+#     e.style.width='100%'; e.style.overflow='hidden';
 
-ACTIVITE_RENDERER = JsCode("""
-class ActiviteRenderer {
-  init(params){
-    const e = document.createElement('div');
-    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-    e.style.width='100%'; e.style.overflow='hidden';
+#     const label = (params.value ?? '').toString();
+#     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
+#     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
 
-    const label = (params.value ?? '').toString();
-    const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
-    const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+#     // Texte (laisser AG Grid gérer la sélection)
+#     const txt = document.createElement('span');
+#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
 
-    // Texte (laisser AG Grid gérer la sélection)
-    const txt = document.createElement('span');
-    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-    txt.textContent = label;
+#     // 👉 si un éditeur est ouvert après un edit, le premier tap le ferme
+#     // puis, comme on NE stoppe PAS la propagation, AG Grid verra le clic et sélectionnera.
+#     txt.addEventListener('pointerdown', ()=>{
+#       const editors = params.api.getCellEditorInstances ? params.api.getCellEditorInstances() : [];
+#       if (editors && editors.length) params.api.stopEditing();
+#     }, {passive:true});
 
-    // 👉 si un éditeur est ouvert après un edit, le premier tap le ferme
-    // puis, comme on NE stoppe PAS la propagation, AG Grid verra le clic et sélectionnera.
-    txt.addEventListener('pointerdown', ()=>{
-      const editors = params.api.getCellEditorInstances ? params.api.getCellEditorInstances() : [];
-      if (editors && editors.length) params.api.stopEditing();
-    }, {passive:true});
+#     e.appendChild(txt);
 
-    e.appendChild(txt);
+#     // Icône loupe (n’affecte pas la sélection)
+#     const a = document.createElement('a');
+#     a.textContent = '🔎';
+#     a.href = href;
+#     a.target = '_blank';
+#     a.rel = 'noopener,noreferrer';
+#     a.title = 'Rechercher / Ouvrir le lien';
+#     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
+#     a.addEventListener('click', ev=>ev.stopPropagation());
+#     e.appendChild(a);
 
-    // Icône loupe (n’affecte pas la sélection)
-    const a = document.createElement('a');
-    a.textContent = '🔎';
-    a.href = href;
-    a.target = '_blank';
-    a.rel = 'noopener,noreferrer';
-    a.title = 'Rechercher / Ouvrir le lien';
-    a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
-    a.addEventListener('click', ev=>ev.stopPropagation());
-    e.appendChild(a);
-
-    this.eGui = e;
-  }
-  getGui(){ return this.eGui; }
-  refresh(){ return false; }
-}
-""")
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
 
 
-LIEU_RENDERER = JsCode("""
-class LieuRenderer {
-  init(params){
-    const e = document.createElement('div');
-    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-    e.style.width='100%'; e.style.overflow='hidden';
+# LIEU_RENDERER = JsCode("""
+# class LieuRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+#     e.style.width='100%'; e.style.overflow='hidden';
 
-    const label = (params.value ?? '').toString().trim();
+#     const label = (params.value ?? '').toString().trim();
 
-    const txt = document.createElement('span');
-    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-    txt.textContent = label;
+#     const txt = document.createElement('span');
+#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
 
-    // 👉 ferme un éditeur actif mais NE PAS stopPropagation
-    txt.addEventListener('pointerdown', ()=>{
-      const editors = params.api.getCellEditorInstances ? params.api.getCellEditorInstances() : [];
-      if (editors && editors.length) params.api.stopEditing();
-    }, {passive:true});
+#     // 👉 ferme un éditeur actif mais NE PAS stopPropagation
+#     txt.addEventListener('pointerdown', ()=>{
+#       const editors = params.api.getCellEditorInstances ? params.api.getCellEditorInstances() : [];
+#       if (editors && editors.length) params.api.stopEditing();
+#     }, {passive:true});
 
-    e.appendChild(txt);
+#     e.appendChild(txt);
 
-    const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
-    const pin = '📍';  // ou ton SVG pin
-    const b = document.createElement('a');
-    b.textContent = pin;
-    b.href = url;
-    b.target = '_blank';
-    b.rel = 'noopener,noreferrer';
-    b.title = 'Itinéraire';
-    b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
-    b.addEventListener('click', ev=>ev.stopPropagation());
-    e.appendChild(b);
+#     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
+#     const pin = '📍';  // ou ton SVG pin
+#     const b = document.createElement('a');
+#     b.textContent = pin;
+#     b.href = url;
+#     b.target = '_blank';
+#     b.rel = 'noopener,noreferrer';
+#     b.title = 'Itinéraire';
+#     b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
+#     b.addEventListener('click', ev=>ev.stopPropagation());
+#     e.appendChild(b);
 
-    this.eGui = e;
-  }
-  getGui(){ return this.eGui; }
-  refresh(){ return false; }
-}
-""")
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
 
 
 ##################
@@ -3539,9 +3538,9 @@ def init_activites_programmees_grid_options(df_display):
 
     # Supprime le Hover (séléction de survol qui pose problème sur mobile et tablette)
     grid_options["suppressRowHoverHighlight"] = True
-    grid_options["suppressClickEdit"] = False          # impératif pour que le premier double-clic marche
-    grid_options["suppressDoubleClickEdit"] = False
-    grid_options["singleClickEdit"] = False
+    # grid_options["suppressClickEdit"] = False          # impératif pour que le premier double-clic marche
+    # grid_options["suppressDoubleClickEdit"] = False
+    # grid_options["singleClickEdit"] = False
 
     return grid_options
 
