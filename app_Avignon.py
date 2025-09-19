@@ -330,6 +330,7 @@ function(p){
 }
 """)
 
+# v0
 # ACTIVITE_RENDERER = JsCode("""
 # class ActiviteRenderer {
 #   init(params){
@@ -410,7 +411,94 @@ function(p){
 
 #     # b.innerHTML = pin;
 
-ACTIVITE_RENDERER = JsCode("""
+# V1
+# ACTIVITE_RENDERER = JsCode("""
+# class ActiviteRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+#     e.style.width='100%'; e.style.overflow='hidden';
+
+#     const label = (params.value ?? '').toString();
+#     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
+#     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+
+#     const txt = document.createElement('span');
+#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
+#     // ✅ sélection immédiate au tap sur le texte
+#     txt.addEventListener('click', (ev)=>{
+#       ev.stopPropagation();
+#       if (!params.node.isSelected()){
+#         params.api.deselectAll();
+#         params.node.setSelected(true, true);
+#       }
+#     });
+#     e.appendChild(txt);
+
+#     const a = document.createElement('a');
+#     a.textContent = '🔎';
+#     a.href = href;
+#     a.target = '_blank';
+#     a.rel = 'noopener,noreferrer';
+#     a.title = 'Rechercher / Ouvrir le lien';
+#     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
+#     // l'icône n'affecte pas la sélection
+#     a.addEventListener('click', ev=>ev.stopPropagation());
+#     e.appendChild(a);
+
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
+
+# LIEU_RENDERER = JsCode("""
+# class LieuRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+#     e.style.width='100%'; e.style.overflow='hidden';
+
+#     const label = (params.value ?? '').toString().trim();
+
+#     const txt = document.createElement('span');
+#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
+#     // ✅ sélection immédiate au tap sur le texte
+#     txt.addEventListener('click', (ev)=>{
+#       ev.stopPropagation();
+#       if (!params.node.isSelected()){
+#         params.api.deselectAll();
+#         params.node.setSelected(true, true);
+#       }
+#     });
+#     e.appendChild(txt);
+
+#     // Icône “épingle” (ou emoji 📍 si tu préfères)
+#     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
+#     const a = document.createElement('a');
+#     a.textContent = '📍';
+#     a.href = url;
+#     a.target = '_blank';
+#     a.rel = 'noopener,noreferrer';
+#     a.title = 'Itinéraire';
+#     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
+#     // l’icône n’affecte pas la sélection
+#     a.addEventListener('click', ev=>ev.stopPropagation());
+#     e.appendChild(a);
+
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
+
+# V3
+
+ACTIVITÉ_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
     const e = document.createElement('div');
@@ -421,19 +509,21 @@ class ActiviteRenderer {
     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
 
+    // Texte (laisser AG Grid gérer la sélection)
     const txt = document.createElement('span');
     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
     txt.textContent = label;
-    // ✅ sélection immédiate au tap sur le texte
-    txt.addEventListener('click', (ev)=>{
-      ev.stopPropagation();
-      if (!params.node.isSelected()){
-        params.api.deselectAll();
-        params.node.setSelected(true, true);
-      }
-    });
+
+    // 👉 si un éditeur est ouvert après un edit, le premier tap le ferme
+    // puis, comme on NE stoppe PAS la propagation, AG Grid verra le clic et sélectionnera.
+    txt.addEventListener('pointerdown', ()=>{
+      const editors = params.api.getCellEditorInstances ? params.api.getCellEditorInstances() : [];
+      if (editors && editors.length) params.api.stopEditing();
+    }, {passive:true});
+
     e.appendChild(txt);
 
+    // Icône loupe (n’affecte pas la sélection)
     const a = document.createElement('a');
     a.textContent = '🔎';
     a.href = href;
@@ -441,7 +531,6 @@ class ActiviteRenderer {
     a.rel = 'noopener,noreferrer';
     a.title = 'Rechercher / Ouvrir le lien';
     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
-    // l'icône n'affecte pas la sélection
     a.addEventListener('click', ev=>ev.stopPropagation());
     e.appendChild(a);
 
@@ -451,6 +540,7 @@ class ActiviteRenderer {
   refresh(){ return false; }
 }
 """)
+
 
 LIEU_RENDERER = JsCode("""
 class LieuRenderer {
@@ -464,28 +554,26 @@ class LieuRenderer {
     const txt = document.createElement('span');
     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
     txt.textContent = label;
-    // ✅ sélection immédiate au tap sur le texte
-    txt.addEventListener('click', (ev)=>{
-      ev.stopPropagation();
-      if (!params.node.isSelected()){
-        params.api.deselectAll();
-        params.node.setSelected(true, true);
-      }
-    });
+
+    // 👉 ferme un éditeur actif mais NE PAS stopPropagation
+    txt.addEventListener('pointerdown', ()=>{
+      const editors = params.api.getCellEditorInstances ? params.api.getCellEditorInstances() : [];
+      if (editors && editors.length) params.api.stopEditing();
+    }, {passive:true});
+
     e.appendChild(txt);
 
-    // Icône “épingle” (ou emoji 📍 si tu préfères)
     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
-    const a = document.createElement('a');
-    a.textContent = '📍';
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener,noreferrer';
-    a.title = 'Itinéraire';
-    a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
-    // l’icône n’affecte pas la sélection
-    a.addEventListener('click', ev=>ev.stopPropagation());
-    e.appendChild(a);
+    const pin = '📍';  // ou ton SVG pin
+    const b = document.createElement('a');
+    b.textContent = pin;
+    b.href = url;
+    b.target = '_blank';
+    b.rel = 'noopener,noreferrer';
+    b.title = 'Itinéraire';
+    b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
+    b.addEventListener('click', ev=>ev.stopPropagation());
+    e.appendChild(b);
 
     this.eGui = e;
   }
@@ -3451,6 +3539,9 @@ def init_activites_programmees_grid_options(df_display):
 
     # Supprime le Hover (séléction de survol qui pose problème sur mobile et tablette)
     grid_options["suppressRowHoverHighlight"] = True
+    grid_options["suppressClickEdit"] = False          # impératif pour que le premier double-clic marche
+    grid_options["suppressDoubleClickEdit"] = False
+    grid_options["singleClickEdit"] = False
 
     return grid_options
 
