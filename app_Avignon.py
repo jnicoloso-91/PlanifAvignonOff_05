@@ -3350,7 +3350,6 @@ def init_activites_programmees_grid_options(df_display):
 
     gb.configure_column(
         "Durée",
-        "",
         editable=JsCode("function(params) { return params.data.__non_reserve; }")
     )
 
@@ -3449,7 +3448,7 @@ def init_activites_programmees_grid_options(df_display):
     # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (fin)
 
     # Supprime le Hover (séléction de survol qui pose problème sur mobile et tablette)
-    # grid_options["suppressRowHoverHighlight"] = True
+    grid_options["suppressRowHoverHighlight"] = True
 
     return grid_options
 
