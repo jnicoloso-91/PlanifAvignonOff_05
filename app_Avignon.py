@@ -426,23 +426,12 @@ class ActiviteRenderer {
     txt.textContent = label;
     // ✅ sélection immédiate au tap sur le texte
     txt.addEventListener('click', (ev)=>{
-    ev.stopPropagation();
-    // ferme un éditeur actif s'il y en a un
-    if (params.api.getCellEditorInstances && params.api.getCellEditorInstances().length > 0) {
-        params.api.stopEditing();
-        setTimeout(()=>{
-        if (!params.node.isSelected()){
-            params.api.deselectAll();
-            params.node.setSelected(true, true);
-        }
-        }, 0);
-    } else {
-        if (!params.node.isSelected()){
+      ev.stopPropagation();
+      if (!params.node.isSelected()){
         params.api.deselectAll();
         params.node.setSelected(true, true);
-        }
-    }
-    });    
+      }
+    });
     e.appendChild(txt);
 
     const a = document.createElement('a');
@@ -463,15 +452,6 @@ class ActiviteRenderer {
 }
 """)
 
-    # txt.addEventListener('click', (ev)=>{
-    #   ev.stopPropagation();
-    #   if (!params.node.isSelected()){
-    #     params.api.deselectAll();
-    #     params.node.setSelected(true, true);
-    #   }
-    # });
-
-
 LIEU_RENDERER = JsCode("""
 class LieuRenderer {
   init(params){
@@ -486,22 +466,11 @@ class LieuRenderer {
     txt.textContent = label;
     // ✅ sélection immédiate au tap sur le texte
     txt.addEventListener('click', (ev)=>{
-    ev.stopPropagation();
-    // ferme un éditeur actif s'il y en a un
-    if (params.api.getCellEditorInstances && params.api.getCellEditorInstances().length > 0) {
-        params.api.stopEditing();
-        setTimeout(()=>{
-        if (!params.node.isSelected()){
-            params.api.deselectAll();
-            params.node.setSelected(true, true);
-        }
-        }, 0);
-    } else {
-        if (!params.node.isSelected()){
+      ev.stopPropagation();
+      if (!params.node.isSelected()){
         params.api.deselectAll();
         params.node.setSelected(true, true);
-        }
-    }
+      }
     });
     e.appendChild(txt);
 
@@ -524,14 +493,6 @@ class LieuRenderer {
   refresh(){ return false; }
 }
 """)
-
-    # txt.addEventListener('click', (ev)=>{
-    #   ev.stopPropagation();
-    #   if (!params.node.isSelected()){
-    #     params.api.deselectAll();
-    #     params.node.setSelected(true, true);
-    #   }
-    # });
 
 
 ##################
@@ -3467,41 +3428,6 @@ def init_activites_programmees_grid_options(df_display):
 
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
-
-    # 1) quand on clique, si un éditeur est ouvert, on le ferme
-    #    puis on sélectionne immédiatement la ligne (hors clic sur l'icône <a>)
-    grid_options["onCellClicked"] = JsCode("""
-    function(e){
-    const t = e.event && e.event.target;
-    if (t && (t.tagName === 'A' || t.closest('a'))) return; // laisser l'icône tranquille
-
-    const hasEditors = (e.api.getCellEditorInstances && e.api.getCellEditorInstances().length > 0);
-
-    if (hasEditors) {
-        // 1) fermer l'éditeur en cours
-        e.api.stopEditing();
-
-        // 2) puis sélectionner la ligne juste après (prochain tick)
-        setTimeout(()=>{
-        if (!e.node.isSelected()){
-            e.api.deselectAll();
-            e.node.setSelected(true, true);
-        }
-        }, 0);
-    } else {
-        if (!e.node.isSelected()){
-        e.api.deselectAll();
-        e.node.setSelected(true, true);
-        }
-    }
-    }
-    """)
-
-    # aide AG Grid à sortir de l'édition dès qu'on clique ailleurs
-    grid_options["stopEditingWhenCellsLoseFocus"] = True
-
-    # si tu avais remis ça pour tester, laisse-le à False pour garder l'édition au double-clic
-    grid_options["suppressClickEdit"] = False
 
     # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (début)
     # grid_options["rowSelection"] = "single"
