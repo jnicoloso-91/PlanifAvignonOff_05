@@ -426,12 +426,23 @@ class ActiviteRenderer {
     txt.textContent = label;
     // ✅ sélection immédiate au tap sur le texte
     txt.addEventListener('click', (ev)=>{
-      ev.stopPropagation();
-      if (!params.node.isSelected()){
+    ev.stopPropagation();
+    // ferme un éditeur actif s'il y en a un
+    if (params.api.getCellEditorInstances && params.api.getCellEditorInstances().length > 0) {
+        params.api.stopEditing();
+        setTimeout(()=>{
+        if (!params.node.isSelected()){
+            params.api.deselectAll();
+            params.node.setSelected(true, true);
+        }
+        }, 0);
+    } else {
+        if (!params.node.isSelected()){
         params.api.deselectAll();
         params.node.setSelected(true, true);
-      }
-    });
+        }
+    }
+    });    
     e.appendChild(txt);
 
     const a = document.createElement('a');
@@ -452,6 +463,15 @@ class ActiviteRenderer {
 }
 """)
 
+    # txt.addEventListener('click', (ev)=>{
+    #   ev.stopPropagation();
+    #   if (!params.node.isSelected()){
+    #     params.api.deselectAll();
+    #     params.node.setSelected(true, true);
+    #   }
+    # });
+
+
 LIEU_RENDERER = JsCode("""
 class LieuRenderer {
   init(params){
@@ -466,11 +486,22 @@ class LieuRenderer {
     txt.textContent = label;
     // ✅ sélection immédiate au tap sur le texte
     txt.addEventListener('click', (ev)=>{
-      ev.stopPropagation();
-      if (!params.node.isSelected()){
+    ev.stopPropagation();
+    // ferme un éditeur actif s'il y en a un
+    if (params.api.getCellEditorInstances && params.api.getCellEditorInstances().length > 0) {
+        params.api.stopEditing();
+        setTimeout(()=>{
+        if (!params.node.isSelected()){
+            params.api.deselectAll();
+            params.node.setSelected(true, true);
+        }
+        }, 0);
+    } else {
+        if (!params.node.isSelected()){
         params.api.deselectAll();
         params.node.setSelected(true, true);
-      }
+        }
+    }
     });
     e.appendChild(txt);
 
@@ -493,6 +524,14 @@ class LieuRenderer {
   refresh(){ return false; }
 }
 """)
+
+    # txt.addEventListener('click', (ev)=>{
+    #   ev.stopPropagation();
+    #   if (!params.node.isSelected()){
+    #     params.api.deselectAll();
+    #     params.node.setSelected(true, true);
+    #   }
+    # });
 
 
 ##################
@@ -3426,8 +3465,43 @@ def init_activites_programmees_grid_options(df_display):
         }}
     """))
 
+    # 1) quand on clique, si un éditeur est ouvert, on le ferme
+    #    puis on sélectionne immédiatement la ligne (hors clic sur l'icône <a>)
+    grid_options["onCellClicked"] = JsCode("""
+    function(e){
+    const t = e.event && e.event.target;
+    if (t && (t.tagName === 'A' || t.closest('a'))) return; // laisser l'icône tranquille
+
+    const hasEditors = (e.api.getCellEditorInstances && e.api.getCellEditorInstances().length > 0);
+
+    if (hasEditors) {
+        // 1) fermer l'éditeur en cours
+        e.api.stopEditing();
+
+        // 2) puis sélectionner la ligne juste après (prochain tick)
+        setTimeout(()=>{
+        if (!e.node.isSelected()){
+            e.api.deselectAll();
+            e.node.setSelected(true, true);
+        }
+        }, 0);
+    } else {
+        if (!e.node.isSelected()){
+        e.api.deselectAll();
+        e.node.setSelected(true, true);
+        }
+    }
+    }
+    """)
+
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
+
+    # aide AG Grid à sortir de l'édition dès qu'on clique ailleurs
+    grid_options["stopEditingWhenCellsLoseFocus"] = True
+
+    # si tu avais remis ça pour tester, laisse-le à False pour garder l'édition au double-clic
+    grid_options["suppressClickEdit"] = False
 
     # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (début)
     # grid_options["rowSelection"] = "single"
@@ -3450,7 +3524,7 @@ def init_activites_programmees_grid_options(df_display):
     # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (fin)
 
     # Supprime le Hover (séléction de survol qui pose problème sur mobile et tablette)
-    # grid_options["suppressRowHoverHighlight"] = True
+    grid_options["suppressRowHoverHighlight"] = True
 
     return grid_options
 
@@ -6576,7 +6650,7 @@ def inject_icons_utils():
         </script>
     """, unsafe_allow_html=True)
 
-    # # Supprime le Hover (highlight de survol) sur mobile et tablette
+    # # Supprime le Hover (highlight de survol) sur mobile et tablette (début)
     # st.markdown("""
     #     <style>
     #     @media (hover: none) {
@@ -6584,23 +6658,24 @@ def inject_icons_utils():
     #     }
     #     </style>
     # """, unsafe_allow_html=True)
-    st.markdown("""
-    <script>
-    // Ajoute 'touch' à <html> si l'appareil supporte le touch
-    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-        document.documentElement.classList.add('touch');
-    } else {
-        document.documentElement.classList.add('no-touch');
-    }
-    </script>
-    <style>
-    /* Sur appareils tactiles, pas de hover/focus persistant sur les lignes */
-    .touch .ag-theme-alpine .ag-row-hover,
-    .touch .ag-theme-alpine .ag-row-focus {
-    background-color: inherit !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # st.markdown("""
+    # <script>
+    # // Ajoute 'touch' à <html> si l'appareil supporte le touch
+    # if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+    #     document.documentElement.classList.add('touch');
+    # } else {
+    #     document.documentElement.classList.add('no-touch');
+    # }
+    # </script>
+    # <style>
+    # /* Sur appareils tactiles, pas de hover/focus persistant sur les lignes */
+    # .touch .ag-theme-alpine .ag-row-hover,
+    # .touch .ag-theme-alpine .ag-row-focus {
+    # background-color: inherit !important;
+    # }
+    # </style>
+    # """, unsafe_allow_html=True)
+    # # Supprime le Hover (highlight de survol) sur mobile et tablette (fin)
 
     # # Réduit les ambiguités de double-tap zoom et taps fantômes sur mobile
     # st.markdown("""
