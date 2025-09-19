@@ -6580,7 +6580,14 @@ def inject_icons_utils():
     #     }
     #     </style>
     # """, unsafe_allow_html=True)
-
+    
+    # Réduit les ambiguités de double-tap zoom et taps fantômes sur mobile
+    st.markdown("""
+    <style>
+    /* Les cellules et leurs contenus réagissent immédiatement aux taps */
+    .ag-cell, .ag-cell a, .ag-cell span { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # Initialisation de la page HTML
 def initialiser_page():
