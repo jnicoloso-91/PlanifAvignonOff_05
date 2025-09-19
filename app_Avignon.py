@@ -330,90 +330,6 @@ function(p){
 }
 """)
 
-# ACTIVITE_RENDERER = JsCode("""
-# class ActiviteRenderer {
-#   init(params){
-#     const e = document.createElement('div');
-#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-#     e.style.width='100%'; e.style.overflow='hidden';
-
-#     const label = (params.value ?? '').toString();  // ✅ valeur de la colonne (accent ok)
-#     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
-#     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
-
-#     const txt = document.createElement('span');
-#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-#     txt.textContent = label;
-#     e.appendChild(txt);
-
-#     const a = document.createElement('a');
-#     a.textContent = '🔎';
-#     a.href = href;                   // ✅ vrai lien
-#     a.target = '_blank';
-#     a.rel = 'noopener';
-#     a.title = 'Rechercher / Ouvrir le lien';
-#     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
-#     // bloque seulement la propagation pour ne pas déclencher sélection/édition
-#     a.addEventListener('mousedown', ev=>ev.stopPropagation());
-#     a.addEventListener('click',     ev=>ev.stopPropagation());
-#     e.appendChild(a);
-
-#     // ✅ forcer l'édition au double-clic
-#     e.addEventListener('dblclick', ()=>{
-#       params.api.startEditingCell({ rowIndex: params.node.rowIndex, colKey: params.colDef.field });
-#     });
-
-#     this.eGui = e;
-#   }
-#   getGui(){ return this.eGui; }
-#   refresh(){ return false; }
-# }
-# """)
-
-# LIEU_RENDERER = JsCode("""
-# class LieuRenderer {
-#   init(params){
-#     const e = document.createElement('div');
-#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-#     e.style.width='100%'; e.style.overflow='hidden';
-
-#     const label = (params.value ?? '').toString().trim();
-
-#     const txt = document.createElement('span');
-#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-#     txt.textContent = label;
-#     e.appendChild(txt);
-
-#     // URL d'itinéraire universelle (fiable partout)
-#     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
-
-#     // petit SVG boussole (fiable si l'emoji ne s'affiche pas)
-#     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-#       viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
-
-#     const b = document.createElement('a');
-#     b.innerHTML = svg;
-#     b.href = url;                    // ✅ vrai lien
-#     b.target = '_blank';
-#     b.rel = 'noopener';
-#     b.title = 'Itinéraire vers ce lieu';
-#     b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
-#     b.addEventListener('mousedown', ev=>ev.stopPropagation());
-#     b.addEventListener('click',     ev=>ev.stopPropagation());
-#     e.appendChild(b);
-
-#     // ✅ forcer édition au double-clic
-#     e.addEventListener('dblclick', ()=>{
-#       params.api.startEditingCell({ rowIndex: params.node.rowIndex, colKey: params.colDef.field });
-#     });
-
-#     this.eGui = e;
-#   }
-#   getGui(){ return this.eGui; }
-#   refresh(){ return false; }
-# }
-# """)
-
 ACTIVITE_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
@@ -470,12 +386,6 @@ class LieuRenderer {
       viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
 
-    // 📍 épingle (SVG)
-    const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-      viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5
-               a2.5 2.5 0 0 1 0 5z"/></svg>`;
-
     const b = document.createElement('a');
     b.textContent = '📍';
     b.href = url;
@@ -492,6 +402,12 @@ class LieuRenderer {
   refresh(){ return false; }
 }
 """)
+    #  // 📍 épingle (SVG)
+    # const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+    #   viewBox="0 0 24 24" aria-hidden="true">
+    #   <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5
+    #            a2.5 2.5 0 0 1 0 5z"/></svg>`;
+
     # b.innerHTML = pin;
 
 
@@ -6536,8 +6452,10 @@ def traiter_sections_critiques():
     if cmd:
         activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
 
-# Injecte les scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
+# Scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
 def inject_icons_utils():
+
+    # Utilitaires pour les cells renderers ACTIVITE_RENDERER et LIEU_RENDERER
     st.markdown("""
         <script>
         (function(){
@@ -6580,7 +6498,7 @@ def inject_icons_utils():
     #     }
     #     </style>
     # """, unsafe_allow_html=True)
-    
+
     # Réduit les ambiguités de double-tap zoom et taps fantômes sur mobile
     st.markdown("""
     <style>
