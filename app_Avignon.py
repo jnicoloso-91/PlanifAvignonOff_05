@@ -6584,14 +6584,31 @@ def inject_icons_utils():
     #     }
     #     </style>
     # """, unsafe_allow_html=True)
-
-    # Réduit les ambiguités de double-tap zoom et taps fantômes sur mobile
     st.markdown("""
+    <script>
+    // Ajoute 'touch' à <html> si l'appareil supporte le touch
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+        document.documentElement.classList.add('touch');
+    } else {
+        document.documentElement.classList.add('no-touch');
+    }
+    </script>
     <style>
-    /* Les cellules et leurs contenus réagissent immédiatement aux taps */
-    .ag-cell, .ag-cell a, .ag-cell span { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    /* Sur appareils tactiles, pas de hover/focus persistant sur les lignes */
+    .touch .ag-theme-alpine .ag-row-hover,
+    .touch .ag-theme-alpine .ag-row-focus {
+    background-color: inherit !important;
+    }
     </style>
     """, unsafe_allow_html=True)
+
+    # # Réduit les ambiguités de double-tap zoom et taps fantômes sur mobile
+    # st.markdown("""
+    # <style>
+    # /* Les cellules et leurs contenus réagissent immédiatement aux taps */
+    # .ag-cell, .ag-cell a, .ag-cell span { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    # </style>
+    # """, unsafe_allow_html=True)
 
 # Initialisation de la page HTML
 def initialiser_page():
