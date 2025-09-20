@@ -429,6 +429,159 @@ class LieuRenderer {
 }
 """)
 
+# # JS Code chargé de lancer la recherche Web sur la colonne Activité via appui long
+# ACTIVITÉ_LONGPRESS_RENDERER = JsCode("""
+# class ActiviteRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.width='100%'; e.style.overflow='hidden';
+
+#     const label = (params.value ?? '').toString();
+#     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
+#     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+
+#     // Texte cliquable (sélection/tap), avec appui long
+#     const txt = document.createElement('span');
+#     txt.className = 'longpress';
+#     txt.style.flex='1 1 auto';
+#     txt.style.overflow='hidden';
+#     txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
+#     e.appendChild(txt);
+
+#     // --- Long press logic (ne bloque pas les taps / double-taps) ---
+#     let timer=null, startX=0, startY=0, moved=false;
+#     const THRESH=8;          // px tolérés
+#     const DELAY=550;         // ms d'appui long
+
+#     const clear = ()=>{ if(timer){ clearTimeout(timer); timer=null; } moved=false; };
+
+#     const onDown = ev=>{
+#       startX = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
+#       startY = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
+#       moved = false;
+#       timer = setTimeout(()=>{
+#         // Long press déclenché
+#         // stoppe la propagation pour ne pas sélectionner/éditer
+#         ev.preventDefault?.();
+#         ev.stopPropagation?.();
+#         if (href && href !== '#') {
+#           try { navigator.vibrate?.(10); } catch(_) {}
+#           window.open(href, "_blank", "noopener");
+#         }
+#         clear();
+#       }, DELAY);
+#     };
+
+#     const onMove = ev=>{
+#       const x = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
+#       const y = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
+#       if (Math.abs(x-startX) > THRESH || Math.abs(y-startY) > THRESH) {
+#         moved = true; clear();
+#       }
+#     };
+
+#     const onUpCancel = ()=> clear();
+
+#     txt.addEventListener('pointerdown', onDown, {passive:true});
+#     txt.addEventListener('pointermove', onMove,  {passive:true});
+#     txt.addEventListener('pointerup',   onUpCancel, {passive:true});
+#     txt.addEventListener('pointercancel', onUpCancel);
+#     txt.addEventListener('touchend', onUpCancel);
+#     txt.addEventListener('touchcancel', onUpCancel);
+
+#     // Empêche le menu contextuel “loupe” iOS sur appui long
+#     txt.addEventListener('contextmenu', e=>{ e.preventDefault(); });
+
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
+
+# # JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via appui long
+# LIEU_LONGPRESS_RENDERER = JsCode("""
+# class LieuRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.width='100%'; e.style.overflow='hidden';
+
+#     const label = (params.value ?? '').toString().trim();
+#     const addrEnc = (params.data && params.data.__addr_enc)
+#       ? String(params.data.__addr_enc).trim()
+#       : encodeURIComponent(label || "");
+
+#     const ctx  = params.context || {};
+#     const app  = ctx.itineraire_app || "Google Maps Web";
+#     const plat = ctx.platform || (
+#       /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
+#       : /Android/.test(navigator.userAgent) ? "Android" : "Desktop"
+#     );
+
+#     let url = "#";
+#     if (addrEnc) {
+#       if (app === "Apple Maps" && plat === "iOS") {
+#         url = `http://maps.apple.com/?daddr=${addrEnc}`;
+#       } else if (app === "Google Maps App") {
+#         if (plat === "iOS")       url = `comgooglemaps://?daddr=${addrEnc}`;
+#         else if (plat === "Android") url = `geo:0,0?q=${addrEnc}`;
+#         else                      url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
+#       } else {
+#         url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
+#       }
+#     }
+
+#     const txt = document.createElement('span');
+#     txt.className = 'longpress';
+#     txt.style.flex='1 1 auto';
+#     txt.style.overflow='hidden';
+#     txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
+#     e.appendChild(txt);
+
+#     // --- Long press logic ---
+#     let timer=null, startX=0, startY=0, moved=false;
+#     const THRESH=8, DELAY=550;
+#     const clear = ()=>{ if(timer){ clearTimeout(timer); timer=null; } moved=false; };
+
+#     const onDown = ev=>{
+#       startX = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
+#       startY = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
+#       moved = false;
+#       timer = setTimeout(()=>{
+#         ev.preventDefault?.();
+#         ev.stopPropagation?.();
+#         if (url && url !== '#') {
+#           try { navigator.vibrate?.(10); } catch(_) {}
+#           window.open(url, "_blank", "noopener");
+#         }
+#         clear();
+#       }, DELAY);
+#     };
+#     const onMove = ev=>{
+#       const x = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
+#       const y = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
+#       if (Math.abs(x-startX) > THRESH || Math.abs(y-startY) > THRESH) { moved = true; clear(); }
+#     };
+#     const onUpCancel = ()=> clear();
+
+#     txt.addEventListener('pointerdown', onDown, {passive:true});
+#     txt.addEventListener('pointermove', onMove,  {passive:true});
+#     txt.addEventListener('pointerup',   onUpCancel, {passive:true});
+#     txt.addEventListener('pointercancel', onUpCancel);
+#     txt.addEventListener('touchend', onUpCancel);
+#     txt.addEventListener('touchcancel', onUpCancel);
+#     txt.addEventListener('contextmenu', e=>{ e.preventDefault(); });
+
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
+
+
 # JS Code chargé de lancer la recherche Web sur la colonne Activité via appui long
 ACTIVITÉ_LONGPRESS_RENDERER = JsCode("""
 class ActiviteRenderer {
@@ -440,58 +593,62 @@ class ActiviteRenderer {
     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
 
-    // Texte cliquable (sélection/tap), avec appui long
     const txt = document.createElement('span');
-    txt.className = 'longpress';
-    txt.style.flex='1 1 auto';
-    txt.style.overflow='hidden';
-    txt.style.textOverflow='ellipsis';
+    txt.className='longpress';
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
     txt.textContent = label;
     e.appendChild(txt);
 
-    // --- Long press logic (ne bloque pas les taps / double-taps) ---
-    let timer=null, startX=0, startY=0, moved=false;
-    const THRESH=8;          // px tolérés
-    const DELAY=550;         // ms d'appui long
-
-    const clear = ()=>{ if(timer){ clearTimeout(timer); timer=null; } moved=false; };
-
-    const onDown = ev=>{
-      startX = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
-      startY = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
-      moved = false;
-      timer = setTimeout(()=>{
-        // Long press déclenché
-        // stoppe la propagation pour ne pas sélectionner/éditer
+    // fallback local si l'helper global n'est pas présent dans l'iframe
+    const attachLongPress = window.attachLongPress || function(el, opts){
+    const DELAY  = opts.delay  ?? 550;
+    const THRESH = opts.thresh ?? 8;
+    const onFire = opts.onFire;
+    let startT=0, sx=0, sy=0, moved=false, pressed=false;
+    const now = () => Date.now();
+    const onDown = ev => {
+        const t = ev.touches ? ev.touches[0] : ev;
+        sx = t.clientX || 0; sy = t.clientY || 0;
+        moved=false; pressed=true; startT = now();
+    };
+    const onMove = ev => {
+        if (!pressed) return;
+        const t = ev.touches ? ev.touches[0] : ev;
+        const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+        if (dx>THRESH || dy>THRESH) moved=true;
+    };
+    const onUp = ev => {
+        if (!pressed) return;
+        const dur = now() - startT;
+        if (dur >= DELAY && !moved) {
         ev.preventDefault?.();
         ev.stopPropagation?.();
-        if (href && href !== '#') {
-          try { navigator.vibrate?.(10); } catch(_) {}
-          window.open(href, "_blank", "noopener");
+        try { onFire?.(); } catch(_) {}
         }
-        clear();
-      }, DELAY);
+        pressed=false;
     };
-
-    const onMove = ev=>{
-      const x = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
-      const y = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
-      if (Math.abs(x-startX) > THRESH || Math.abs(y-startY) > THRESH) {
-        moved = true; clear();
-      }
+    el.addEventListener('contextmenu', e=>e.preventDefault());
+    if (window.PointerEvent){
+        el.addEventListener('pointerdown', onDown, {passive:true});
+        el.addEventListener('pointermove', onMove,  {passive:true});
+        el.addEventListener('pointerup',   onUp,    {passive:false});
+        el.addEventListener('pointercancel',()=>{pressed=false;});
+    } else {
+        el.addEventListener('touchstart', onDown, {passive:true});
+        el.addEventListener('touchmove',  onMove, {passive:true});
+        el.addEventListener('touchend',   onUp,   {passive:false});
+        el.addEventListener('touchcancel',()=>{pressed=false;});
+        el.addEventListener('mousedown',  onDown);
+        el.addEventListener('mousemove',  onMove);
+        el.addEventListener('mouseup',    onUp);
+    }
     };
-
-    const onUpCancel = ()=> clear();
-
-    txt.addEventListener('pointerdown', onDown, {passive:true});
-    txt.addEventListener('pointermove', onMove,  {passive:true});
-    txt.addEventListener('pointerup',   onUpCancel, {passive:true});
-    txt.addEventListener('pointercancel', onUpCancel);
-    txt.addEventListener('touchend', onUpCancel);
-    txt.addEventListener('touchcancel', onUpCancel);
-
-    // Empêche le menu contextuel “loupe” iOS sur appui long
-    txt.addEventListener('contextmenu', e=>{ e.preventDefault(); });
+                                     
+    // Appui long: ouvrir dans un nouvel onglet (déclenché sur touchend/mouseup)
+    attachLongPress(txt, {
+      delay: 550, thresh: 8,
+      onFire: () => { if (href && href !== '#') { try{ navigator.vibrate?.(10);}catch(_){} window.open(href,'_blank','noopener'); } }
+    });
 
     this.eGui = e;
   }
@@ -533,46 +690,60 @@ class LieuRenderer {
     }
 
     const txt = document.createElement('span');
-    txt.className = 'longpress';
-    txt.style.flex='1 1 auto';
-    txt.style.overflow='hidden';
-    txt.style.textOverflow='ellipsis';
+    txt.className='longpress';
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
     txt.textContent = label;
     e.appendChild(txt);
 
-    // --- Long press logic ---
-    let timer=null, startX=0, startY=0, moved=false;
-    const THRESH=8, DELAY=550;
-    const clear = ()=>{ if(timer){ clearTimeout(timer); timer=null; } moved=false; };
-
-    const onDown = ev=>{
-      startX = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
-      startY = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
-      moved = false;
-      timer = setTimeout(()=>{
+    // fallback local si l'helper global n'est pas présent dans l'iframe
+    const attachLongPress = window.attachLongPress || function(el, opts){
+    const DELAY  = opts.delay  ?? 550;
+    const THRESH = opts.thresh ?? 8;
+    const onFire = opts.onFire;
+    let startT=0, sx=0, sy=0, moved=false, pressed=false;
+    const now = () => Date.now();
+    const onDown = ev => {
+        const t = ev.touches ? ev.touches[0] : ev;
+        sx = t.clientX || 0; sy = t.clientY || 0;
+        moved=false; pressed=true; startT = now();
+    };
+    const onMove = ev => {
+        if (!pressed) return;
+        const t = ev.touches ? ev.touches[0] : ev;
+        const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+        if (dx>THRESH || dy>THRESH) moved=true;
+    };
+    const onUp = ev => {
+        if (!pressed) return;
+        const dur = now() - startT;
+        if (dur >= DELAY && !moved) {
         ev.preventDefault?.();
         ev.stopPropagation?.();
-        if (url && url !== '#') {
-          try { navigator.vibrate?.(10); } catch(_) {}
-          window.open(url, "_blank", "noopener");
+        try { onFire?.(); } catch(_) {}
         }
-        clear();
-      }, DELAY);
+        pressed=false;
     };
-    const onMove = ev=>{
-      const x = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
-      const y = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
-      if (Math.abs(x-startX) > THRESH || Math.abs(y-startY) > THRESH) { moved = true; clear(); }
+    el.addEventListener('contextmenu', e=>e.preventDefault());
+    if (window.PointerEvent){
+        el.addEventListener('pointerdown', onDown, {passive:true});
+        el.addEventListener('pointermove', onMove,  {passive:true});
+        el.addEventListener('pointerup',   onUp,    {passive:false});
+        el.addEventListener('pointercancel',()=>{pressed=false;});
+    } else {
+        el.addEventListener('touchstart', onDown, {passive:true});
+        el.addEventListener('touchmove',  onMove, {passive:true});
+        el.addEventListener('touchend',   onUp,   {passive:false});
+        el.addEventListener('touchcancel',()=>{pressed=false;});
+        el.addEventListener('mousedown',  onDown);
+        el.addEventListener('mousemove',  onMove);
+        el.addEventListener('mouseup',    onUp);
+    }
     };
-    const onUpCancel = ()=> clear();
-
-    txt.addEventListener('pointerdown', onDown, {passive:true});
-    txt.addEventListener('pointermove', onMove,  {passive:true});
-    txt.addEventListener('pointerup',   onUpCancel, {passive:true});
-    txt.addEventListener('pointercancel', onUpCancel);
-    txt.addEventListener('touchend', onUpCancel);
-    txt.addEventListener('touchcancel', onUpCancel);
-    txt.addEventListener('contextmenu', e=>{ e.preventDefault(); });
+                                     
+    attachLongPress(txt, {
+      delay: 550, thresh: 8,
+      onFire: () => { if (url && url!=='#') { try{ navigator.vibrate?.(10);}catch(_){} window.open(url,'_blank','noopener'); } }
+    });
 
     this.eGui = e;
   }
@@ -580,7 +751,6 @@ class LieuRenderer {
   refresh(){ return false; }
 }
 """)
-
 
 ##################
 # Sqlite Manager #
@@ -6842,79 +7012,68 @@ def traiter_sections_critiques():
     if cmd:
         activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
 
-# Scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
-def inject_icons_utils():
+# Script utilitaire pour boutons souhaitant utiliser le long-press et le rendant fonctionnel sur toute plateforme
+@st.cache_resource
+def inject_longpress_util():
 
-    # Utilitaires pour les cells renderers de recherche Web et de calcul d'itnéraire 
-    # (ACTIVITE_ICON_RENDERER LIEU_ICON_RENDERER ACTIVITÉ_LONGPRESS_RENDERER LIEU_LONGPRESS_RENDERER) 
     st.markdown("""
         <script>
         (function(){
-        // petit anti-double-tap
-        let _last = 0;
-        window.safeClick = function(fn){
-            const now = Date.now();
-            if (now - _last < 350) return;
-            _last = now; fn();
-        };
+                
+        // Helper rendant le long-press fonctionnel sur windows et mobile
+        window.attachLongPress = function(el, opts){
+            const DELAY  = opts.delay  ?? 550;
+            const THRESH = opts.thresh ?? 8;
+            const onFire = opts.onFire;
 
-        // Détection plateforme pour itinéraires
-        window.openDirections = function(q){
-            // iOS (PWA/Safari)
-            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-            const u = "https://maps.apple.com/?daddr=" + encodeURIComponent(q);
-            window.open(u, "_blank","noopener");
-            return;
+            let startT=0, sx=0, sy=0, moved=false, pressed=false;
+            const now = () => Date.now();
+
+            const onDown = ev => {
+                const t = ev.touches ? ev.touches[0] : ev;
+                sx = t.clientX || 0; sy = t.clientY || 0;
+                moved=false; pressed=true; startT = now();
+            };
+            const onMove = ev => {
+                if (!pressed) return;
+                const t = ev.touches ? ev.touches[0] : ev;
+                const dx = Math.abs((t.clientX||0)-sx),
+                        dy = Math.abs((t.clientY||0)-sy);
+                if (dx>THRESH || dy>THRESH) moved=true;
+            };
+            const onUp = ev => {
+                if (!pressed) return;
+                const dur = now() - startT;
+                if (dur >= DELAY && !moved) {
+                    ev.preventDefault?.();
+                    ev.stopPropagation?.();
+                    try { onFire?.(); } catch(_) {}
+                }
+                pressed=false;
+            };
+
+            el.addEventListener('contextmenu', e=>e.preventDefault());
+            if (window.PointerEvent){
+                el.addEventListener('pointerdown', onDown, {passive:true});
+                el.addEventListener('pointermove', onMove,  {passive:true});
+                el.addEventListener('pointerup',   onUp,    {passive:false});
+                el.addEventListener('pointercancel',()=>{pressed=false;});
+            } else {
+                el.addEventListener('touchstart', onDown, {passive:true});
+                el.addEventListener('touchmove',  onMove, {passive:true});
+                el.addEventListener('touchend',   onUp,   {passive:false});
+                el.addEventListener('touchcancel',()=>{pressed=false;});
+                el.addEventListener('mousedown',  onDown);
+                el.addEventListener('mousemove',  onMove);
+                el.addEventListener('mouseup',    onUp);
             }
-            // Android
-            if (/Android/.test(navigator.userAgent)) {
-            // geo: marche souvent côté Android; fallback Google Maps Web
-            const geo = "geo:0,0?q=" + encodeURIComponent(q);
-            const ok = window.open(geo, "_blank");
-            if (!ok) window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q), "_blank","noopener");
-            return;
-            }
-            // Desktop
-            window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(q), "_blank","noopener");
         };
         })();
         </script>
-    """, unsafe_allow_html=True)
-
-    # # Supprime le Hover (highlight de survol) sur mobile et tablette (début)
-    # st.markdown("""
-    #     <style>
-    #     @media (hover: none) {
-    #     .ag-theme-alpine .ag-row-hover { background-color: inherit !important; }
-    #     }
-    #     </style>
-    # """, unsafe_allow_html=True)
-    # st.markdown("""
-    # <script>
-    # // Ajoute 'touch' à <html> si l'appareil supporte le touch
-    # if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-    #     document.documentElement.classList.add('touch');
-    # } else {
-    #     document.documentElement.classList.add('no-touch');
-    # }
-    # </script>
-    # <style>
-    # /* Sur appareils tactiles, pas de hover/focus persistant sur les lignes */
-    # .touch .ag-theme-alpine .ag-row-hover,
-    # .touch .ag-theme-alpine .ag-row-focus {
-    # background-color: inherit !important;
-    # }
-    # </style>
-    # """, unsafe_allow_html=True)
-    # # Supprime le Hover (highlight de survol) sur mobile et tablette (fin)
-
-    # # Réduit les ambiguités de double-tap zoom et taps fantômes sur mobile
-    # st.markdown("""
-    # <style>
-    # /* Les cellules et leurs contenus réagissent immédiatement aux taps */
-    # .ag-cell, .ag-cell a, .ag-cell span { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-    # </style>
-    # """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
+    return True
 
 # Initialisation de la page HTML
 def initialiser_page():
@@ -6922,8 +7081,8 @@ def initialiser_page():
     # Evite la surbrillance rose pâle des lignes qui ont le focus sans être sélectionnées dans les AgGrid
     patch_aggrid_css()
 
-    # Injecte les scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
-    inject_icons_utils()
+    # Injecte le script permettant le bon fonctionnement du long-press sur toute plateforme (pas utilisé en l'état)
+    # inject_longpress_util()
 
 # Trace le début d'un rerun
 def tracer_rerun():
