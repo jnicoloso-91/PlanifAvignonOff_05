@@ -331,8 +331,8 @@ function(p){
 }
 """)
 
-# V0
-ACTIVITE_RENDERER = JsCode("""
+# JS Code chargé de lancer la recherche Web sur la colonne Activité via l'icône loupe
+ACTIVITE_ICON_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
     const e = document.createElement('div');
@@ -367,52 +367,8 @@ class ActiviteRenderer {
 }
 """)
 
-
-# LIEU_RENDERER = JsCode("""
-# class LieuRenderer {
-#   init(params){
-#     const e = document.createElement('div');
-#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-#     e.style.width='100%'; e.style.overflow='hidden';
-
-#     const label = (params.value ?? '').toString().trim();
-
-#     const txt = document.createElement('span');
-#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-#     txt.textContent = label;
-#     // 🔸 pas de handler dblclick ici non plus
-#     e.appendChild(txt);
-
-#     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
-#     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-#       viewBox="0 0 24 24" aria-hidden="true">
-#       <path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
-
-#     const b = document.createElement('a');
-#     b.textContent = '📍';
-#     b.href = url;
-#     b.target = '_blank';
-#     b.rel = 'noopener,noreferrer';
-#     b.title = 'Itinéraire vers ce lieu';
-#     b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
-#     b.addEventListener('click', ev=>ev.stopPropagation());
-#     e.appendChild(b);
-
-#     this.eGui = e;
-#   }
-#   getGui(){ return this.eGui; }
-#   refresh(){ return false; }
-# }
-# """)
-#     #  // 📍 épingle (SVG)
-#     # const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-#     #   viewBox="0 0 24 24" aria-hidden="true">
-#     #   <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5
-#     #            a2.5 2.5 0 0 1 0 5z"/></svg>`;
-
-#     # b.innerHTML = pin;
-
-LIEU_RENDERER = JsCode("""
+# JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via l'icône épingle
+LIEU_ICON_RENDERER = JsCode("""
 class LieuRenderer {
   init(params){
     const e = document.createElement('div');
@@ -472,6 +428,159 @@ class LieuRenderer {
   refresh(){ return false; }
 }
 """)
+
+# JS Code chargé de lancer la recherche Web sur la colonne Activité via appui long
+ACTIVITÉ_LONGPRESS_RENDERER = JsCode("""
+class ActiviteRenderer {
+  init(params){
+    const e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.width='100%'; e.style.overflow='hidden';
+
+    const label = (params.value ?? '').toString();
+    const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
+    const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+
+    // Texte cliquable (sélection/tap), avec appui long
+    const txt = document.createElement('span');
+    txt.className = 'longpress';
+    txt.style.flex='1 1 auto';
+    txt.style.overflow='hidden';
+    txt.style.textOverflow='ellipsis';
+    txt.textContent = label;
+    e.appendChild(txt);
+
+    // --- Long press logic (ne bloque pas les taps / double-taps) ---
+    let timer=null, startX=0, startY=0, moved=false;
+    const THRESH=8;          // px tolérés
+    const DELAY=550;         // ms d'appui long
+
+    const clear = ()=>{ if(timer){ clearTimeout(timer); timer=null; } moved=false; };
+
+    const onDown = ev=>{
+      startX = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
+      startY = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
+      moved = false;
+      timer = setTimeout(()=>{
+        // Long press déclenché
+        // stoppe la propagation pour ne pas sélectionner/éditer
+        ev.preventDefault?.();
+        ev.stopPropagation?.();
+        if (href && href !== '#') {
+          try { navigator.vibrate?.(10); } catch(_) {}
+          window.open(href, "_blank", "noopener");
+        }
+        clear();
+      }, DELAY);
+    };
+
+    const onMove = ev=>{
+      const x = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
+      const y = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
+      if (Math.abs(x-startX) > THRESH || Math.abs(y-startY) > THRESH) {
+        moved = true; clear();
+      }
+    };
+
+    const onUpCancel = ()=> clear();
+
+    txt.addEventListener('pointerdown', onDown, {passive:true});
+    txt.addEventListener('pointermove', onMove,  {passive:true});
+    txt.addEventListener('pointerup',   onUpCancel, {passive:true});
+    txt.addEventListener('pointercancel', onUpCancel);
+    txt.addEventListener('touchend', onUpCancel);
+    txt.addEventListener('touchcancel', onUpCancel);
+
+    // Empêche le menu contextuel “loupe” iOS sur appui long
+    txt.addEventListener('contextmenu', e=>{ e.preventDefault(); });
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
+
+# JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via appui long
+LIEU_LONGPRESS_RENDERER = JsCode("""
+class LieuRenderer {
+  init(params){
+    const e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.width='100%'; e.style.overflow='hidden';
+
+    const label = (params.value ?? '').toString().trim();
+    const addrEnc = (params.data && params.data.__addr_enc)
+      ? String(params.data.__addr_enc).trim()
+      : encodeURIComponent(label || "");
+
+    const ctx  = params.context || {};
+    const app  = ctx.itineraire_app || "Google Maps Web";
+    const plat = ctx.platform || (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
+      : /Android/.test(navigator.userAgent) ? "Android" : "Desktop"
+    );
+
+    let url = "#";
+    if (addrEnc) {
+      if (app === "Apple Maps" && plat === "iOS") {
+        url = `http://maps.apple.com/?daddr=${addrEnc}`;
+      } else if (app === "Google Maps App") {
+        if (plat === "iOS")       url = `comgooglemaps://?daddr=${addrEnc}`;
+        else if (plat === "Android") url = `geo:0,0?q=${addrEnc}`;
+        else                      url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
+      } else {
+        url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
+      }
+    }
+
+    const txt = document.createElement('span');
+    txt.className = 'longpress';
+    txt.style.flex='1 1 auto';
+    txt.style.overflow='hidden';
+    txt.style.textOverflow='ellipsis';
+    txt.textContent = label;
+    e.appendChild(txt);
+
+    // --- Long press logic ---
+    let timer=null, startX=0, startY=0, moved=false;
+    const THRESH=8, DELAY=550;
+    const clear = ()=>{ if(timer){ clearTimeout(timer); timer=null; } moved=false; };
+
+    const onDown = ev=>{
+      startX = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
+      startY = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
+      moved = false;
+      timer = setTimeout(()=>{
+        ev.preventDefault?.();
+        ev.stopPropagation?.();
+        if (url && url !== '#') {
+          try { navigator.vibrate?.(10); } catch(_) {}
+          window.open(url, "_blank", "noopener");
+        }
+        clear();
+      }, DELAY);
+    };
+    const onMove = ev=>{
+      const x = (ev.touches?.[0]?.clientX ?? ev.clientX ?? 0);
+      const y = (ev.touches?.[0]?.clientY ?? ev.clientY ?? 0);
+      if (Math.abs(x-startX) > THRESH || Math.abs(y-startY) > THRESH) { moved = true; clear(); }
+    };
+    const onUpCancel = ()=> clear();
+
+    txt.addEventListener('pointerdown', onDown, {passive:true});
+    txt.addEventListener('pointermove', onMove,  {passive:true});
+    txt.addEventListener('pointerup',   onUpCancel, {passive:true});
+    txt.addEventListener('pointercancel', onUpCancel);
+    txt.addEventListener('touchend', onUpCancel);
+    txt.addEventListener('touchcancel', onUpCancel);
+    txt.addEventListener('contextmenu', e=>{ e.preventDefault(); });
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
+
 
 ##################
 # Sqlite Manager #
@@ -3498,7 +3607,7 @@ def init_activites_programmees_grid_options(df_display):
     gb = GridOptionsBuilder.from_dataframe(df_display)
 
     # Configuration par défaut des colonnes
-    gb.configure_default_column(resizable=True) #, editable=True)
+    gb.configure_default_column(resizable=True) 
 
     # Colonnes à largeur fixe
     colonnes_fixes = {"Date": 55, "Début": 55, "Fin": 55, "Durée": 55}
@@ -3561,21 +3670,13 @@ def init_activites_programmees_grid_options(df_display):
         """)
     )
 
-    # Activité avec loupe
-    gb.configure_column(
-        "Activité",
-        editable=True,
-        cellRenderer=ACTIVITE_RENDERER,
-        # minWidth=210,  # laisse de la place pour l’icône
-    )
+    # Configuration des icônes de colonnes pour la recherche Web et la recherche d'itinéraire
+    # gb.configure_column("Activité", editable=True, cellRenderer=ACTIVITE_ICON_RENDERER) #, minWidth=220)
+    # gb.configure_column("Lieu", editable=True, cellRenderer=LIEU_ICON_RENDERER) #, minWidth=200)
 
-    # Lieu avec itinéraire
-    gb.configure_column(
-        "Lieu",
-        editable=True,
-        cellRenderer=LIEU_RENDERER,
-        # minWidth=200,
-    )
+    # Configuration de l'appui long pour la recherche Web et la recherche d'itinéraire
+    gb.configure_column("Activité", editable=True, cellRenderer=ACTIVITÉ_LONGPRESS_RENDERER) #, minWidth=220)
+    gb.configure_column("Lieu",     editable=True, cellRenderer=LIEU_LONGPRESS_RENDERER) #, minWidth=200)
 
     # Colorisation
     gb.configure_grid_options(getRowStyle=JsCode(f"""
@@ -3614,17 +3715,17 @@ def init_activites_programmees_grid_options(df_display):
     """))
 
     grid_options = gb.build()
+
+    # Empêche la possibilité de réorganiser les colonnes
     grid_options["suppressMovableColumns"] = True
 
-    # Supprime le Hover (séléction de survol qui pose problème sur mobile et tablette)
+    # Supprime le highlight de survol qui pose problème sur mobile et tablette
     grid_options["suppressRowHoverHighlight"] = True
 
-    # Enregistre dans le contexte les paramètres nécessaires à la recherche d'itinéraire (voir LIEU_RENDERER)
-    itineraire_app = st.session_state.get("itineraire_app", "Google Maps Web")
-    platform = get_platform()  # "iOS" / "Android" / "Desktop"
+    # Enregistre dans le contexte les paramètres nécessaires à la recherche d'itinéraire (voir LIEU_ICON_RENDERER)
     grid_options["context"] = {
-        "itineraire_app": itineraire_app,
-        "platform": platform,
+        "itineraire_app": st.session_state.get("itineraire_app", "Google Maps Web"),
+        "platform": get_platform(),  # "iOS" / "Android" / "Desktop"
     }
 
     return grid_options
@@ -4114,6 +4215,14 @@ def init_activites_non_programmees_grid_options(df_display):
         """)
     )
 
+    # Configuration des icônes de colonnes pour la recherche Web et la recherche d'itinéraire
+    # gb.configure_column("Activité", editable=True, cellRenderer=ACTIVITE_ICON_RENDERER) #, minWidth=220)
+    # gb.configure_column("Lieu", editable=True, cellRenderer=LIEU_ICON_RENDERER) #, minWidth=200)
+
+    # Configuration de l'appui long pour la recherche Web et la recherche d'itinéraire
+    gb.configure_column("Activité", editable=True, cellRenderer=ACTIVITÉ_LONGPRESS_RENDERER) #, minWidth=220)
+    gb.configure_column("Lieu",     editable=True, cellRenderer=LIEU_LONGPRESS_RENDERER) #, minWidth=200)
+
     # Colorisation 
     gb.configure_grid_options(getRowStyle= JsCode(f"""
         function(params) {{
@@ -4144,7 +4253,19 @@ def init_activites_non_programmees_grid_options(df_display):
     """))
 
     grid_options = gb.build()
+
+    # Empêche la possibilité de réorganiser les colonnes
     grid_options["suppressMovableColumns"] = True
+
+    # Supprime le highlight de survol qui pose problème sur mobile et tablette
+    grid_options["suppressRowHoverHighlight"] = True
+
+    # Enregistre dans le contexte les paramètres nécessaires à la recherche d'itinéraire (voir LIEU_ICON_RENDERER)
+    grid_options["context"] = {
+        "itineraire_app": st.session_state.get("itineraire_app", "Google Maps Web"),
+        "platform": get_platform(),  # "iOS" / "Android" / "Desktop"
+    }
+
     return grid_options
 
 # Affiche les activités non programmées dans un tableau
@@ -6724,7 +6845,8 @@ def traiter_sections_critiques():
 # Scripts utilitaires pour les cells renderers des AgGrid permettant de lancer la recherche Web et d'itineraire
 def inject_icons_utils():
 
-    # Utilitaires pour les cells renderers ACTIVITE_RENDERER et LIEU_RENDERER
+    # Utilitaires pour les cells renderers de recherche Web et de calcul d'itnéraire 
+    # (ACTIVITE_ICON_RENDERER LIEU_ICON_RENDERER ACTIVITÉ_LONGPRESS_RENDERER LIEU_LONGPRESS_RENDERER) 
     st.markdown("""
         <script>
         (function(){
