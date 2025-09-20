@@ -4253,35 +4253,6 @@ def init_activites_programmees_grid_options(df_display):
         }}
     """))
 
-    # # JS à installer sur le onFirstDataRendered pour le sizeColumnsToFit et le Hook iOS pour recharge la grille au retour d'une page Web (bfcache) 
-    # gb.configure_grid_options(onFirstDataRendered=JsCode("""
-    #     function(params){
-    #         // Redimensionnement habituel
-    #         try { params.api.sizeColumnsToFit(); } catch(e){}
-
-    #         // --- Hook iOS : recharge la grille au retour d'une page Web (bfcache) 
-    #         if (window.__iosBackHookInstalled) return;
-    #         window.__iosBackHookInstalled = true;
-
-    #         var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    #         function cameFromBackForward(){
-    #             try {
-    #                 var nav = performance.getEntriesByType &&
-    #                         performance.getEntriesByType('navigation');
-    #                 return !!(nav && nav[0] && nav[0].type === 'back_forward');
-    #             } catch(e){ return false; }
-    #         }
-
-    #         window.addEventListener('pageshow', function(e){
-    #             if (!isIOS) return;
-    #             if (e.persisted || cameFromBackForward()){
-    #                 // recharge l’IFRAME AG-Grid => état propre
-    #                 location.reload();
-    #             }
-    #         }, false);
-    #     }
-    # """))
-
     grid_options = gb.build()
 
     # Empêche la possibilité de réorganiser les colonnes
@@ -4819,35 +4790,6 @@ def init_activites_non_programmees_grid_options(df_display):
             params.api.sizeColumnsToFit();
         }}
     """))
-
-    # # JS à installer sur le onFirstDataRendered pour le sizeColumnsToFit et le Hook iOS pour recharge la grille au retour d'une page Web (bfcache) 
-    # gb.configure_grid_options(onFirstDataRendered=JsCode("""
-    #     function(params){
-    #         // Redimensionnement habituel
-    #         try { params.api.sizeColumnsToFit(); } catch(e){}
-
-    #         // --- Hook iOS : recharge la grille au retour d'une page Web (bfcache) 
-    #         if (window.__iosBackHookInstalled) return;
-    #         window.__iosBackHookInstalled = true;
-
-    #         var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    #         function cameFromBackForward(){
-    #             try {
-    #                 var nav = performance.getEntriesByType &&
-    #                         performance.getEntriesByType('navigation');
-    #                 return !!(nav && nav[0] && nav[0].type === 'back_forward');
-    #             } catch(e){ return false; }
-    #         }
-
-    #         window.addEventListener('pageshow', function(e){
-    #             if (!isIOS) return;
-    #             if (e.persisted || cameFromBackForward()){
-    #                 // recharge l’IFRAME AG-Grid => état propre
-    #                 location.reload();
-    #             }
-    #         }, false);
-    #     }
-    # """))
 
     grid_options = gb.build()
 
@@ -7439,33 +7381,33 @@ def traiter_sections_critiques():
     if cmd:
         activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
 
-# Fix pour régler le pb de page bloquée par le bfcache au retour d'une page web appelée par long-press dans une ligne de grille
-@st.cache_resource
-def inject_ios_bfcache_fix():
-    st.markdown("""
-        <script>
-        (function(){
-        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+# # Fix pour régler le pb de page bloquée par le bfcache au retour d'une page web appelée par long-press dans une ligne de grille
+# @st.cache_resource
+# def inject_ios_bfcache_fix():
+#     st.markdown("""
+#         <script>
+#         (function(){
+#         var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-        function cameFromBackForward(){
-            try {
-            var nav = performance.getEntriesByType &&
-                        performance.getEntriesByType('navigation');
-            return !!(nav && nav[0] && nav[0].type === 'back_forward');
-            } catch(e){ return false; }
-        }
+#         function cameFromBackForward(){
+#             try {
+#             var nav = performance.getEntriesByType &&
+#                         performance.getEntriesByType('navigation');
+#             return !!(nav && nav[0] && nav[0].type === 'back_forward');
+#             } catch(e){ return false; }
+#         }
 
-        // ⚠️ Parent page Streamlit : au retour iOS, on recharge TOUTE la page
-        window.addEventListener('pageshow', function(e){
-            if (!isIOS) return;
-            if (e.persisted || cameFromBackForward()){
-            window.location.reload();
-            }
-        }, false);
-        })();
-        </script>
-        """, unsafe_allow_html=True)
-    return True
+#         // ⚠️ Parent page Streamlit : au retour iOS, on recharge TOUTE la page
+#         window.addEventListener('pageshow', function(e){
+#             if (!isIOS) return;
+#             if (e.persisted || cameFromBackForward()){
+#             window.location.reload();
+#             }
+#         }, false);
+#         })();
+#         </script>
+#         """, unsafe_allow_html=True)
+#     return True
 
 # Initialisation de la page HTML
 def initialiser_page():
