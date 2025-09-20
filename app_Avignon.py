@@ -895,90 +895,90 @@ class ActiviteRenderer {
 
     // ---- fallback long-press (utilise la version globale si dispo) ----
     const attachLongPress = window.attachLongPress || function(el, opts){
-  const DELAY  = opts?.delay  ?? 550;    // seuil long-press
-  const THRESH = opts?.thresh ?? 8;      // tolérance mouvement
-  const TAP_MS = opts?.tapMs  ?? 220;    // seuil tap court
-  const onUrl  = opts?.onUrl;
-  const onTap  = opts?.onTap;            // ex: () => select row
-  const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const DELAY  = opts?.delay  ?? 550;    // seuil long-press
+        const THRESH = opts?.thresh ?? 8;      // tolérance mouvement
+        const TAP_MS = opts?.tapMs  ?? 220;    // seuil tap court
+        const onUrl  = opts?.onUrl;
+        const onTap  = opts?.onTap;            // ex: () => select row
+        const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-  let sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
+        let sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
 
-  function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
+        function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
 
-  const onDown = ev => {
-    const t = ev.touches ? ev.touches[0] : ev;
-    sx = t.clientX || 0; sy = t.clientY || 0;
-    moved=false; pressed=true; firedLong=false; startT=Date.now();
+        const onDown = ev => {
+            const t = ev.touches ? ev.touches[0] : ev;
+            sx = t.clientX || 0; sy = t.clientY || 0;
+            moved=false; pressed=true; firedLong=false; startT=Date.now();
 
-    clearT();
-    timer = setTimeout(()=>{
-      if (pressed && !moved){
-        firedLong = true;
-        // iOS : ouvrir dans même onglet ; autres : nouvel onglet
-        const url = onUrl?.();
-        if (!url){ pressed=false; return; }
-        if (isIOS){
-          try { window.top.location.assign(url); } catch(e){ window.location.assign(url); }
-        } else {
-          try { 
-            const a=document.createElement('a');
-            a.href=url; a.target='_blank'; a.rel='noopener,noreferrer';
-            a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
-            document.body.appendChild(a); a.click(); a.remove();
-          } catch(e){
-            try { const w=window.open(url,'_blank','noopener'); if (!w) window.location.assign(url); } catch(e){ window.location.assign(url); }
-          }
-        }
-        pressed=false;
-      }
-    }, DELAY);
-  };
+            clearT();
+            timer = setTimeout(()=>{
+            if (pressed && !moved){
+                firedLong = true;
+                // iOS : ouvrir dans même onglet ; autres : nouvel onglet
+                const url = onUrl?.();
+                if (!url){ pressed=false; return; }
+                if (isIOS){
+                try { window.top.location.assign(url); } catch(e){ window.location.assign(url); }
+                } else {
+                try { 
+                    const a=document.createElement('a');
+                    a.href=url; a.target='_blank'; a.rel='noopener,noreferrer';
+                    a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+                    document.body.appendChild(a); a.click(); a.remove();
+                } catch(e){
+                    try { const w=window.open(url,'_blank','noopener'); if (!w) window.location.assign(url); } catch(e){ window.location.assign(url); }
+                }
+                }
+                pressed=false;
+            }
+            }, DELAY);
+        };
 
-  const onMove = ev => {
-    if (!pressed) return;
-    const t = ev.touches ? ev.touches[0] : ev;
-    const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
-    if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
-  };
+        const onMove = ev => {
+            if (!pressed) return;
+            const t = ev.touches ? ev.touches[0] : ev;
+            const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+            if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
+        };
 
-  const onUp = ev => {
-    if (!pressed){ clearT(); return; }
-    const dur = Date.now() - startT;
-    const isTap = dur < TAP_MS && !moved;
-    pressed=false; clearT();
+        const onUp = ev => {
+            if (!pressed){ clearT(); return; }
+            const dur = Date.now() - startT;
+            const isTap = dur < TAP_MS && !moved;
+            pressed=false; clearT();
 
-    // IMPORTANT : ne stoppe pas l’événement si on ne fait rien de spécial
-    if (isTap && !firedLong){
-      // Tap court : laisse *aussi* buller le clic naturel,
-      // mais on force la sélection pour iOS où le clic est parfois perdu.
-      try { onTap?.(); } catch(_) {}
-      // Pas de preventDefault ici → l’édition au double-tap reste OK
-    }
-  };
+            // IMPORTANT : ne stoppe pas l’événement si on ne fait rien de spécial
+            if (isTap && !firedLong){
+            // Tap court : laisse *aussi* buller le clic naturel,
+            // mais on force la sélection pour iOS où le clic est parfois perdu.
+            try { onTap?.(); } catch(_) {}
+            // Pas de preventDefault ici → l’édition au double-tap reste OK
+            }
+        };
 
-  // n’empêche pas la propagation par défaut
-  el.addEventListener('touchstart', onDown, {passive:true});
-  el.addEventListener('touchmove',  onMove, {passive:true});
-  el.addEventListener('touchend',   onUp,   {passive:false});
-  el.addEventListener('mousedown',  onDown);
-  el.addEventListener('mousemove',  onMove);
-  el.addEventListener('mouseup',    onUp);
-};
+        // n’empêche pas la propagation par défaut
+        el.addEventListener('touchstart', onDown, {passive:true});
+        el.addEventListener('touchmove',  onMove, {passive:true});
+        el.addEventListener('touchend',   onUp,   {passive:false});
+        el.addEventListener('mousedown',  onDown);
+        el.addEventListener('mousemove',  onMove);
+        el.addEventListener('mouseup',    onUp);
+    };
 
     // ---- branchement du long-press ----
-attachLongPress(txt, {
-  delay: 550,
-  thresh: 8,
-  tapMs: 220,
-  onUrl: () => href,
-  onTap: () => {            // tap court => forcer sélection immédiate
-    try {
-      params.api.setFocusedCell(params.rowIndex, params.column.getColId());
-      params.node.setSelected(true, true);    // (selectThis, clearOthers)
-    } catch(_) {}
-  }
-});
+    attachLongPress(txt, {
+        delay: 550,
+        thresh: 8,
+        tapMs: 220,
+        onUrl: () => href,
+        onTap: () => {            // tap court => forcer sélection immédiate
+            try {
+            params.api.setFocusedCell(params.rowIndex, params.column.getColId());
+            params.node.setSelected(true, true);    // (selectThis, clearOthers)
+            } catch(_) {}
+        }
+    });
                                      
     this.eGui = e;
   }
@@ -1029,89 +1029,89 @@ class LieuRenderer {
 
     // ---- fallback long-press (utilise la version globale si dispo) ----
     const attachLongPress = window.attachLongPress || function(el, opts){
-  const DELAY  = opts?.delay  ?? 550;    // seuil long-press
-  const THRESH = opts?.thresh ?? 8;      // tolérance mouvement
-  const TAP_MS = opts?.tapMs  ?? 220;    // seuil tap court
-  const onUrl  = opts?.onUrl;
-  const onTap  = opts?.onTap;            // ex: () => select row
-  const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const DELAY  = opts?.delay  ?? 550;    // seuil long-press
+        const THRESH = opts?.thresh ?? 8;      // tolérance mouvement
+        const TAP_MS = opts?.tapMs  ?? 220;    // seuil tap court
+        const onUrl  = opts?.onUrl;
+        const onTap  = opts?.onTap;            // ex: () => select row
+        const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-  let sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
+        let sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
 
-  function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
+        function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
 
-  const onDown = ev => {
-    const t = ev.touches ? ev.touches[0] : ev;
-    sx = t.clientX || 0; sy = t.clientY || 0;
-    moved=false; pressed=true; firedLong=false; startT=Date.now();
+        const onDown = ev => {
+            const t = ev.touches ? ev.touches[0] : ev;
+            sx = t.clientX || 0; sy = t.clientY || 0;
+            moved=false; pressed=true; firedLong=false; startT=Date.now();
 
-    clearT();
-    timer = setTimeout(()=>{
-      if (pressed && !moved){
-        firedLong = true;
-        // iOS : ouvrir dans même onglet ; autres : nouvel onglet
-        const url = onUrl?.();
-        if (!url){ pressed=false; return; }
-        if (isIOS){
-          try { window.top.location.assign(url); } catch(e){ window.location.assign(url); }
-        } else {
-          try { 
-            const a=document.createElement('a');
-            a.href=url; a.target='_blank'; a.rel='noopener,noreferrer';
-            a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
-            document.body.appendChild(a); a.click(); a.remove();
-          } catch(e){
-            try { const w=window.open(url,'_blank','noopener'); if (!w) window.location.assign(url); } catch(e){ window.location.assign(url); }
-          }
+            clearT();
+            timer = setTimeout(()=>{
+            if (pressed && !moved){
+                firedLong = true;
+                // iOS : ouvrir dans même onglet ; autres : nouvel onglet
+                const url = onUrl?.();
+                if (!url){ pressed=false; return; }
+                if (isIOS){
+                try { window.top.location.assign(url); } catch(e){ window.location.assign(url); }
+                } else {
+                try { 
+                    const a=document.createElement('a');
+                    a.href=url; a.target='_blank'; a.rel='noopener,noreferrer';
+                    a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+                    document.body.appendChild(a); a.click(); a.remove();
+                } catch(e){
+                    try { const w=window.open(url,'_blank','noopener'); if (!w) window.location.assign(url); } catch(e){ window.location.assign(url); }
+                }
+                }
+                pressed=false;
+            }
+            }, DELAY);
+        };
+
+        const onMove = ev => {
+            if (!pressed) return;
+            const t = ev.touches ? ev.touches[0] : ev;
+            const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+            if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
+        };
+
+        const onUp = ev => {
+            if (!pressed){ clearT(); return; }
+            const dur = Date.now() - startT;
+            const isTap = dur < TAP_MS && !moved;
+            pressed=false; clearT();
+
+            // IMPORTANT : ne stoppe pas l’événement si on ne fait rien de spécial
+            if (isTap && !firedLong){
+            // Tap court : laisse *aussi* buller le clic naturel,
+            // mais on force la sélection pour iOS où le clic est parfois perdu.
+            try { onTap?.(); } catch(_) {}
+            // Pas de preventDefault ici → l’édition au double-tap reste OK
+            }
+        };
+
+        // n’empêche pas la propagation par défaut
+        el.addEventListener('touchstart', onDown, {passive:true});
+        el.addEventListener('touchmove',  onMove, {passive:true});
+        el.addEventListener('touchend',   onUp,   {passive:false});
+        el.addEventListener('mousedown',  onDown);
+        el.addEventListener('mousemove',  onMove);
+        el.addEventListener('mouseup',    onUp);
+    };
+
+    attachLongPress(txt, {
+        delay: 550,
+        thresh: 8,
+        tapMs: 220,
+        onUrl: () => url,
+        onTap: () => {
+            try {
+            params.api.setFocusedCell(params.rowIndex, params.column.getColId());
+            params.node.setSelected(true, true);
+            } catch(_) {}
         }
-        pressed=false;
-      }
-    }, DELAY);
-  };
-
-  const onMove = ev => {
-    if (!pressed) return;
-    const t = ev.touches ? ev.touches[0] : ev;
-    const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
-    if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
-  };
-
-  const onUp = ev => {
-    if (!pressed){ clearT(); return; }
-    const dur = Date.now() - startT;
-    const isTap = dur < TAP_MS && !moved;
-    pressed=false; clearT();
-
-    // IMPORTANT : ne stoppe pas l’événement si on ne fait rien de spécial
-    if (isTap && !firedLong){
-      // Tap court : laisse *aussi* buller le clic naturel,
-      // mais on force la sélection pour iOS où le clic est parfois perdu.
-      try { onTap?.(); } catch(_) {}
-      // Pas de preventDefault ici → l’édition au double-tap reste OK
-    }
-  };
-
-  // n’empêche pas la propagation par défaut
-  el.addEventListener('touchstart', onDown, {passive:true});
-  el.addEventListener('touchmove',  onMove, {passive:true});
-  el.addEventListener('touchend',   onUp,   {passive:false});
-  el.addEventListener('mousedown',  onDown);
-  el.addEventListener('mousemove',  onMove);
-  el.addEventListener('mouseup',    onUp);
-};
-
-attachLongPress(txt, {
-  delay: 550,
-  thresh: 8,
-  tapMs: 220,
-  onUrl: () => url,
-  onTap: () => {
-    try {
-      params.api.setFocusedCell(params.rowIndex, params.column.getColId());
-      params.node.setSelected(true, true);
-    } catch(_) {}
-  }
-});
+    });
                                  
     this.eGui = e;
   }
@@ -7474,7 +7474,7 @@ def initialiser_page():
     patch_aggrid_css()
 
     # Injecte le fix pour régler le pb de page bloquée par le bfcache au retour d'une page web appelée par long-press dans une ligne de grille
-    inject_ios_bfcache_fix()
+    # inject_ios_bfcache_fix()
 
 # Trace le début d'un rerun
 def tracer_rerun():
