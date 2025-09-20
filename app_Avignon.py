@@ -1016,171 +1016,10 @@ class ActiviteRenderer {
 }
 """)
 
-LIEU_LONGPRESS_RENDERER = JsCode("""
-class LieuRenderer {
-  init(params){
-    // ---- conteneur + texte ----
-    var e = document.createElement('div');
-    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-    e.style.width='100%'; e.style.overflow='hidden';
-
-    var label = (params.value != null ? String(params.value) : '').trim();
-
-    var addrEnc = (params.data && params.data.__addr_enc != null)
-      ? String(params.data.__addr_enc).trim()
-      : encodeURIComponent(label || "");
-
-    var ctx  = params.context || {};
-    var app  = ctx.itineraire_app || "Google Maps Web";
-    var plat = ctx.platform || (
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
-      : (/Android/.test(navigator.userAgent) ? "Android" : "Desktop")
-    );
-
-    var url = "#";
-    if (addrEnc) {
-      if (app === "Apple Maps" && plat === "iOS") {
-        url = "http://maps.apple.com/?daddr=" + addrEnc;
-      } else if (app === "Google Maps App") {
-        if (plat === "iOS")          url = "comgooglemaps://?daddr=" + addrEnc;
-        else if (plat === "Android") url = "geo:0,0?q=" + addrEnc;
-        else                         url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
-      } else {
-        url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
-      }
-    }
-
-    var txt = document.createElement('span');
-    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-    txt.style.cursor='pointer';
-    txt.textContent = label;
-    e.appendChild(txt);
-
-    // ---- helper: clic synthétique cellule ----
-    function tapSelectViaSyntheticClick(el){
-      var cell = el.closest ? el.closest('.ag-cell') : null;
-      if (!cell) return;
-      try {
-        cell.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
-        cell.dispatchEvent(new MouseEvent('mouseup',   {bubbles:true}));
-        cell.dispatchEvent(new MouseEvent('click',     {bubbles:true}));
-      } catch(_){}
-    }
-
-    // ---- fallback long-press ----
-    var attachLongPress = (typeof window !== 'undefined' && window.attachLongPress) || function(el, opts){
-      var DELAY  = (opts && opts.delay)  != null ? opts.delay  : 550;
-      var THRESH = (opts && opts.thresh) != null ? opts.thresh : 8;
-      var TAP_MS = (opts && opts.tapMs)  != null ? opts.tapMs  : 220;
-      var onUrl  = opts && opts.onUrl;
-      var onTap  = opts && opts.onTap;
-      var isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-      var sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
-      var hadTouchTs = 0;
-
-      function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
-      function now(){ return Date.now(); }
-      function withinTouchGrace(){ return (now() - hadTouchTs) < 800; }
-
-      function openSameTab(u){
-        if (!u) return;
-        try { window.top.location.assign(u); } catch(e){ window.location.assign(u); }
-      }
-      function openNewTab(u){
-        if (!u) return;
-        try {
-          var a=document.createElement('a');
-          a.href=u; a.target='_blank'; a.rel='noopener,noreferrer';
-          a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
-          document.body.appendChild(a); a.click(); a.remove(); return;
-        } catch(e){}
-        try { var w=window.open(u,'_blank','noopener'); if (w) return; } catch(e){}
-        try { window.location.assign(u); } catch(e){}
-      }
-
-      function onDown(ev){
-        if (ev.type === 'mousedown' && withinTouchGrace()) return;
-        var t = ev.touches ? ev.touches[0] : ev;
-        sx = (t && t.clientX) || 0; sy = (t && t.clientY) || 0;
-        moved=false; pressed=true; firedLong=false; startT=now();
-
-        clearT();
-        timer = setTimeout(function(){
-          if (pressed && !moved){
-            firedLong = true;
-            var u = onUrl ? onUrl() : null;
-            if (isIOS) openSameTab(u); else openNewTab(u);
-            pressed=false;
-          }
-        }, DELAY);
-      }
-
-      function onMove(ev){
-        if (!pressed) return;
-        var t = ev.touches ? ev.touches[0] : ev;
-        var dx = Math.abs(((t && t.clientX) || 0) - sx);
-        var dy = Math.abs(((t && t.clientY) || 0) - sy);
-        if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
-      }
-
-      function onUp(ev){
-        if (ev.type === 'mouseup' && withinTouchGrace()) return;
-        if (!pressed){ clearT(); return; }
-        var dur = now() - startT;
-        var isTap = (dur < TAP_MS) && !moved;
-        pressed=false; clearT();
-
-        if (isTap && !firedLong){
-          if (typeof onTap === 'function'){
-            requestAnimationFrame(function(){ try { onTap(); } catch(_){ } });
-          }
-        }
-      }
-
-      function onCancel(){ pressed=false; clearT(); }
-
-      if (window.PointerEvent){
-        el.addEventListener('pointerdown', onDown, true);
-        el.addEventListener('pointermove', onMove,  true);
-        el.addEventListener('pointerup',   onUp,    true);
-        el.addEventListener('pointercancel', onCancel, true);
-      } else {
-        el.addEventListener('touchstart', function(e){ hadTouchTs = now(); onDown(e); }, true);
-        el.addEventListener('touchmove',  onMove, true);
-        el.addEventListener('touchend',   onUp,   false);
-        el.addEventListener('touchcancel', onCancel, true);
-        el.addEventListener('mousedown', onDown, true);
-        el.addEventListener('mousemove', onMove, true);
-        el.addEventListener('mouseup',   onUp,   true);
-      }
-
-      el.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);
-      el.style.webkitTouchCallout='none';
-      el.style.webkitUserSelect='none';
-      el.style.userSelect='none';
-      el.style.touchAction='manipulation';
-    };
-
-    // ---- branchement unique ----
-    attachLongPress(txt, {
-      delay: 550,
-      thresh: 8,
-      tapMs: 220,
-      onUrl: function(){ return url; },
-      onTap: function(){ tapSelectViaSyntheticClick(txt); }
-    });
-
-    this.eGui = e;
-  }
-  getGui(){ return this.eGui; }
-  refresh(){ return false; }
-}
-""")
-
 # LIEU_LONGPRESS_RENDERER = JsCode("""
 # class LieuRenderer {
 #   init(params){
+#     // ---- conteneur + texte ----
 #     var e = document.createElement('div');
 #     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
 #     e.style.width='100%'; e.style.overflow='hidden';
@@ -1198,18 +1037,16 @@ class LieuRenderer {
 #       : (/Android/.test(navigator.userAgent) ? "Android" : "Desktop")
 #     );
 
-#     // URLs
-#     var webUrl = addrEnc ? ("https://www.google.com/maps/dir/?api=1&destination=" + addrEnc) : "#";
-#     var url = webUrl;
+#     var url = "#";
 #     if (addrEnc) {
 #       if (app === "Apple Maps" && plat === "iOS") {
 #         url = "http://maps.apple.com/?daddr=" + addrEnc;
 #       } else if (app === "Google Maps App") {
-#         if (plat === "iOS")          url = "comgooglemaps://?daddr=" + addrEnc;  // scheme (sera protégé par fallback)
+#         if (plat === "iOS")          url = "comgooglemaps://?daddr=" + addrEnc;
 #         else if (plat === "Android") url = "geo:0,0?q=" + addrEnc;
-#         else                         url = webUrl;
+#         else                         url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
 #       } else {
-#         url = webUrl;
+#         url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
 #       }
 #     }
 
@@ -1219,7 +1056,7 @@ class LieuRenderer {
 #     txt.textContent = label;
 #     e.appendChild(txt);
 
-#     // helper: sélection via clic synthétique (évite blocages)
+#     // ---- helper: clic synthétique cellule ----
 #     function tapSelectViaSyntheticClick(el){
 #       var cell = el.closest ? el.closest('.ag-cell') : null;
 #       if (!cell) return;
@@ -1230,20 +1067,21 @@ class LieuRenderer {
 #       } catch(_){}
 #     }
 
-#     // fallback long-press minimal (inchangé)
+#     // ---- fallback long-press ----
 #     var attachLongPress = (typeof window !== 'undefined' && window.attachLongPress) || function(el, opts){
 #       var DELAY  = (opts && opts.delay)  != null ? opts.delay  : 550;
 #       var THRESH = (opts && opts.thresh) != null ? opts.thresh : 8;
 #       var TAP_MS = (opts && opts.tapMs)  != null ? opts.tapMs  : 220;
 #       var onUrl  = opts && opts.onUrl;
 #       var onTap  = opts && opts.onTap;
-#       var onOpen = opts && opts.onOpen;   // <— NEW: ouvre “intelligemment” si fourni
 #       var isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-#       var sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false, lastTouch=0;
+#       var sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
+#       var hadTouchTs = 0;
+
 #       function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
 #       function now(){ return Date.now(); }
-#       function within(){ return (now() - lastTouch) < 800; }
+#       function withinTouchGrace(){ return (now() - hadTouchTs) < 800; }
 
 #       function openSameTab(u){
 #         if (!u) return;
@@ -1262,49 +1100,56 @@ class LieuRenderer {
 #       }
 
 #       function onDown(ev){
-#         if (ev.type==='mousedown' && within()) return;
+#         if (ev.type === 'mousedown' && withinTouchGrace()) return;
 #         var t = ev.touches ? ev.touches[0] : ev;
-#         sx=(t&&t.clientX)||0; sy=(t&&t.clientY)||0;
+#         sx = (t && t.clientX) || 0; sy = (t && t.clientY) || 0;
 #         moved=false; pressed=true; firedLong=false; startT=now();
 
 #         clearT();
 #         timer = setTimeout(function(){
 #           if (pressed && !moved){
 #             firedLong = true;
-#             // priorité à onOpen (smart open), sinon onUrl standard
-#             if (typeof onOpen === 'function'){ onOpen(); }
-#             else {
-#               var u = onUrl ? onUrl() : null;
-#               if (isIOS) openSameTab(u); else openNewTab(u);
-#             }
+#             var u = onUrl ? onUrl() : null;
+#             if (isIOS) openSameTab(u); else openNewTab(u);
 #             pressed=false;
 #           }
 #         }, DELAY);
 #       }
+
 #       function onMove(ev){
 #         if (!pressed) return;
 #         var t = ev.touches ? ev.touches[0] : ev;
-#         var dx=Math.abs(((t&&t.clientX)||0)-sx), dy=Math.abs(((t&&t.clientY)||0)-sy);
+#         var dx = Math.abs(((t && t.clientX) || 0) - sx);
+#         var dy = Math.abs(((t && t.clientY) || 0) - sy);
 #         if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
 #       }
+
 #       function onUp(ev){
-#         if (ev.type==='mouseup' && within()) return;
+#         if (ev.type === 'mouseup' && withinTouchGrace()) return;
 #         if (!pressed){ clearT(); return; }
-#         var dur = now()-startT, isTap = (dur<TAP_MS) && !moved;
+#         var dur = now() - startT;
+#         var isTap = (dur < TAP_MS) && !moved;
 #         pressed=false; clearT();
-#         if (isTap && !firedLong){ if (typeof onTap==='function'){ requestAnimationFrame(function(){ try{ onTap(); }catch(_){ } }); } }
+
+#         if (isTap && !firedLong){
+#           if (typeof onTap === 'function'){
+#             requestAnimationFrame(function(){ try { onTap(); } catch(_){ } });
+#           }
+#         }
 #       }
+
+#       function onCancel(){ pressed=false; clearT(); }
 
 #       if (window.PointerEvent){
 #         el.addEventListener('pointerdown', onDown, true);
 #         el.addEventListener('pointermove', onMove,  true);
 #         el.addEventListener('pointerup',   onUp,    true);
-#         el.addEventListener('pointercancel', function(){ pressed=false; clearT(); }, true);
+#         el.addEventListener('pointercancel', onCancel, true);
 #       } else {
-#         el.addEventListener('touchstart', function(e){ lastTouch=now(); onDown(e); }, true);
+#         el.addEventListener('touchstart', function(e){ hadTouchTs = now(); onDown(e); }, true);
 #         el.addEventListener('touchmove',  onMove, true);
 #         el.addEventListener('touchend',   onUp,   false);
-#         el.addEventListener('touchcancel', function(){ pressed=false; clearT(); }, true);
+#         el.addEventListener('touchcancel', onCancel, true);
 #         el.addEventListener('mousedown', onDown, true);
 #         el.addEventListener('mousemove', onMove, true);
 #         el.addEventListener('mouseup',   onUp,   true);
@@ -1317,53 +1162,13 @@ class LieuRenderer {
 #       el.style.touchAction='manipulation';
 #     };
 
-#     // ---- branchement : smart-open iOS (GMaps App) avec fallback, sinon normal ----
-#     var iosGmapsApp = (plat === "iOS" && app === "Google Maps App" && addrEnc);
-
+#     // ---- branchement unique ----
 #     attachLongPress(txt, {
-#         delay: 550,
-#         thresh: 8,
-#         tapMs: 220,
-#         onTap: function(){ tapSelectViaSyntheticClick(txt); },
-#         onUrl: function(){ return url; },
-#         onOpen: (plat === "iOS" && app === "Google Maps App" && addrEnc) ? function(){
-#             var scheme = "comgooglemaps://?daddr=" + addrEnc;
-#             var webUrl = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
-
-#             // 0) petit "kick" Safari pour sortir d'un éventuel état louche (facultatif mais aide)
-#             try {
-#                 var oldHash = window.location.hash || '';
-#                 var stamp = 'r' + Date.now();
-#                 history.replaceState(null, '', window.location.pathname + window.location.search + '#' + stamp);
-#                 // remet le hash précédent dans la prochaine frame
-#                 requestAnimationFrame(function(){
-#                 try { history.replaceState(null, '', window.location.pathname + window.location.search + oldHash); } catch(_){}
-#                 });
-#             } catch(_){}
-
-#             // 1) tenter l'ouverture via un iframe caché (évite de "souiller" la page courante)
-#             var hidden = false;
-#             function onVis(){ if (document.hidden) hidden = true; }
-#             document.addEventListener('visibilitychange', onVis, { once: true });
-
-#             var fr = document.createElement('iframe');
-#             fr.style.display = 'none';
-#             fr.style.width = '0'; fr.style.height = '0';
-#             fr.style.border = '0';
-#             fr.onload = function(){ /* certains Safari déclenchent onload même si app non ouverte */ };
-#             document.body.appendChild(fr);
-
-#             try { fr.src = scheme; } catch(_){ /* ignore */ }
-
-#             // 2) fallback Web si l'app ne s'est pas ouverte (page restée visible)
-#             setTimeout(function(){
-#                 try { document.removeEventListener('visibilitychange', onVis, { once: true }); } catch(_){}
-#                 try { if (fr && fr.parentNode) fr.parentNode.removeChild(fr); } catch(_){}
-#                 if (!hidden) {
-#                 try { window.location.assign(webUrl); } catch(e){}
-#                 }
-#             }, 700);
-#         } : null
+#       delay: 550,
+#       thresh: 8,
+#       tapMs: 220,
+#       onUrl: function(){ return url; },
+#       onTap: function(){ tapSelectViaSyntheticClick(txt); }
 #     });
 
 #     this.eGui = e;
@@ -1372,6 +1177,201 @@ class LieuRenderer {
 #   refresh(){ return false; }
 # }
 # """)
+
+LIEU_LONGPRESS_RENDERER = JsCode("""
+class LieuRenderer {
+  init(params){
+    var e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
+
+    var label = (params.value != null ? String(params.value) : '').trim();
+
+    var addrEnc = (params.data && params.data.__addr_enc != null)
+      ? String(params.data.__addr_enc).trim()
+      : encodeURIComponent(label || "");
+
+    var ctx  = params.context || {};
+    var app  = ctx.itineraire_app || "Google Maps Web";
+    var plat = ctx.platform || (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
+      : (/Android/.test(navigator.userAgent) ? "Android" : "Desktop")
+    );
+
+    // URLs
+    var webUrl = addrEnc ? ("https://www.google.com/maps/dir/?api=1&destination=" + addrEnc) : "#";
+    var url = webUrl;
+    if (addrEnc) {
+      if (app === "Apple Maps" && plat === "iOS") {
+        url = "http://maps.apple.com/?daddr=" + addrEnc;
+      } else if (app === "Google Maps App") {
+        if (plat === "iOS")          url = "comgooglemaps://?daddr=" + addrEnc;  // scheme (sera protégé par fallback)
+        else if (plat === "Android") url = "geo:0,0?q=" + addrEnc;
+        else                         url = webUrl;
+      } else {
+        url = webUrl;
+      }
+    }
+
+    var txt = document.createElement('span');
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+    txt.style.cursor='pointer';
+    txt.textContent = label;
+    e.appendChild(txt);
+
+    // helper: sélection via clic synthétique (évite blocages)
+    function tapSelectViaSyntheticClick(el){
+      var cell = el.closest ? el.closest('.ag-cell') : null;
+      if (!cell) return;
+      try {
+        cell.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('mouseup',   {bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('click',     {bubbles:true}));
+      } catch(_){}
+    }
+
+    // fallback long-press minimal (inchangé)
+    var attachLongPress = (typeof window !== 'undefined' && window.attachLongPress) || function(el, opts){
+      var DELAY  = (opts && opts.delay)  != null ? opts.delay  : 550;
+      var THRESH = (opts && opts.thresh) != null ? opts.thresh : 8;
+      var TAP_MS = (opts && opts.tapMs)  != null ? opts.tapMs  : 220;
+      var onUrl  = opts && opts.onUrl;
+      var onTap  = opts && opts.onTap;
+      var onOpen = opts && opts.onOpen;   // <— NEW: ouvre “intelligemment” si fourni
+      var isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+      var sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false, lastTouch=0;
+      function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
+      function now(){ return Date.now(); }
+      function within(){ return (now() - lastTouch) < 800; }
+
+      function openSameTab(u){
+        if (!u) return;
+        try { window.top.location.assign(u); } catch(e){ window.location.assign(u); }
+      }
+      function openNewTab(u){
+        if (!u) return;
+        try {
+          var a=document.createElement('a');
+          a.href=u; a.target='_blank'; a.rel='noopener,noreferrer';
+          a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+          document.body.appendChild(a); a.click(); a.remove(); return;
+        } catch(e){}
+        try { var w=window.open(u,'_blank','noopener'); if (w) return; } catch(e){}
+        try { window.location.assign(u); } catch(e){}
+      }
+
+      function onDown(ev){
+        if (ev.type==='mousedown' && within()) return;
+        var t = ev.touches ? ev.touches[0] : ev;
+        sx=(t&&t.clientX)||0; sy=(t&&t.clientY)||0;
+        moved=false; pressed=true; firedLong=false; startT=now();
+
+        clearT();
+        timer = setTimeout(function(){
+          if (pressed && !moved){
+            firedLong = true;
+            // priorité à onOpen (smart open), sinon onUrl standard
+            if (typeof onOpen === 'function'){ onOpen(); }
+            else {
+              var u = onUrl ? onUrl() : null;
+              if (isIOS) openSameTab(u); else openNewTab(u);
+            }
+            pressed=false;
+          }
+        }, DELAY);
+      }
+      function onMove(ev){
+        if (!pressed) return;
+        var t = ev.touches ? ev.touches[0] : ev;
+        var dx=Math.abs(((t&&t.clientX)||0)-sx), dy=Math.abs(((t&&t.clientY)||0)-sy);
+        if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
+      }
+      function onUp(ev){
+        if (ev.type==='mouseup' && within()) return;
+        if (!pressed){ clearT(); return; }
+        var dur = now()-startT, isTap = (dur<TAP_MS) && !moved;
+        pressed=false; clearT();
+        if (isTap && !firedLong){ if (typeof onTap==='function'){ requestAnimationFrame(function(){ try{ onTap(); }catch(_){ } }); } }
+      }
+
+      if (window.PointerEvent){
+        el.addEventListener('pointerdown', onDown, true);
+        el.addEventListener('pointermove', onMove,  true);
+        el.addEventListener('pointerup',   onUp,    true);
+        el.addEventListener('pointercancel', function(){ pressed=false; clearT(); }, true);
+      } else {
+        el.addEventListener('touchstart', function(e){ lastTouch=now(); onDown(e); }, true);
+        el.addEventListener('touchmove',  onMove, true);
+        el.addEventListener('touchend',   onUp,   false);
+        el.addEventListener('touchcancel', function(){ pressed=false; clearT(); }, true);
+        el.addEventListener('mousedown', onDown, true);
+        el.addEventListener('mousemove', onMove, true);
+        el.addEventListener('mouseup',   onUp,   true);
+      }
+
+      el.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);
+      el.style.webkitTouchCallout='none';
+      el.style.webkitUserSelect='none';
+      el.style.userSelect='none';
+      el.style.touchAction='manipulation';
+    };
+
+    // ---- branchement : smart-open iOS (GMaps App) avec fallback, sinon normal ----
+    var iosGmapsApp = (plat === "iOS" && app === "Google Maps App" && addrEnc);
+
+    attachLongPress(txt, {
+        delay: 550,
+        thresh: 8,
+        tapMs: 220,
+        onTap: function(){ tapSelectViaSyntheticClick(txt); },
+        onUrl: function(){ return url; },
+        onOpen: (plat === "iOS" && app === "Google Maps App" && addrEnc) ? function(){
+            var scheme = "comgooglemaps://?daddr=" + addrEnc;
+            var webUrl = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
+
+            // 0) petit "kick" Safari pour sortir d'un éventuel état louche (facultatif mais aide)
+            try {
+                var oldHash = window.location.hash || '';
+                var stamp = 'r' + Date.now();
+                history.replaceState(null, '', window.location.pathname + window.location.search + '#' + stamp);
+                // remet le hash précédent dans la prochaine frame
+                requestAnimationFrame(function(){
+                try { history.replaceState(null, '', window.location.pathname + window.location.search + oldHash); } catch(_){}
+                });
+            } catch(_){}
+
+            // 1) tenter l'ouverture via un iframe caché (évite de "souiller" la page courante)
+            var hidden = false;
+            function onVis(){ if (document.hidden) hidden = true; }
+            document.addEventListener('visibilitychange', onVis, { once: true });
+
+            var fr = document.createElement('iframe');
+            fr.style.display = 'none';
+            fr.style.width = '0'; fr.style.height = '0';
+            fr.style.border = '0';
+            fr.onload = function(){ /* certains Safari déclenchent onload même si app non ouverte */ };
+            document.body.appendChild(fr);
+
+            try { fr.src = scheme; } catch(_){ /* ignore */ }
+
+            // 2) fallback Web si l'app ne s'est pas ouverte (page restée visible)
+            setTimeout(function(){
+                try { document.removeEventListener('visibilitychange', onVis, { once: true }); } catch(_){}
+                try { if (fr && fr.parentNode) fr.parentNode.removeChild(fr); } catch(_){}
+                if (!hidden) {
+                try { window.location.assign(webUrl); } catch(e){}
+                }
+            }, 700);
+        } : null
+    });
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
 
 ##################
 # Sqlite Manager #
