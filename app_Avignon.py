@@ -28,10 +28,11 @@ from time import monotonic
 import copy
 import streamlit.components.v1 as components
 import inspect
+import calendar
 # import pkg_resources
 
 # Debug
-DEBUG_TRACE_MODE = False
+DEBUG_TRACE_MODE = True
 DEBUG_TRACE_TYPE = ["main", 
                     #"event", 
                     "demander_selection", 
@@ -89,8 +90,8 @@ RENOMMAGE_COLONNES_INVERSE = {
     "Activité": "Activite",
 }
 
-ACTIVITES_PROGRAMMEES_WORK_COLS = ["__index", "__jour", "__options_date", "__non_reserve", "__uuid", "__sel_id", "__sel_ver", "__desel_ver", "__desel_id", "__sel_source", "__df_push_ver"]
-ACTIVITES_NON_PROGRAMMEES_WORK_COLS = ["__index", "__options_date", "__uuid", "__sel_id", "__sel_ver", "__desel_ver", "__desel_id", "__sel_source", "__df_push_ver"]
+ACTIVITES_PROGRAMMEES_WORK_COLS = ["__index", "__jour", "__options_date", "__non_reserve", "__uuid", "__sel_id", "__sel_ver", "__desel_ver", "__desel_id", "__sel_source", "__df_push_ver", "__addr_enc"]
+ACTIVITES_NON_PROGRAMMEES_WORK_COLS = ["__index", "__options_date", "__uuid", "__sel_id", "__sel_ver", "__desel_ver", "__desel_id", "__sel_source", "__df_push_ver", "__addr_enc"]
 
 LABEL_BOUTON_NOUVEAU = "Nouveau"
 LABEL_BOUTON_SAUVEGARDER = "Sauvegarder"
@@ -367,93 +368,6 @@ class ActiviteRenderer {
 """)
 
 
-LIEU_RENDERER = JsCode("""
-class LieuRenderer {
-  init(params){
-    const e = document.createElement('div');
-    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-    e.style.width='100%'; e.style.overflow='hidden';
-
-    const label = (params.value ?? '').toString().trim();
-
-    const txt = document.createElement('span');
-    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-    txt.textContent = label;
-    // 🔸 pas de handler dblclick ici non plus
-    e.appendChild(txt);
-
-    const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-      viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
-
-    const b = document.createElement('a');
-    b.textContent = '📍';
-    b.href = url;
-    b.target = '_blank';
-    b.rel = 'noopener,noreferrer';
-    b.title = 'Itinéraire vers ce lieu';
-    b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
-    b.addEventListener('click', ev=>ev.stopPropagation());
-    e.appendChild(b);
-
-    this.eGui = e;
-  }
-  getGui(){ return this.eGui; }
-  refresh(){ return false; }
-}
-""")
-    #  // 📍 épingle (SVG)
-    # const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-    #   viewBox="0 0 24 24" aria-hidden="true">
-    #   <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5
-    #            a2.5 2.5 0 0 1 0 5z"/></svg>`;
-
-    # b.innerHTML = pin;
-
-# V1
-# ACTIVITE_RENDERER = JsCode("""
-# class ActiviteRenderer {
-#   init(params){
-#     const e = document.createElement('div');
-#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-#     e.style.width='100%'; e.style.overflow='hidden';
-
-#     const label = (params.value ?? '').toString();
-#     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
-#     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
-
-#     const txt = document.createElement('span');
-#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-#     txt.textContent = label;
-#     // ✅ sélection immédiate au tap sur le texte
-#     txt.addEventListener('click', (ev)=>{
-#       ev.stopPropagation();
-#       if (!params.node.isSelected()){
-#         params.api.deselectAll();
-#         params.node.setSelected(true, true);
-#       }
-#     });
-#     e.appendChild(txt);
-
-#     const a = document.createElement('a');
-#     a.textContent = '🔎';
-#     a.href = href;
-#     a.target = '_blank';
-#     a.rel = 'noopener,noreferrer';
-#     a.title = 'Rechercher / Ouvrir le lien';
-#     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
-#     // l'icône n'affecte pas la sélection
-#     a.addEventListener('click', ev=>ev.stopPropagation());
-#     e.appendChild(a);
-
-#     this.eGui = e;
-#   }
-#   getGui(){ return this.eGui; }
-#   refresh(){ return false; }
-# }
-# """)
-
 # LIEU_RENDERER = JsCode("""
 # class LieuRenderer {
 #   init(params){
@@ -466,110 +380,20 @@ class LieuRenderer {
 #     const txt = document.createElement('span');
 #     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
 #     txt.textContent = label;
-#     // ✅ sélection immédiate au tap sur le texte
-#     txt.addEventListener('click', (ev)=>{
-#       ev.stopPropagation();
-#       if (!params.node.isSelected()){
-#         params.api.deselectAll();
-#         params.node.setSelected(true, true);
-#       }
-#     });
-#     e.appendChild(txt);
-
-#     // Icône “épingle” (ou emoji 📍 si tu préfères)
-#     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
-#     const a = document.createElement('a');
-#     a.textContent = '📍';
-#     a.href = url;
-#     a.target = '_blank';
-#     a.rel = 'noopener,noreferrer';
-#     a.title = 'Itinéraire';
-#     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
-#     // l’icône n’affecte pas la sélection
-#     a.addEventListener('click', ev=>ev.stopPropagation());
-#     e.appendChild(a);
-
-#     this.eGui = e;
-#   }
-#   getGui(){ return this.eGui; }
-#   refresh(){ return false; }
-# }
-# """)
-
-# V3
-# ACTIVITE_RENDERER = JsCode("""
-# class ActiviteRenderer {
-#   init(params){
-#     const e = document.createElement('div');
-#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-#     e.style.width='100%'; e.style.overflow='hidden';
-
-#     const label = (params.value ?? '').toString();
-#     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
-#     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
-
-#     // Texte (laisser AG Grid gérer la sélection)
-#     const txt = document.createElement('span');
-#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-#     txt.textContent = label;
-
-#     // 👉 si un éditeur est ouvert après un edit, le premier tap le ferme
-#     // puis, comme on NE stoppe PAS la propagation, AG Grid verra le clic et sélectionnera.
-#     txt.addEventListener('pointerdown', ()=>{
-#       const editors = params.api.getCellEditorInstances ? params.api.getCellEditorInstances() : [];
-#       if (editors && editors.length) params.api.stopEditing();
-#     }, {passive:true});
-
-#     e.appendChild(txt);
-
-#     // Icône loupe (n’affecte pas la sélection)
-#     const a = document.createElement('a');
-#     a.textContent = '🔎';
-#     a.href = href;
-#     a.target = '_blank';
-#     a.rel = 'noopener,noreferrer';
-#     a.title = 'Rechercher / Ouvrir le lien';
-#     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
-#     a.addEventListener('click', ev=>ev.stopPropagation());
-#     e.appendChild(a);
-
-#     this.eGui = e;
-#   }
-#   getGui(){ return this.eGui; }
-#   refresh(){ return false; }
-# }
-# """)
-
-
-# LIEU_RENDERER = JsCode("""
-# class LieuRenderer {
-#   init(params){
-#     const e = document.createElement('div');
-#     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-#     e.style.width='100%'; e.style.overflow='hidden';
-
-#     const label = (params.value ?? '').toString().trim();
-
-#     const txt = document.createElement('span');
-#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-#     txt.textContent = label;
-
-#     // 👉 ferme un éditeur actif mais NE PAS stopPropagation
-#     txt.addEventListener('pointerdown', ()=>{
-#       const editors = params.api.getCellEditorInstances ? params.api.getCellEditorInstances() : [];
-#       if (editors && editors.length) params.api.stopEditing();
-#     }, {passive:true});
-
+#     // 🔸 pas de handler dblclick ici non plus
 #     e.appendChild(txt);
 
 #     const url = label ? "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(label) : "#";
-#     const pin = '📍';  // ou ton SVG pin
+#     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+#       viewBox="0 0 24 24" aria-hidden="true">
+#       <path d="M12 2a10 10 0 1 0 0 20a10 10 0 0 0 0-20zm3.5 6.5l-2.12 5.38L8 16l2.12-5.38L15.5 8.5z"/></svg>`;
+
 #     const b = document.createElement('a');
-#     b.textContent = pin;
+#     b.textContent = '📍';
 #     b.href = url;
 #     b.target = '_blank';
 #     b.rel = 'noopener,noreferrer';
-#     b.title = 'Itinéraire';
+#     b.title = 'Itinéraire vers ce lieu';
 #     b.style.flex='0 0 auto'; b.style.textDecoration='none'; b.style.userSelect='none';
 #     b.addEventListener('click', ev=>ev.stopPropagation());
 #     e.appendChild(b);
@@ -580,7 +404,74 @@ class LieuRenderer {
 #   refresh(){ return false; }
 # }
 # """)
+#     #  // 📍 épingle (SVG)
+#     # const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+#     #   viewBox="0 0 24 24" aria-hidden="true">
+#     #   <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5
+#     #            a2.5 2.5 0 0 1 0 5z"/></svg>`;
 
+#     # b.innerHTML = pin;
+
+LIEU_RENDERER = JsCode("""
+class LieuRenderer {
+  init(params){
+    const e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
+
+    const label = (params.value ?? '').toString().trim();
+
+    // ---- adresse résolue (si dispo) ----
+    const addrEnc = (params.data && params.data.__addr_enc)
+      ? String(params.data.__addr_enc).trim()
+      : encodeURIComponent(label || "");
+
+    // ---- préférences + plateforme (depuis gridOptions.context) ----
+    const ctx  = params.context || {};
+    const app  = ctx.itineraire_app || "Google Maps Web";
+    const plat = ctx.platform || (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
+      : /Android/.test(navigator.userAgent) ? "Android" : "Desktop"
+    );
+
+    // ---- construire l'URL comme ton bouton ----
+    let url = "#";
+    if (addrEnc) {
+      if (app === "Apple Maps" && plat === "iOS") {
+        url = `http://maps.apple.com/?daddr=${addrEnc}`;
+      } else if (app === "Google Maps App") {
+        if (plat === "iOS")       url = `comgooglemaps://?daddr=${addrEnc}`;
+        else if (plat === "Android") url = `geo:0,0?q=${addrEnc}`;
+        else                      url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
+      } else {
+        url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
+      }
+    }
+
+    // ---- texte cellule (double-clic géré nativement par AG Grid) ----
+    const txt = document.createElement('span');
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+    txt.textContent = label;
+    e.appendChild(txt);
+
+    // ---- icône itinéraire (épingle) ----
+    const a = document.createElement('a');
+    a.textContent = '📍';
+    a.href = url;
+    a.target = (url === '#') ? '_self' : '_blank';
+    a.rel = 'noopener,noreferrer';
+    a.title = 'Itinéraire vers ce lieu';
+    a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
+    if (url === '#') { a.style.opacity = 0.4; a.style.pointerEvents = 'none'; }
+    a.addEventListener('click', ev=>ev.stopPropagation()); // ne pas sélectionner la ligne
+    e.appendChild(a);
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
 
 ##################
 # Sqlite Manager #
@@ -642,7 +533,7 @@ META_COLS = list(META_COLS_DICO.keys())
 @st.cache_resource
 def app_boot():
 
-    # DEBUG ONLY
+    # DEBUG ONLY - Reset DB
     # with sqlite3.connect(DB_PATH) as con:
     #     cur = con.cursor()
     #     # supprime les tables si elles existent
@@ -880,7 +771,7 @@ def sql_sauvegarder_row(index_df):
 
 ALLOWED_META_COLS = set(META_COLS)  # ex. définie: ["fn","fp","MARGE",...,"payload_json"]
 
-def sqlite_sauvegarder_param(param: str):
+def sql_sauvegarder_param(param: str):
     try:
         if param not in ALLOWED_META_COLS:
             raise ValueError(f"Paramètre inconnu : {param}")
@@ -964,6 +855,8 @@ def sql_charger_contexte():
       
         if "periode_a_programmer_debut" not in st.session_state or "periode_a_programmer_fin" not in st.session_state:
             initialiser_periode_programmation(df) # rattrapage via init standard à partir des activités programmées du contexte que l'on vient de charger
+            sql_sauvegarder_param("periode_a_programmer_debut")
+            sql_sauvegarder_param("periode_a_programmer_fin")
 
         df = nettoyer_donnees(df, fn)
         initialiser_etat_contexte(df, wb, fn, ca)
@@ -1164,6 +1057,8 @@ def gsheet_charger_contexte():
             
             if "periode_a_programmer_debut" not in st.session_state or "periode_a_programmer_fin" not in st.session_state:
                 initialiser_periode_programmation(df) # rattrapage via init standard à partir des activités programmées du contexte que l'on vient de charger
+                gsheet_sauvegarder_param("periode_a_programmer_debut")
+                gsheet_sauvegarder_param("periode_a_programmer_fin")
 
             try:
                 worksheet = gsheets["adrs"]
@@ -2509,6 +2404,94 @@ def initialiser_periode_programmation(df):
         dates_festival = get_dates_festival()
         st.session_state.periode_a_programmer_debut = dates_festival["debut"]
         st.session_state.periode_a_programmer_fin = dates_festival["fin"]
+    
+# def afficher_periode_programmation():
+#     with st.expander("Période de programmation", expanded=False):
+
+#         changed_keys = []
+#         need_refresh_grids = False
+
+#         if st.session_state.get("periode_programmation_abandon_pending", False) == True:
+#             st.session_state.periode_debut_input = st.session_state.periode_a_programmer_debut
+#             st.session_state.periode_fin_input = st.session_state.periode_a_programmer_fin
+#             st.session_state.periode_programmation_abandon_pending = False
+
+#         with st.form("periode_programmation_form"):
+#             base_deb = st.session_state.periode_a_programmer_debut
+#             base_fin = st.session_state.periode_a_programmer_fin
+
+#             deb_kwargs = dict(key="periode_debut_input", format="DD/MM/YYYY")
+#             fin_kwargs = dict(key="periode_fin_input",   format="DD/MM/YYYY")
+
+#             st.session_state.setdefault("periode_debut_input", base_deb)
+#             st.session_state.setdefault("periode_fin_input",   base_fin)
+            
+#             deb_kwargs["value"] = base_deb
+#             fin_kwargs["value"] = base_fin
+
+#             dates_valides = get_dates_from_df(st.session_state.df)  # doit renvoyer une série d'int (jours)
+#             date_min = int(dates_valides.min()) if not dates_valides.empty else None
+#             date_max = int(dates_valides.max()) if not dates_valides.empty else None
+
+#             if isinstance(date_min, int):
+#                 try:
+#                     if date_min is not None:
+#                         deb_kwargs["max_value"] = base_deb.replace(day=date_min)
+#                 except ValueError as e:
+#                     print(e)
+#             if isinstance(date_max, int):
+#                 try:
+#                     if date_max is not None:
+#                         fin_kwargs["min_value"] = base_fin.replace(day=date_max)
+#                 except ValueError as e:
+#                     print(e)
+
+#             try:
+#                 col1, col2 = st.columns(2)
+#                 with col1:
+#                     debut = st.date_input("Début", **deb_kwargs)
+#                 with col2:
+#                     fin   = st.date_input("Fin", **fin_kwargs)
+
+#             except Exception as e:
+#                 print(f"Erreur dans afficher_periode_programmation : {e}")
+        
+
+#             col1, col2 = st.columns(2)
+#             appliquer = col1.form_submit_button("Appliquer", use_container_width=True)
+#             abandonner = col2.form_submit_button("Abandonner", use_container_width=True)
+
+#         if appliquer:
+#             if debut != st.session_state.periode_a_programmer_debut:
+#                 st.session_state.periode_a_programmer_debut = debut
+#                 changed_keys.append("periode_a_programmer_debut")
+#                 need_refresh_grids = True
+
+#             if fin != st.session_state.periode_a_programmer_fin:
+#                 st.session_state.periode_a_programmer_fin = fin
+#                 changed_keys.append("periode_a_programmer_fin")
+#                 need_refresh_grids = True
+            
+#             # Ne forcer le réaffichage des grilles qu'une seule fois
+#             if need_refresh_grids:
+#                 bd_maj_contexte(maj_donnees_calculees=False)
+#                 forcer_reaffichage_df("creneaux_disponibles")
+
+#             # Sauvegarde en batch (une seule fois)
+#             if changed_keys:
+#                 for k in changed_keys:
+#                     try:
+#                         # gsheet_sauvegarder_param(k)  
+#                         sql_sauvegarder_param(k)  
+#                     except Exception:
+#                         pass  # log/ignorer selon besoin
+
+#                 # Pas de st.rerun() nécessaire : submit a déjà provoqué un rerun
+#                 st.toast("Paramètres appliqués.", icon="✅")
+
+#         if abandonner:
+#             st.session_state.periode_programmation_abandon_pending = True
+#             st.rerun()
 
 def afficher_periode_programmation():
     with st.expander("Période de programmation", expanded=False):
@@ -2525,14 +2508,26 @@ def afficher_periode_programmation():
             base_deb = st.session_state.periode_a_programmer_debut
             base_fin = st.session_state.periode_a_programmer_fin
 
+            # deb_kwargs = dict(key="periode_debut_input", format="DD/MM/YYYY")
+            # fin_kwargs = dict(key="periode_fin_input",   format="DD/MM/YYYY")
+
+            # st.session_state.setdefault("periode_debut_input", base_deb)
+            # st.session_state.setdefault("periode_fin_input",   base_fin)
+            
+            # deb_kwargs["value"] = base_deb
+            # fin_kwargs["value"] = base_fin
+
             deb_kwargs = dict(key="periode_debut_input", format="DD/MM/YYYY")
             fin_kwargs = dict(key="periode_fin_input",   format="DD/MM/YYYY")
 
-            st.session_state.setdefault("periode_debut_input", base_deb)
-            st.session_state.setdefault("periode_fin_input",   base_fin)
-            
-            deb_kwargs["value"] = base_deb
-            fin_kwargs["value"] = base_fin
+            # init une seule fois
+            if "periode_debut_input" not in st.session_state:
+                st.session_state.periode_debut_input = base_deb
+            if "periode_fin_input" not in st.session_state:
+                st.session_state.periode_fin_input = base_fin
+
+            # Surtout: ne PAS mettre deb_kwargs["value"] / fin_kwargs["value"]
+            # -> st.date_input lira directement st.session_state[<key>]
 
             dates_valides = get_dates_from_df(st.session_state.df)  # doit renvoyer une série d'int (jours)
             date_min = int(dates_valides.min()) if not dates_valides.empty else None
@@ -2586,7 +2581,8 @@ def afficher_periode_programmation():
             if changed_keys:
                 for k in changed_keys:
                     try:
-                        gsheet_sauvegarder_param(k)  # ou une version batch si tu as
+                        # gsheet_sauvegarder_param(k)  
+                        sql_sauvegarder_param(k)  
                     except Exception:
                         pass  # log/ignorer selon besoin
 
@@ -2596,6 +2592,89 @@ def afficher_periode_programmation():
         if abandonner:
             st.session_state.periode_programmation_abandon_pending = True
             st.rerun()
+
+# def safe_replace_day(d: datetime.date, day: int) -> datetime.date:
+#     """Remplace le jour en le 'clampant' au dernier jour du mois si nécessaire."""
+#     last = calendar.monthrange(d.year, d.month)[1]
+#     day_clamped = max(1, min(int(day), last))
+#     return d.replace(day=day_clamped)
+
+# def afficher_periode_programmation():
+#     with st.expander("Période de programmation", expanded=False):
+
+#         changed_keys = []
+#         need_refresh_grids = False
+
+#         base_deb = st.session_state.periode_a_programmer_debut
+#         base_fin = st.session_state.periode_a_programmer_fin
+
+#         # initialisation des clés une seule fois
+#         if "periode_debut_input" not in st.session_state:
+#             st.session_state.periode_debut_input = base_deb
+#         if "periode_fin_input" not in st.session_state:
+#             st.session_state.periode_fin_input = base_fin
+
+#         with st.form("periode_programmation_form"):
+
+#             # --- bornes min / max à partir des jours présents dans le DF ---
+#             dates_valides = get_dates_from_df(st.session_state.df)  # Series d'int
+#             if not dates_valides.empty:
+#                 min_day = int(dates_valides.min())
+#                 max_day = int(dates_valides.max())
+#             else:
+#                 min_day = None
+#                 max_day = None
+
+#             deb_kwargs = dict(key="periode_debut_input", format="DD/MM/YYYY")
+#             fin_kwargs = dict(key="periode_fin_input",   format="DD/MM/YYYY")
+
+#             if min_day is not None:
+#                 deb_kwargs["min_value"] = safe_replace_day(base_deb, min_day)
+#                 fin_kwargs["min_value"] = safe_replace_day(base_fin, min_day)
+#             if max_day is not None:
+#                 deb_kwargs["max_value"] = safe_replace_day(base_deb, max_day)
+#                 fin_kwargs["max_value"] = safe_replace_day(base_fin, max_day)
+
+#             col1, col2 = st.columns(2)
+#             with col1:
+#                 st.date_input("Début", **deb_kwargs)
+#             with col2:
+#                 st.date_input("Fin", **fin_kwargs)
+
+#             col1, col2 = st.columns(2)
+#             appliquer  = col1.form_submit_button("Appliquer", use_container_width=True)
+#             abandonner = col2.form_submit_button("Abandonner", use_container_width=True)
+
+#         # --- après soumission ---
+#         if appliquer:
+#             debut = st.session_state.periode_debut_input
+#             fin   = st.session_state.periode_fin_input
+
+#             if debut != st.session_state.periode_a_programmer_debut:
+#                 st.session_state.periode_a_programmer_debut = debut
+#                 changed_keys.append("periode_a_programmer_debut")
+#                 need_refresh_grids = True
+
+#             if fin != st.session_state.periode_a_programmer_fin:
+#                 st.session_state.periode_a_programmer_fin = fin
+#                 changed_keys.append("periode_a_programmer_fin")
+#                 need_refresh_grids = True
+
+#             if need_refresh_grids:
+#                 bd_maj_contexte(maj_donnees_calculees=False)
+#                 forcer_reaffichage_df("creneaux_disponibles")
+
+#             if changed_keys:
+#                 for k in changed_keys:
+#                     try:
+#                         sql_sauvegarder_param(k)
+#                     except Exception:
+#                         pass
+#                 st.toast("Paramètres appliqués.", icon="✅")
+
+#         if abandonner:
+#             st.session_state.periode_programmation_abandon_pending = True
+#             st.rerun()
 
 def afficher_parametres():
 
@@ -2689,7 +2768,7 @@ def afficher_parametres():
             )
 
             # Ville par défaut pour la recherche d'itinéraire
-            if "city_default" not in st.session_state:
+            if st.session_state.get("city_default") is None:
                 st.session_state.city_default = "Avignon"
                 ajouter_sans_doublon(changed_keys, "city_default")
 
@@ -2748,7 +2827,8 @@ def afficher_parametres():
             if changed_keys:
                 for k in changed_keys:
                     try:
-                        gsheet_sauvegarder_param(k)  # ou une version batch si tu as
+                        # gsheet_sauvegarder_param(k)  
+                        sql_sauvegarder_param(k)  
                     except Exception:
                         pass  # log/ignorer selon besoin
 
@@ -3120,6 +3200,26 @@ def prepare_carnet(carnet_df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["_Nom_norm"] = ""
     return df
+
+def ensure_addr_cols(df):
+    if "__addr_enc"   not in df.columns: df["__addr_enc"]   = None
+    carnet = st.session_state.get("carnet_adresses")
+    city_default = st.session_state.get("city_default", "")
+    mask = df["Lieu"].notna()
+    for i in df.index[mask]:
+        if pd.isna(df.at[i, "__addr_enc"]) or not str(df.at[i, "__addr_enc"]).strip():
+            addr_h, addr_enc = resolve_address_fast(df.at[i, "Lieu"], carnet, city_default=city_default)
+            df.at[i, "__addr_enc"] = addr_enc
+    return df
+
+def set_addr_cols(df, idx, lieu):
+    carnet = st.session_state.get("carnet_adresses")
+    city_default = st.session_state.get("city_default", "")
+    matches = df[df["__index"].astype(str) == str(idx)]
+    if not matches.empty:
+        addr_h, addr_enc = resolve_address_fast(lieu, carnet, city_default=city_default)
+        df.at[matches.index[0], "__addr_enc"] = addr_enc
+
 
 def resolve_address_fast(lieu: str, carnet_df: pd.DataFrame | None, city_default="Avignon"):
     """
@@ -3516,31 +3616,16 @@ def init_activites_programmees_grid_options(df_display):
     grid_options = gb.build()
     grid_options["suppressMovableColumns"] = True
 
-    # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (début)
-    # grid_options["rowSelection"] = "single"
-    # grid_options["rowMultiSelectWithClick"] = False
-    # grid_options["suppressRowClickSelection"] = False
-
-    # grid_options["onCellClicked"] = JsCode("""
-    # function(e){
-    # const t = e.event && e.event.target;
-    # // Si on a cliqué sur l'icône/lien, ne pas sélectionner
-    # if (t && (t.tagName === 'A' || t.closest('a'))) return;
-
-    # // Sélectionne immédiatement la ligne si elle ne l'est pas déjà
-    # if (!e.node.isSelected()){
-    #     e.api.deselectAll();
-    #     e.node.setSelected(true, true); // clear others + select this
-    # }
-    # }
-    # """)
-    # Rétablit la sélection en une tape au lieu de deux sur les colonnes avec icone (fin)
-
     # Supprime le Hover (séléction de survol qui pose problème sur mobile et tablette)
     grid_options["suppressRowHoverHighlight"] = True
-    # grid_options["suppressClickEdit"] = False          # impératif pour que le premier double-clic marche
-    # grid_options["suppressDoubleClickEdit"] = False
-    # grid_options["singleClickEdit"] = False
+
+    # Enregistre dans le contexte les paramètres nécessaires à la recherche d'itinéraire (voir LIEU_RENDERER)
+    itineraire_app = st.session_state.get("itineraire_app", "Google Maps Web")
+    platform = get_platform()  # "iOS" / "Android" / "Desktop"
+    grid_options["context"] = {
+        "itineraire_app": itineraire_app,
+        "platform": platform,
+    }
 
     return grid_options
 
@@ -5764,7 +5849,8 @@ def afficher_creneaux_disponibles():
         st.session_state.traiter_pauses_change = True
         st.session_state.traiter_pauses = st.session_state.traiter_pauses_cb
         bd_maj_creneaux_disponibles()
-        gsheet_sauvegarder_param("traiter_pauses")
+        # gsheet_sauvegarder_param("traiter_pauses")
+        sql_sauvegarder_param("traiter_pauses")
         st.session_state.creneaux_disponibles_choix_activite = None
 
     df = st.session_state.get("df")
@@ -6088,6 +6174,7 @@ def bd_creer_df_display_activites_non_programmees(activites_non_programmees):
     df_display["__sel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["sel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
     df_display["__sel_source"] = "api"
     df_display["__df_push_ver"] = 0
+    df_display = ensure_addr_cols(df_display)
     df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
     df_display.rename(columns=RENOMMAGE_COLONNES, inplace=True)
     df_display = df_display.where(df_display.notna(), None)
@@ -6108,6 +6195,7 @@ def bd_creer_df_display_activites_programmees(activites_programmees):
     df_display["__sel_id"] =  get_uuid(df_display, st.session_state.activites_programmees_sel_request["sel"]["id"]) if "activites_programmees_sel_request" in st.session_state else None
     df_display["__sel_source"] = "api"
     df_display["__df_push_ver"] = 0
+    df_display = ensure_addr_cols(df_display)
     df_display.drop(columns=["Debut_dt", "Duree_dt"], inplace=True)
     df_display.rename(columns=RENOMMAGE_COLONNES, inplace=True)
     df_display = df_display.where(df_display.notna(), None)
@@ -6332,9 +6420,14 @@ def bd_modifier_cellule(idx, col, val, section_critique=False):
                     if est_activite_programmee(df.loc[idx]):
                         modifier_df_cell(st.session_state.activites_programmees, idx, "Hyperlien", lnk)
                         modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, "Hyperlien", lnk)
-                    if est_activite_non_programmee(df.loc[idx]):
+                    elif est_activite_non_programmee(df.loc[idx]):
                         modifier_df_cell(st.session_state.activites_non_programmees, idx, "Hyperlien", lnk)
                         modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, "Hyperlien", lnk)
+        elif col == "Lieu":
+            if est_activite_programmee(df.loc[idx]):
+                set_addr_cols(st.session_state.activites_programmees_df_display, idx, val)
+            elif est_activite_non_programmee(df.loc[idx]):
+                set_addr_cols(st.session_state.activites_non_programmees_df_display, idx, val)
     
         if est_activite_programmee(df.loc[idx]):
             modifier_df_cell(st.session_state.activites_programmees, idx, col, val)
@@ -6350,7 +6443,7 @@ def bd_modifier_cellule(idx, col, val, section_critique=False):
                     st.session_state.activites_programmees_df_display["__non_reserve"] = st.session_state.activites_programmees_df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
             st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
         
-        if est_activite_non_programmee(df.loc[idx]):
+        elif est_activite_non_programmee(df.loc[idx]):
             modifier_df_cell(st.session_state.activites_non_programmees, idx, col, val)
             modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, df_display_col_nom(col), val)
             if col == "Debut":
