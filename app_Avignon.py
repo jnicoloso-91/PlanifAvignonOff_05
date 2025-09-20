@@ -7381,33 +7381,33 @@ def traiter_sections_critiques():
     if cmd:
         activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
 
-# # Fix pour régler le pb de page bloquée par le bfcache au retour d'une page web appelée par long-press dans une ligne de grille
-# @st.cache_resource
-# def inject_ios_bfcache_fix():
-#     st.markdown("""
-#         <script>
-#         (function(){
-#         var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+# Fix pour régler le pb de page bloquée par le bfcache au retour d'une page web appelée par long-press dans une ligne de grille
+@st.cache_resource
+def inject_ios_bfcache_fix():
+    st.markdown("""
+        <script>
+        (function(){
+        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-#         function cameFromBackForward(){
-#             try {
-#             var nav = performance.getEntriesByType &&
-#                         performance.getEntriesByType('navigation');
-#             return !!(nav && nav[0] && nav[0].type === 'back_forward');
-#             } catch(e){ return false; }
-#         }
+        function cameFromBackForward(){
+            try {
+            var nav = performance.getEntriesByType &&
+                        performance.getEntriesByType('navigation');
+            return !!(nav && nav[0] && nav[0].type === 'back_forward');
+            } catch(e){ return false; }
+        }
 
-#         // ⚠️ Parent page Streamlit : au retour iOS, on recharge TOUTE la page
-#         window.addEventListener('pageshow', function(e){
-#             if (!isIOS) return;
-#             if (e.persisted || cameFromBackForward()){
-#             window.location.reload();
-#             }
-#         }, false);
-#         })();
-#         </script>
-#         """, unsafe_allow_html=True)
-#     return True
+        // ⚠️ Parent page Streamlit : au retour iOS, on recharge TOUTE la page
+        window.addEventListener('pageshow', function(e){
+            if (!isIOS) return;
+            if (e.persisted || cameFromBackForward()){
+            window.location.reload();
+            }
+        }, false);
+        })();
+        </script>
+        """, unsafe_allow_html=True)
+    return True
 
 # Initialisation de la page HTML
 def initialiser_page():
@@ -7416,7 +7416,7 @@ def initialiser_page():
     patch_aggrid_css()
 
     # Injecte le fix pour régler le pb de page bloquée par le bfcache au retour d'une page web appelée par long-press dans une ligne de grille
-    # inject_ios_bfcache_fix()
+    inject_ios_bfcache_fix()
 
 # Trace le début d'un rerun
 def tracer_rerun():
