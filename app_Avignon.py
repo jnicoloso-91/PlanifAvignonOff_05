@@ -879,133 +879,137 @@ ACTIVITE_LONGPRESS_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
     // ---- conteneur + texte ----
-    const e = document.createElement('div');
+    var e = document.createElement('div');
     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
     e.style.width='100%'; e.style.overflow='hidden';
 
-    const label = (params.value ?? '').toString();
-    const raw   = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
-    const href  = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+    var label = (params.value != null ? String(params.value) : '');
+    var raw   = (params.data && (params.data['Hyperlien'] || params.data['Hyperliens'])) ? (params.data['Hyperlien'] || params.data['Hyperliens']) : '';
+    var href  = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
 
-    const txt = document.createElement('span');
+    var txt = document.createElement('span');
     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
     txt.style.cursor='pointer';
     txt.textContent = label;
     e.appendChild(txt);
 
-    // ---- sélection différée (évite gels iOS) ----
+    // ---- sélection différée (anti-gel) ----
     function safeSelect(params){
-      try { if ((params.api.getEditingCells?.() || []).length) return; } catch(_){}
+      try {
+        var editing = (params.api.getEditingCells && params.api.getEditingCells()) || [];
+        if (editing.length) return;
+      } catch(_){}
       try { if (params.node.isSelected && params.node.isSelected()) return; } catch(_){}
-      requestAnimationFrame(()=>{
+      requestAnimationFrame(function(){
         try {
           params.api.setFocusedCell(params.rowIndex, params.column.getColId());
           params.node.setSelected(true, true);
-        } catch(_) {}
+        } catch(_){}
       });
     }
 
-    // ---- fallback long-press (utilise la version globale si dispo) ----
-    const attachLongPress = window.attachLongPress || function(el, opts){
-      const DELAY  = opts?.delay  ?? 550;    // long-press threshold
-      const THRESH = opts?.thresh ?? 8;      // move tolerance (px)
-      const TAP_MS = opts?.tapMs  ?? 220;    // short tap threshold
-      const onUrl  = opts?.onUrl;            // () => string
-      const onTap  = opts?.onTap;            // () => void
-      const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    // ---- fallback long-press (si window.attachLongPress indisponible) ----
+    var attachLongPress = (typeof window !== 'undefined' && window.attachLongPress) || function(el, opts){
+      var DELAY  = (opts && opts.delay)  != null ? opts.delay  : 550;
+      var THRESH = (opts && opts.thresh) != null ? opts.thresh : 8;
+      var TAP_MS = (opts && opts.tapMs)  != null ? opts.tapMs  : 220;
+      var onUrl  = opts && opts.onUrl;
+      var onTap  = opts && opts.onTap;
+      var isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-      let sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
-      let hadTouchTs = 0;                    // suppress synthetic mouse after touch
+      var sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
+      var hadTouchTs = 0;
 
       function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
       function now(){ return Date.now(); }
       function withinTouchGrace(){ return (now() - hadTouchTs) < 800; }
 
-      function openSameTab(url){
-        if (!url) return;
-        try { window.top.location.assign(url); } catch(e){ window.location.assign(url); }
+      function openSameTab(u){
+        if (!u) return;
+        try { window.top.location.assign(u); } catch(e){ window.location.assign(u); }
       }
-      function openNewTab(url){
-        if (!url) return;
+      function openNewTab(u){
+        if (!u) return;
         try {
-          const a=document.createElement('a');
-          a.href=url; a.target='_blank'; a.rel='noopener,noreferrer';
+          var a=document.createElement('a');
+          a.href=u; a.target='_blank'; a.rel='noopener,noreferrer';
           a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
           document.body.appendChild(a); a.click(); a.remove(); return;
         } catch(e){}
-        try { const w=window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
-        try { window.location.assign(url); } catch(e){}
+        try { var w=window.open(u,'_blank','noopener'); if (w) return; } catch(e){}
+        try { window.location.assign(u); } catch(e){}
       }
 
-      const onDown = ev => {
-        if (ev.type === 'mousedown' && withinTouchGrace()) return; // ignore synthetic mouse
-        const t = ev.touches ? ev.touches[0] : ev;
-        sx = t.clientX || 0; sy = t.clientY || 0;
+      function onDown(ev){
+        if (ev.type === 'mousedown' && withinTouchGrace()) return;
+        var t = ev.touches ? ev.touches[0] : ev;
+        sx = (t && t.clientX) || 0; sy = (t && t.clientY) || 0;
         moved=false; pressed=true; firedLong=false; startT=now();
 
         clearT();
-        timer = setTimeout(()=>{
+        timer = setTimeout(function(){
           if (pressed && !moved){
             firedLong = true;
-            const u = onUrl?.();
+            var u = onUrl ? onUrl() : null;
             if (isIOS) openSameTab(u); else openNewTab(u);
             pressed=false;
           }
         }, DELAY);
-      };
+      }
 
-      const onMove = ev => {
+      function onMove(ev){
         if (!pressed) return;
-        const t = ev.touches ? ev.touches[0] : ev;
-        const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+        var t = ev.touches ? ev.touches[0] : ev;
+        var dx = Math.abs(((t && t.clientX) || 0) - sx);
+        var dy = Math.abs(((t && t.clientY) || 0) - sy);
         if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
-      };
+      }
 
-      const onUp = ev => {
-        if (ev.type === 'mouseup' && withinTouchGrace()) return; // ignore synthetic mouse
+      function onUp(ev){
+        if (ev.type === 'mouseup' && withinTouchGrace()) return;
         if (!pressed){ clearT(); return; }
-        const dur = now() - startT;
-        const isTap = dur < TAP_MS && !moved;
+        var dur = now() - startT;
+        var isTap = (dur < TAP_MS) && !moved;
         pressed=false; clearT();
 
         if (isTap && !firedLong){
           if (typeof onTap === 'function'){
-            requestAnimationFrame(()=>{ try { onTap(); } catch(_){} });
+            requestAnimationFrame(function(){ try { onTap(); } catch(_){ } });
           }
         }
-      };
-
-      const onCancel = () => { pressed=false; clearT(); };
-
-      if (window.PointerEvent){
-        el.addEventListener('pointerdown', onDown, {passive:true});
-        el.addEventListener('pointermove', onMove,  {passive:true});
-        el.addEventListener('pointerup',   onUp,    {passive:false});
-        el.addEventListener('pointercancel', onCancel);
-      } else {
-        el.addEventListener('touchstart', e=>{ hadTouchTs = now(); onDown(e); }, {passive:true});
-        el.addEventListener('touchmove',  onMove, {passive:true});
-        el.addEventListener('touchend',   onUp,   {passive:false});
-        el.addEventListener('touchcancel', onCancel);
-        el.addEventListener('mousedown', onDown);
-        el.addEventListener('mousemove', onMove);
-        el.addEventListener('mouseup',   onUp);
       }
 
-      el.addEventListener('contextmenu', e=>e.preventDefault());
+      function onCancel(){ pressed=false; clearT(); }
+
+      if (window.PointerEvent){
+        el.addEventListener('pointerdown', onDown, true);
+        el.addEventListener('pointermove', onMove,  true);
+        el.addEventListener('pointerup',   onUp,    true);
+        el.addEventListener('pointercancel', onCancel, true);
+      } else {
+        el.addEventListener('touchstart', function(e){ hadTouchTs = now(); onDown(e); }, true);
+        el.addEventListener('touchmove',  onMove, true);
+        el.addEventListener('touchend',   onUp,   false);
+        el.addEventListener('touchcancel', onCancel, true);
+        el.addEventListener('mousedown', onDown, true);
+        el.addEventListener('mousemove', onMove, true);
+        el.addEventListener('mouseup',   onUp,   true);
+      }
+
+      el.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);
       el.style.webkitTouchCallout='none';
       el.style.webkitUserSelect='none';
       el.style.userSelect='none';
       el.style.touchAction='manipulation';
     };
 
-    // ---- un seul branchement long-press / tap ----
+    // ---- branchement unique ----
     attachLongPress(txt, {
       delay: 550,
       thresh: 8,
       tapMs: 220,
-      onUrl: () => href,
-      onTap: () => safeSelect(params)
+      onUrl: function(){ return href; },
+      onTap: function(){ safeSelect(params); }
     });
 
     this.eGui = e;
@@ -1019,65 +1023,68 @@ LIEU_LONGPRESS_RENDERER = JsCode("""
 class LieuRenderer {
   init(params){
     // ---- conteneur + texte ----
-    const e = document.createElement('div');
+    var e = document.createElement('div');
     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
     e.style.width='100%'; e.style.overflow='hidden';
 
-    const label = (params.value ?? '').toString().trim();
+    var label = (params.value != null ? String(params.value) : '').trim();
 
-    const addrEnc = (params.data && params.data.__addr_enc)
+    var addrEnc = (params.data && params.data.__addr_enc != null)
       ? String(params.data.__addr_enc).trim()
       : encodeURIComponent(label || "");
 
-    const ctx  = params.context || {};
-    const app  = ctx.itineraire_app || "Google Maps Web";
-    const plat = ctx.platform || (
+    var ctx  = params.context || {};
+    var app  = ctx.itineraire_app || "Google Maps Web";
+    var plat = ctx.platform || (
       /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
-      : /Android/.test(navigator.userAgent) ? "Android" : "Desktop"
+      : (/Android/.test(navigator.userAgent) ? "Android" : "Desktop")
     );
 
-    let url = "#";
+    var url = "#";
     if (addrEnc) {
       if (app === "Apple Maps" && plat === "iOS") {
-        url = http://maps.apple.com/?daddr=${addrEnc};
+        url = "http://maps.apple.com/?daddr=" + addrEnc;
       } else if (app === "Google Maps App") {
-        if (plat === "iOS")        url = comgooglemaps://?daddr=${addrEnc};
-        else if (plat === "Android") url = geo:0,0?q=${addrEnc};
-        else                       url = https://www.google.com/maps/dir/?api=1&destination=${addrEnc};
+        if (plat === "iOS")        url = "comgooglemaps://?daddr=" + addrEnc;
+        else if (plat === "Android") url = "geo:0,0?q=" + addrEnc;
+        else                       url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
       } else {
-        url = https://www.google.com/maps/dir/?api=1&destination=${addrEnc};
+        url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
       }
     }
 
-    const txt = document.createElement('span');
+    var txt = document.createElement('span');
     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
     txt.style.cursor='pointer';
     txt.textContent = label;
     e.appendChild(txt);
 
-    // ---- sélection différée (anti-gel iOS) ----
+    // ---- sélection différée (anti-gel) ----
     function safeSelect(params){
-      try { if ((params.api.getEditingCells?.() || []).length) return; } catch(_){}
+      try { 
+        var editing = (params.api.getEditingCells && params.api.getEditingCells()) || [];
+        if (editing.length) return;
+      } catch(_){}
       try { if (params.node.isSelected && params.node.isSelected()) return; } catch(_){}
-      requestAnimationFrame(()=>{
+      requestAnimationFrame(function(){
         try {
           params.api.setFocusedCell(params.rowIndex, params.column.getColId());
           params.node.setSelected(true, true);
-        } catch(_) {}
+        } catch(_){}
       });
     }
 
-    // ---- fallback long-press (utilise global si présent) ----
-    const attachLongPress = window.attachLongPress || function(el, opts){
-      const DELAY  = opts?.delay  ?? 550;
-      const THRESH = opts?.thresh ?? 8;
-      const TAP_MS = opts?.tapMs  ?? 220;
-      const onUrl  = opts?.onUrl;
-      const onTap  = opts?.onTap;
-      const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    // ---- fallback long-press (si window.attachLongPress indisponible) ----
+    var attachLongPress = (typeof window !== 'undefined' && window.attachLongPress) || function(el, opts){
+      var DELAY  = (opts && opts.delay)  != null ? opts.delay  : 550;
+      var THRESH = (opts && opts.thresh) != null ? opts.thresh : 8;
+      var TAP_MS = (opts && opts.tapMs)  != null ? opts.tapMs  : 220;
+      var onUrl  = opts && opts.onUrl;
+      var onTap  = opts && opts.onTap;
+      var isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-      let sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
-      let hadTouchTs = 0;
+      var sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
+      var hadTouchTs = 0;
 
       function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
       function now(){ return Date.now(); }
@@ -1090,84 +1097,85 @@ class LieuRenderer {
       function openNewTab(u){
         if (!u) return;
         try {
-          const a=document.createElement('a');
+          var a=document.createElement('a');
           a.href=u; a.target='_blank'; a.rel='noopener,noreferrer';
           a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
           document.body.appendChild(a); a.click(); a.remove(); return;
         } catch(e){}
-        try { const w=window.open(u,'_blank','noopener'); if (w) return; } catch(e){}
+        try { var w=window.open(u,'_blank','noopener'); if (w) return; } catch(e){}
         try { window.location.assign(u); } catch(e){}
       }
 
-      const onDown = ev => {
+      function onDown(ev){
         if (ev.type === 'mousedown' && withinTouchGrace()) return;
-        const t = ev.touches ? ev.touches[0] : ev;
-        sx = t.clientX || 0; sy = t.clientY || 0;
+        var t = ev.touches ? ev.touches[0] : ev;
+        sx = (t && t.clientX) || 0; sy = (t && t.clientY) || 0;
         moved=false; pressed=true; firedLong=false; startT=now();
 
         clearT();
-        timer = setTimeout(()=>{
+        timer = setTimeout(function(){
           if (pressed && !moved){
             firedLong = true;
-            const u = onUrl?.();
+            var u = onUrl ? onUrl() : null;
             if (isIOS) openSameTab(u); else openNewTab(u);
             pressed=false;
           }
         }, DELAY);
-      };
+      }
 
-      const onMove = ev => {
+      function onMove(ev){
         if (!pressed) return;
-        const t = ev.touches ? ev.touches[0] : ev;
-        const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+        var t = ev.touches ? ev.touches[0] : ev;
+        var dx = Math.abs(((t && t.clientX) || 0) - sx);
+        var dy = Math.abs(((t && t.clientY) || 0) - sy);
         if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
-      };
+      }
 
-      const onUp = ev => {
+      function onUp(ev){
         if (ev.type === 'mouseup' && withinTouchGrace()) return;
         if (!pressed){ clearT(); return; }
-        const dur = now() - startT;
-        const isTap = dur < TAP_MS && !moved;
+        var dur = now() - startT;
+        var isTap = (dur < TAP_MS) && !moved;
         pressed=false; clearT();
 
         if (isTap && !firedLong){
           if (typeof onTap === 'function'){
-            requestAnimationFrame(()=>{ try { onTap(); } catch(_){} });
+            requestAnimationFrame(function(){ try { onTap(); } catch(_){ } });
           }
         }
-      };
-
-      const onCancel = () => { pressed=false; clearT(); };
-
-      if (window.PointerEvent){
-        el.addEventListener('pointerdown', onDown, {passive:true});
-        el.addEventListener('pointermove', onMove,  {passive:true});
-        el.addEventListener('pointerup',   onUp,    {passive:false});
-        el.addEventListener('pointercancel', onCancel);
-      } else {
-        el.addEventListener('touchstart', e=>{ hadTouchTs = now(); onDown(e); }, {passive:true});
-        el.addEventListener('touchmove',  onMove, {passive:true});
-        el.addEventListener('touchend',   onUp,   {passive:false});
-        el.addEventListener('touchcancel', onCancel);
-        el.addEventListener('mousedown', onDown);
-        el.addEventListener('mousemove', onMove);
-        el.addEventListener('mouseup',   onUp);
       }
 
-      el.addEventListener('contextmenu', e=>e.preventDefault());
+      function onCancel(){ pressed=false; clearT(); }
+
+      if (window.PointerEvent){
+        el.addEventListener('pointerdown', onDown, true);
+        el.addEventListener('pointermove', onMove,  true);
+        el.addEventListener('pointerup',   onUp,    true);
+        el.addEventListener('pointercancel', onCancel, true);
+      } else {
+        el.addEventListener('touchstart', function(e){ hadTouchTs = now(); onDown(e); }, true);
+        el.addEventListener('touchmove',  onMove, true);
+        el.addEventListener('touchend',   onUp,   false); // besoin d'un false pour pouvoir preventDefault si utile
+        el.addEventListener('touchcancel', onCancel, true);
+        el.addEventListener('mousedown', onDown, true);
+        el.addEventListener('mousemove', onMove, true);
+        el.addEventListener('mouseup',   onUp,   true);
+      }
+
+      el.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);
       el.style.webkitTouchCallout='none';
       el.style.webkitUserSelect='none';
       el.style.userSelect='none';
       el.style.touchAction='manipulation';
     };
 
-    // ---- un seul branchement ----
+    // ---- branchement unique ----
     attachLongPress(txt, {
       delay: 550,
       thresh: 8,
       tapMs: 220,
-      onUrl: () => url,
-      onTap: () => safeSelect(params)
+      onUrl: function(){ return url; },
+      onTap: function(){ safeSelect(params); }
     });
 
     this.eGui = e;
