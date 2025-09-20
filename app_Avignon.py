@@ -7416,7 +7416,7 @@ def initialiser_page():
     patch_aggrid_css()
 
     # Injecte le fix pour régler le pb de page bloquée par le bfcache au retour d'une page web appelée par long-press dans une ligne de grille
-    inject_ios_bfcache_fix()
+    # inject_ios_bfcache_fix()
 
 # Trace le début d'un rerun
 def tracer_rerun():
