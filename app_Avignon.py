@@ -893,22 +893,181 @@ class ActiviteRenderer {
     txt.textContent = label;
     e.appendChild(txt);
 
-    // ---- sélection différée (anti-gel) ----
-    function safeSelect(params){
+    // ---- helper: simuler un vrai clic cellule AG Grid (sélection propre) ----
+    function tapSelectViaSyntheticClick(el){
+      var cell = el.closest ? el.closest('.ag-cell') : null;
+      if (!cell) return;
       try {
-        var editing = (params.api.getEditingCells && params.api.getEditingCells()) || [];
-        if (editing.length) return;
+        cell.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('mouseup',   {bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('click',     {bubbles:true}));
       } catch(_){}
-      try { if (params.node.isSelected && params.node.isSelected()) return; } catch(_){}
-      requestAnimationFrame(function(){
-        try {
-          params.api.setFocusedCell(params.rowIndex, params.column.getColId());
-          params.node.setSelected(true, true);
-        } catch(_){}
-      });
     }
 
-    // ---- fallback long-press (si window.attachLongPress indisponible) ----
+    // ---- fallback long-press (si window.attachLongPress absent) ----
+    var attachLongPress = (typeof window !== 'undefined' && window.attachLongPress) || function(el, opts){
+      var DELAY  = (opts && opts.delay)  != null ? opts.delay  : 550;
+      var THRESH = (opts && opts.thresh) != null ? opts.thresh : 8;
+      var TAP_MS = (opts && opts.tapMs)  != null ? opts.tapMs  : 220;
+      var onUrl  = opts && opts.onUrl;
+      var onTap  = opts && opts.onTap;
+      var isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+      var sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
+      var hadTouchTs = 0;
+
+      function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
+      function now(){ return Date.now(); }
+      function withinTouchGrace(){ return (now() - hadTouchTs) < 800; }
+
+      function openSameTab(u){
+        if (!u) return;
+        try { window.top.location.assign(u); } catch(e){ window.location.assign(u); }
+      }
+      function openNewTab(u){
+        if (!u) return;
+        try {
+          var a=document.createElement('a');
+          a.href=u; a.target='_blank'; a.rel='noopener,noreferrer';
+          a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+          document.body.appendChild(a); a.click(); a.remove(); return;
+        } catch(e){}
+        try { var w=window.open(u,'_blank','noopener'); if (w) return; } catch(e){}
+        try { window.location.assign(u); } catch(e){}
+      }
+
+      function onDown(ev){
+        if (ev.type === 'mousedown' && withinTouchGrace()) return;
+        var t = ev.touches ? ev.touches[0] : ev;
+        sx = (t && t.clientX) || 0; sy = (t && t.clientY) || 0;
+        moved=false; pressed=true; firedLong=false; startT=now();
+
+        clearT();
+        timer = setTimeout(function(){
+          if (pressed && !moved){
+            firedLong = true;
+            var u = onUrl ? onUrl() : null;
+            if (isIOS) openSameTab(u); else openNewTab(u);
+            pressed=false;
+          }
+        }, DELAY);
+      }
+
+      function onMove(ev){
+        if (!pressed) return;
+        var t = ev.touches ? ev.touches[0] : ev;
+        var dx = Math.abs(((t && t.clientX) || 0) - sx);
+        var dy = Math.abs(((t && t.clientY) || 0) - sy);
+        if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
+      }
+
+      function onUp(ev){
+        if (ev.type === 'mouseup' && withinTouchGrace()) return;
+        if (!pressed){ clearT(); return; }
+        var dur = now() - startT;
+        var isTap = (dur < TAP_MS) && !moved;
+        pressed=false; clearT();
+
+        if (isTap && !firedLong){
+          if (typeof onTap === 'function'){
+            // sélection via clic synthétique (pas de sélection "programmée")
+            requestAnimationFrame(function(){ try { onTap(); } catch(_){ } });
+          }
+        }
+      }
+
+      function onCancel(){ pressed=false; clearT(); }
+
+      if (window.PointerEvent){
+        el.addEventListener('pointerdown', onDown, true);
+        el.addEventListener('pointermove', onMove,  true);
+        el.addEventListener('pointerup',   onUp,    true);
+        el.addEventListener('pointercancel', onCancel, true);
+      } else {
+        el.addEventListener('touchstart', function(e){ hadTouchTs = now(); onDown(e); }, true);
+        el.addEventListener('touchmove',  onMove, true);
+        el.addEventListener('touchend',   onUp,   false);
+        el.addEventListener('touchcancel', onCancel, true);
+        el.addEventListener('mousedown', onDown, true);
+        el.addEventListener('mousemove', onMove, true);
+        el.addEventListener('mouseup',   onUp,   true);
+      }
+
+      el.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);
+      el.style.webkitTouchCallout='none';
+      el.style.webkitUserSelect='none';
+      el.style.userSelect='none';
+      el.style.touchAction='manipulation';
+    };
+
+    // ---- branchement unique ----
+    attachLongPress(txt, {
+      delay: 550,
+      thresh: 8,
+      tapMs: 220,
+      onUrl: function(){ return href; },
+      onTap: function(){ tapSelectViaSyntheticClick(txt); }
+    });
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
+
+LIEU_LONGPRESS_RENDERER = JsCode("""
+class LieuRenderer {
+  init(params){
+    // ---- conteneur + texte ----
+    var e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
+
+    var label = (params.value != null ? String(params.value) : '').trim();
+
+    var addrEnc = (params.data && params.data.__addr_enc != null)
+      ? String(params.data.__addr_enc).trim()
+      : encodeURIComponent(label || "");
+
+    var ctx  = params.context || {};
+    var app  = ctx.itineraire_app || "Google Maps Web";
+    var plat = ctx.platform || (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
+      : (/Android/.test(navigator.userAgent) ? "Android" : "Desktop")
+    );
+
+    var url = "#";
+    if (addrEnc) {
+      if (app === "Apple Maps" && plat === "iOS") {
+        url = "http://maps.apple.com/?daddr=" + addrEnc;
+      } else if (app === "Google Maps App") {
+        if (plat === "iOS")          url = "comgooglemaps://?daddr=" + addrEnc;
+        else if (plat === "Android") url = "geo:0,0?q=" + addrEnc;
+        else                         url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
+      } else {
+        url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
+      }
+    }
+
+    var txt = document.createElement('span');
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+    txt.style.cursor='pointer';
+    txt.textContent = label;
+    e.appendChild(txt);
+
+    // ---- helper: clic synthétique cellule ----
+    function tapSelectViaSyntheticClick(el){
+      var cell = el.closest ? el.closest('.ag-cell') : null;
+      if (!cell) return;
+      try {
+        cell.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('mouseup',   {bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('click',     {bubbles:true}));
+      } catch(_){}
+    }
+
+    // ---- fallback long-press ----
     var attachLongPress = (typeof window !== 'undefined' && window.attachLongPress) || function(el, opts){
       var DELAY  = (opts && opts.delay)  != null ? opts.delay  : 550;
       var THRESH = (opts && opts.thresh) != null ? opts.thresh : 8;
@@ -1008,174 +1167,8 @@ class ActiviteRenderer {
       delay: 550,
       thresh: 8,
       tapMs: 220,
-      onUrl: function(){ return href; },
-      onTap: function(){ safeSelect(params); }
-    });
-
-    this.eGui = e;
-  }
-  getGui(){ return this.eGui; }
-  refresh(){ return false; }
-}
-""")
-
-LIEU_LONGPRESS_RENDERER = JsCode("""
-class LieuRenderer {
-  init(params){
-    // ---- conteneur + texte ----
-    var e = document.createElement('div');
-    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-    e.style.width='100%'; e.style.overflow='hidden';
-
-    var label = (params.value != null ? String(params.value) : '').trim();
-
-    var addrEnc = (params.data && params.data.__addr_enc != null)
-      ? String(params.data.__addr_enc).trim()
-      : encodeURIComponent(label || "");
-
-    var ctx  = params.context || {};
-    var app  = ctx.itineraire_app || "Google Maps Web";
-    var plat = ctx.platform || (
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
-      : (/Android/.test(navigator.userAgent) ? "Android" : "Desktop")
-    );
-
-    var url = "#";
-    if (addrEnc) {
-      if (app === "Apple Maps" && plat === "iOS") {
-        url = "http://maps.apple.com/?daddr=" + addrEnc;
-      } else if (app === "Google Maps App") {
-        if (plat === "iOS")        url = "comgooglemaps://?daddr=" + addrEnc;
-        else if (plat === "Android") url = "geo:0,0?q=" + addrEnc;
-        else                       url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
-      } else {
-        url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
-      }
-    }
-
-    var txt = document.createElement('span');
-    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-    txt.style.cursor='pointer';
-    txt.textContent = label;
-    e.appendChild(txt);
-
-    // ---- sélection différée (anti-gel) ----
-    function safeSelect(params){
-      try { 
-        var editing = (params.api.getEditingCells && params.api.getEditingCells()) || [];
-        if (editing.length) return;
-      } catch(_){}
-      try { if (params.node.isSelected && params.node.isSelected()) return; } catch(_){}
-      requestAnimationFrame(function(){
-        try {
-          params.api.setFocusedCell(params.rowIndex, params.column.getColId());
-          params.node.setSelected(true, true);
-        } catch(_){}
-      });
-    }
-
-    // ---- fallback long-press (si window.attachLongPress indisponible) ----
-    var attachLongPress = (typeof window !== 'undefined' && window.attachLongPress) || function(el, opts){
-      var DELAY  = (opts && opts.delay)  != null ? opts.delay  : 550;
-      var THRESH = (opts && opts.thresh) != null ? opts.thresh : 8;
-      var TAP_MS = (opts && opts.tapMs)  != null ? opts.tapMs  : 220;
-      var onUrl  = opts && opts.onUrl;
-      var onTap  = opts && opts.onTap;
-      var isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-      var sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
-      var hadTouchTs = 0;
-
-      function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
-      function now(){ return Date.now(); }
-      function withinTouchGrace(){ return (now() - hadTouchTs) < 800; }
-
-      function openSameTab(u){
-        if (!u) return;
-        try { window.top.location.assign(u); } catch(e){ window.location.assign(u); }
-      }
-      function openNewTab(u){
-        if (!u) return;
-        try {
-          var a=document.createElement('a');
-          a.href=u; a.target='_blank'; a.rel='noopener,noreferrer';
-          a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
-          document.body.appendChild(a); a.click(); a.remove(); return;
-        } catch(e){}
-        try { var w=window.open(u,'_blank','noopener'); if (w) return; } catch(e){}
-        try { window.location.assign(u); } catch(e){}
-      }
-
-      function onDown(ev){
-        if (ev.type === 'mousedown' && withinTouchGrace()) return;
-        var t = ev.touches ? ev.touches[0] : ev;
-        sx = (t && t.clientX) || 0; sy = (t && t.clientY) || 0;
-        moved=false; pressed=true; firedLong=false; startT=now();
-
-        clearT();
-        timer = setTimeout(function(){
-          if (pressed && !moved){
-            firedLong = true;
-            var u = onUrl ? onUrl() : null;
-            if (isIOS) openSameTab(u); else openNewTab(u);
-            pressed=false;
-          }
-        }, DELAY);
-      }
-
-      function onMove(ev){
-        if (!pressed) return;
-        var t = ev.touches ? ev.touches[0] : ev;
-        var dx = Math.abs(((t && t.clientX) || 0) - sx);
-        var dy = Math.abs(((t && t.clientY) || 0) - sy);
-        if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
-      }
-
-      function onUp(ev){
-        if (ev.type === 'mouseup' && withinTouchGrace()) return;
-        if (!pressed){ clearT(); return; }
-        var dur = now() - startT;
-        var isTap = (dur < TAP_MS) && !moved;
-        pressed=false; clearT();
-
-        if (isTap && !firedLong){
-          if (typeof onTap === 'function'){
-            requestAnimationFrame(function(){ try { onTap(); } catch(_){ } });
-          }
-        }
-      }
-
-      function onCancel(){ pressed=false; clearT(); }
-
-      if (window.PointerEvent){
-        el.addEventListener('pointerdown', onDown, true);
-        el.addEventListener('pointermove', onMove,  true);
-        el.addEventListener('pointerup',   onUp,    true);
-        el.addEventListener('pointercancel', onCancel, true);
-      } else {
-        el.addEventListener('touchstart', function(e){ hadTouchTs = now(); onDown(e); }, true);
-        el.addEventListener('touchmove',  onMove, true);
-        el.addEventListener('touchend',   onUp,   false); // besoin d'un false pour pouvoir preventDefault si utile
-        el.addEventListener('touchcancel', onCancel, true);
-        el.addEventListener('mousedown', onDown, true);
-        el.addEventListener('mousemove', onMove, true);
-        el.addEventListener('mouseup',   onUp,   true);
-      }
-
-      el.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);
-      el.style.webkitTouchCallout='none';
-      el.style.webkitUserSelect='none';
-      el.style.userSelect='none';
-      el.style.touchAction='manipulation';
-    };
-
-    // ---- branchement unique ----
-    attachLongPress(txt, {
-      delay: 550,
-      thresh: 8,
-      tapMs: 220,
       onUrl: function(){ return url; },
-      onTap: function(){ safeSelect(params); }
+      onTap: function(){ tapSelectViaSyntheticClick(txt); }
     });
 
     this.eGui = e;
