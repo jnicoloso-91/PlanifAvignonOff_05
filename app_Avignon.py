@@ -4215,40 +4215,41 @@ def init_activites_programmees_grid_options(df_display):
         onGridReady=JS_SELECT_DESELECT_ONCE,
     )
 
-    # # Mise en page de la grille
-    # gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
-    #     function(params) {{
-    #         params.api.sizeColumnsToFit();
-    #     }}
-    # """))
-    # JS à installer sur le onFirstDataRendered pour le sizeColumnsToFit et le Hook iOS pour recharge la grille au retour d'une page Web (bfcache) 
-    gb.configure_grid_options(onFirstDataRendered=JsCode("""
-        function(params){
-            // Redimensionnement habituel
-            try { params.api.sizeColumnsToFit(); } catch(e){}
-
-            // --- Hook iOS : recharge la grille au retour d'une page Web (bfcache) 
-            if (window.__iosBackHookInstalled) return;
-            window.__iosBackHookInstalled = true;
-
-            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            function cameFromBackForward(){
-                try {
-                    var nav = performance.getEntriesByType &&
-                            performance.getEntriesByType('navigation');
-                    return !!(nav && nav[0] && nav[0].type === 'back_forward');
-                } catch(e){ return false; }
-            }
-
-            window.addEventListener('pageshow', function(e){
-                if (!isIOS) return;
-                if (e.persisted || cameFromBackForward()){
-                    // recharge l’IFRAME AG-Grid => état propre
-                    location.reload();
-                }
-            }, false);
-        }
+    # Mise en page de la grille
+    gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
+        function(params) {{
+            params.api.sizeColumnsToFit();
+        }}
     """))
+
+    # # JS à installer sur le onFirstDataRendered pour le sizeColumnsToFit et le Hook iOS pour recharge la grille au retour d'une page Web (bfcache) 
+    # gb.configure_grid_options(onFirstDataRendered=JsCode("""
+    #     function(params){
+    #         // Redimensionnement habituel
+    #         try { params.api.sizeColumnsToFit(); } catch(e){}
+
+    #         // --- Hook iOS : recharge la grille au retour d'une page Web (bfcache) 
+    #         if (window.__iosBackHookInstalled) return;
+    #         window.__iosBackHookInstalled = true;
+
+    #         var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    #         function cameFromBackForward(){
+    #             try {
+    #                 var nav = performance.getEntriesByType &&
+    #                         performance.getEntriesByType('navigation');
+    #                 return !!(nav && nav[0] && nav[0].type === 'back_forward');
+    #             } catch(e){ return false; }
+    #         }
+
+    #         window.addEventListener('pageshow', function(e){
+    #             if (!isIOS) return;
+    #             if (e.persisted || cameFromBackForward()){
+    #                 // recharge l’IFRAME AG-Grid => état propre
+    #                 location.reload();
+    #             }
+    #         }, false);
+    #     }
+    # """))
 
     grid_options = gb.build()
 
@@ -4781,40 +4782,41 @@ def init_activites_non_programmees_grid_options(df_display):
         onGridReady=JS_SELECT_DESELECT_ONCE,
     )
 
-    # # Mise en page de la grille
-    # gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
-    #     function(params) {{
-    #         params.api.sizeColumnsToFit();
-    #     }}
-    # """))
-    # JS à installer sur le onFirstDataRendered pour le sizeColumnsToFit et le Hook iOS pour recharge la grille au retour d'une page Web (bfcache) 
-    gb.configure_grid_options(onFirstDataRendered=JsCode("""
-        function(params){
-            // Redimensionnement habituel
-            try { params.api.sizeColumnsToFit(); } catch(e){}
-
-            // --- Hook iOS : recharge la grille au retour d'une page Web (bfcache) 
-            if (window.__iosBackHookInstalled) return;
-            window.__iosBackHookInstalled = true;
-
-            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            function cameFromBackForward(){
-                try {
-                    var nav = performance.getEntriesByType &&
-                            performance.getEntriesByType('navigation');
-                    return !!(nav && nav[0] && nav[0].type === 'back_forward');
-                } catch(e){ return false; }
-            }
-
-            window.addEventListener('pageshow', function(e){
-                if (!isIOS) return;
-                if (e.persisted || cameFromBackForward()){
-                    // recharge l’IFRAME AG-Grid => état propre
-                    location.reload();
-                }
-            }, false);
-        }
+    # Mise en page de la grille
+    gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
+        function(params) {{
+            params.api.sizeColumnsToFit();
+        }}
     """))
+
+    # # JS à installer sur le onFirstDataRendered pour le sizeColumnsToFit et le Hook iOS pour recharge la grille au retour d'une page Web (bfcache) 
+    # gb.configure_grid_options(onFirstDataRendered=JsCode("""
+    #     function(params){
+    #         // Redimensionnement habituel
+    #         try { params.api.sizeColumnsToFit(); } catch(e){}
+
+    #         // --- Hook iOS : recharge la grille au retour d'une page Web (bfcache) 
+    #         if (window.__iosBackHookInstalled) return;
+    #         window.__iosBackHookInstalled = true;
+
+    #         var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    #         function cameFromBackForward(){
+    #             try {
+    #                 var nav = performance.getEntriesByType &&
+    #                         performance.getEntriesByType('navigation');
+    #                 return !!(nav && nav[0] && nav[0].type === 'back_forward');
+    #             } catch(e){ return false; }
+    #         }
+
+    #         window.addEventListener('pageshow', function(e){
+    #             if (!isIOS) return;
+    #             if (e.persisted || cameFromBackForward()){
+    #                 // recharge l’IFRAME AG-Grid => état propre
+    #                 location.reload();
+    #             }
+    #         }, false);
+    #     }
+    # """))
 
     grid_options = gb.build()
 
@@ -7406,112 +7408,32 @@ def traiter_sections_critiques():
     if cmd:
         activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
 
-# Script utilitaire pour boutons souhaitant utiliser le long-press et le rendant fonctionnel sur toute plateforme
+# Fix pour régler le pb de page bloquée par le bfcache au retour d'une page web appelée par long-press dans une ligne de grille
 @st.cache_resource
-def inject_longpress_util():
-
+def inject_ios_bfcache_fix():
     st.markdown("""
         <script>
         (function(){
-        // --- Long-press helper robuste (iOS + iframe) ---
-        window.attachLongPress = function(el, opts){
-            const DELAY  = opts?.delay  ?? 550;
-            const THRESH = opts?.thresh ?? 8;
-            const onUrl  = opts?.onUrl;
-            const onFire = opts?.onFire;
-            const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-            let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
-
-            function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
-            function makeAnchor(url){
-            const a = document.createElement('a');
-            a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
-            a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
-            document.body.appendChild(a);
-            return a;
-            }
-            function openNow(url){
-            if (!url) return;
+        function cameFromBackForward(){
             try {
-                if (!anchor) anchor = makeAnchor(url); else anchor.href = url;
-                anchor.click();
-                return;
-            } catch(e) {}
-            try { window.open(url, '_blank','noopener'); return; } catch(e){}
-            try { window.location.assign(url); } catch(e){}
+            var nav = performance.getEntriesByType &&
+                        performance.getEntriesByType('navigation');
+            return !!(nav && nav[0] && nav[0].type === 'back_forward');
+            } catch(e){ return false; }
+        }
+
+        // ⚠️ Parent page Streamlit : au retour iOS, on recharge TOUTE la page
+        window.addEventListener('pageshow', function(e){
+            if (!isIOS) return;
+            if (e.persisted || cameFromBackForward()){
+            window.location.reload();
             }
-
-            const onDown = ev => {
-            const t = ev.touches ? ev.touches[0] : ev;
-            sx = t.clientX || 0; sy = t.clientY || 0;
-            moved=false; pressed=true; armed=false; startT = Date.now();
-            if (!anchor){
-                const u = (typeof onUrl === 'function') ? onUrl() : null;
-                if (u) anchor = makeAnchor(u);
-            }
-            clearTimer();
-            timer = setTimeout(()=>{
-                if (pressed && !moved){
-                try{ navigator.vibrate?.(10);}catch(_){}
-                if (isIOS){ armed = true; }
-                else {
-                    if (typeof onFire === 'function') onFire();
-                    const u = (typeof onUrl === 'function') ? onUrl() : null;
-                    openNow(u);
-                    pressed = false;
-                }
-                }
-            }, DELAY);
-            };
-
-            const onMove = ev => {
-            if (!pressed) return;
-            const t = ev.touches ? ev.touches[0] : ev;
-            const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
-            if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
-            };
-
-            const onUp = ev => {
-            if (!pressed) return;
-            const dur = Date.now() - startT;
-            const isLong = dur >= DELAY && !moved;
-            pressed=false; clearTimer();
-            if (isIOS && isLong && armed){
-                ev.preventDefault?.(); ev.stopPropagation?.();
-                if (typeof onFire === 'function') onFire();
-                const u = (typeof onUrl === 'function') ? onUrl() : null;
-                openNow(u);
-            }
-            armed=false;
-            };
-
-            el.addEventListener('contextmenu', e=>e.preventDefault());
-            el.style.webkitTouchCallout='none';
-            el.style.webkitUserSelect='none';
-            el.style.userSelect='none';
-            el.style.touchAction='manipulation';
-
-            if (window.PointerEvent){
-            el.addEventListener('pointerdown', onDown, {passive:true});
-            el.addEventListener('pointermove', onMove,  {passive:true});
-            el.addEventListener('pointerup',   onUp,    {passive:false});
-            el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
-            } else {
-            el.addEventListener('touchstart', onDown, {passive:true});
-            el.addEventListener('touchmove',  onMove, {passive:true});
-            el.addEventListener('touchend',   onUp,   {passive:false});
-            el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
-            el.addEventListener('mousedown',  onDown);
-            el.addEventListener('mousemove',  onMove);
-            el.addEventListener('mouseup',    onUp);
-            }
-        };
+        }, false);
         })();
         </script>
-        """,
-        unsafe_allow_html=True
-    )
+        """, unsafe_allow_html=True)
     return True
 
 # Initialisation de la page HTML
@@ -7520,8 +7442,8 @@ def initialiser_page():
     # Evite la surbrillance rose pâle des lignes qui ont le focus sans être sélectionnées dans les AgGrid
     patch_aggrid_css()
 
-    # Injecte le script permettant le bon fonctionnement du long-press sur toute plateforme (pas utilisé en l'état)
-    # inject_longpress_util()
+    # Injecte le fix pour régler le pb de page bloquée par le bfcache au retour d'une page web appelée par long-press dans une ligne de grille
+    inject_ios_bfcache_fix()
 
 # Trace le début d'un rerun
 def tracer_rerun():
