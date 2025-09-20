@@ -582,133 +582,386 @@ class LieuRenderer {
 # """)
 
 
-# JS Code chargé de lancer la recherche Web sur la colonne Activité via appui long
-ACTIVITÉ_LONGPRESS_RENDERER = JsCode("""
+# # JS Code chargé de lancer la recherche Web sur la colonne Activité via appui long
+# ACTIVITÉ_LONGPRESS_RENDERER = JsCode("""
+# class ActiviteRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.width='100%'; e.style.overflow='hidden';
+
+#     const label = (params.value ?? '').toString();
+#     const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
+#     const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+
+#     const txt = document.createElement('span');
+#     txt.className='longpress';
+#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
+#     e.appendChild(txt);
+
+#     // Fallback local si window.attachLongPress est absent (iframe AG Grid)
+#     const attachLongPress = window.attachLongPress || function attachLongPress(el, opts){
+#         const DELAY  = opts?.delay  ?? 550;
+#         const THRESH = opts?.thresh ?? 8;
+#         const onUrl  = opts?.onUrl;
+#         const onFire = opts?.onFire;
+#         const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+#         let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
+#         let lastResume = 0; // cooldown after returning from another page
+
+#         function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
+#         function openSameTab(url){
+#             if (!url) return;
+#             try { window.top.location.assign(url); } catch(e) { window.location.assign(url); }
+#         }
+#         function makeAnchor(url){
+#             const a = document.createElement('a');
+#             a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
+#             a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+#             document.body.appendChild(a); return a;
+#         }
+#         function openNewTab(url){
+#             if (!url) return;
+#             try { if (!anchor) anchor = makeAnchor(url); else anchor.href = url; anchor.click(); return; } catch(e){}
+#             try { const w = window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
+#             openSameTab(url);
+#         }
+
+#         // --- NEW: reset when page is restored from bfcache or becomes visible again
+#         const reset = ()=>{
+#             pressed=false; armed=false; moved=false; clearTimer(); lastResume = Date.now();
+#         };
+#         window.addEventListener('pageshow', (ev)=>{ if (ev.persisted) reset(); });
+#         document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') reset(); });
+
+#         const onDown = ev => {
+#             // ignore the first ~250ms of taps right after returning
+#             if (Date.now() - lastResume < 250) return;
+
+#             const t = ev.touches ? ev.touches[0] : ev;
+#             sx = t.clientX || 0; sy = t.clientY || 0;
+#             moved=false; pressed=true; armed=false; startT = Date.now();
+
+#             if (!anchor){
+#             const u0 = onUrl?.(); if (u0) anchor = makeAnchor(u0);
+#             }
+
+#             clearTimer();
+#             timer = setTimeout(()=>{
+#             if (pressed && !moved){
+#                 try{ navigator.vibrate?.(10);}catch(_){}
+#                 if (isIOS){
+#                 armed = true; // fire on 'up'
+#                 } else {
+#                 onFire?.();
+#                 openNewTab(onUrl?.());
+#                 pressed = false;
+#                 }
+#             }
+#             }, DELAY);
+#         };
+
+#         const onMove = ev => {
+#             if (!pressed) return;
+#             const t = ev.touches ? ev.touches[0] : ev;
+#             const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+#             if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
+#         };
+
+#         const onUp = ev => {
+#             // if we never really pressed (due to cooldown), ignore
+#             if (!pressed) return;
+#             const long = (Date.now()-startT) >= DELAY && !moved;
+#             pressed=false; clearTimer();
+
+#             if (isIOS && long && armed){
+#             ev.preventDefault?.(); ev.stopPropagation?.();
+#             onFire?.();
+#             openSameTab(onUrl?.()); // iOS = same-tab (reliable)
+#             }
+#             armed=false;
+#         };
+
+#         el.addEventListener('contextmenu', e=>e.preventDefault());
+#         el.style.webkitTouchCallout='none';
+#         el.style.webkitUserSelect='none';
+#         el.style.userSelect='none';
+#         el.style.touchAction='manipulation';
+
+#         if (window.PointerEvent){
+#             el.addEventListener('pointerdown', onDown, {passive:true});
+#             el.addEventListener('pointermove', onMove,  {passive:true});
+#             el.addEventListener('pointerup',   onUp,    {passive:false});
+#             el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
+#         } else {
+#             el.addEventListener('touchstart', onDown, {passive:true});
+#             el.addEventListener('touchmove',  onMove, {passive:true});
+#             el.addEventListener('touchend',   onUp,   {passive:false});
+#             el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
+#             el.addEventListener('mousedown',  onDown);
+#             el.addEventListener('mousemove',  onMove);
+#             el.addEventListener('mouseup',    onUp);
+#         }
+#     };
+                                   
+#     attachLongPress(txt, {
+#     delay: 550,
+#     thresh: 8,
+#     onUrl: () => href   // ta variable href déjà calculée
+#     });
+
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
+
+# # JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via appui long
+# LIEU_LONGPRESS_RENDERER = JsCode("""
+# class LieuRenderer {
+#   init(params){
+#     const e = document.createElement('div');
+#     e.style.display='flex'; e.style.alignItems='center'; e.style.width='100%'; e.style.overflow='hidden';
+
+#     const label = (params.value ?? '').toString().trim();
+#     const addrEnc = (params.data && params.data.__addr_enc)
+#       ? String(params.data.__addr_enc).trim()
+#       : encodeURIComponent(label || "");
+
+#     const ctx  = params.context || {};
+#     const app  = ctx.itineraire_app || "Google Maps Web";
+#     const plat = ctx.platform || (
+#       /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
+#       : /Android/.test(navigator.userAgent) ? "Android" : "Desktop"
+#     );
+
+#     let url = "#";
+#     if (addrEnc) {
+#       if (app === "Apple Maps" && plat === "iOS") {
+#         url = `http://maps.apple.com/?daddr=${addrEnc}`;
+#       } else if (app === "Google Maps App") {
+#         if (plat === "iOS")       url = `comgooglemaps://?daddr=${addrEnc}`;
+#         else if (plat === "Android") url = `geo:0,0?q=${addrEnc}`;
+#         else                      url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
+#       } else {
+#         url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
+#       }
+#     }
+
+#     const txt = document.createElement('span');
+#     txt.className='longpress';
+#     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+#     txt.textContent = label;
+#     e.appendChild(txt);
+
+#     // Fallback local si window.attachLongPress est absent (iframe AG Grid)
+#     const attachLongPress = window.attachLongPress || function attachLongPress(el, opts){
+#         const DELAY  = opts?.delay  ?? 550;
+#         const THRESH = opts?.thresh ?? 8;
+#         const onUrl  = opts?.onUrl;
+#         const onFire = opts?.onFire;
+#         const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+#         let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
+#         let lastResume = 0; // cooldown after returning from another page
+
+#         function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
+#         function openSameTab(url){
+#             if (!url) return;
+#             try { window.top.location.assign(url); } catch(e) { window.location.assign(url); }
+#         }
+#         function makeAnchor(url){
+#             const a = document.createElement('a');
+#             a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
+#             a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+#             document.body.appendChild(a); return a;
+#         }
+#         function openNewTab(url){
+#             if (!url) return;
+#             try { if (!anchor) anchor = makeAnchor(url); else anchor.href = url; anchor.click(); return; } catch(e){}
+#             try { const w = window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
+#             openSameTab(url);
+#         }
+
+#         // --- NEW: reset when page is restored from bfcache or becomes visible again
+#         const reset = ()=>{
+#             pressed=false; armed=false; moved=false; clearTimer(); lastResume = Date.now();
+#         };
+#         window.addEventListener('pageshow', (ev)=>{ if (ev.persisted) reset(); });
+#         document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') reset(); });
+
+#         const onDown = ev => {
+#             // ignore the first ~250ms of taps right after returning
+#             if (Date.now() - lastResume < 250) return;
+
+#             const t = ev.touches ? ev.touches[0] : ev;
+#             sx = t.clientX || 0; sy = t.clientY || 0;
+#             moved=false; pressed=true; armed=false; startT = Date.now();
+
+#             if (!anchor){
+#             const u0 = onUrl?.(); if (u0) anchor = makeAnchor(u0);
+#             }
+
+#             clearTimer();
+#             timer = setTimeout(()=>{
+#             if (pressed && !moved){
+#                 try{ navigator.vibrate?.(10);}catch(_){}
+#                 if (isIOS){
+#                 armed = true; // fire on 'up'
+#                 } else {
+#                 onFire?.();
+#                 openNewTab(onUrl?.());
+#                 pressed = false;
+#                 }
+#             }
+#             }, DELAY);
+#         };
+
+#         const onMove = ev => {
+#             if (!pressed) return;
+#             const t = ev.touches ? ev.touches[0] : ev;
+#             const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+#             if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
+#         };
+
+#         const onUp = ev => {
+#             // if we never really pressed (due to cooldown), ignore
+#             if (!pressed) return;
+#             const long = (Date.now()-startT) >= DELAY && !moved;
+#             pressed=false; clearTimer();
+
+#             if (isIOS && long && armed){
+#             ev.preventDefault?.(); ev.stopPropagation?.();
+#             onFire?.();
+#             openSameTab(onUrl?.()); // iOS = same-tab (reliable)
+#             }
+#             armed=false;
+#         };
+
+#         el.addEventListener('contextmenu', e=>e.preventDefault());
+#         el.style.webkitTouchCallout='none';
+#         el.style.webkitUserSelect='none';
+#         el.style.userSelect='none';
+#         el.style.touchAction='manipulation';
+
+#         if (window.PointerEvent){
+#             el.addEventListener('pointerdown', onDown, {passive:true});
+#             el.addEventListener('pointermove', onMove,  {passive:true});
+#             el.addEventListener('pointerup',   onUp,    {passive:false});
+#             el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
+#         } else {
+#             el.addEventListener('touchstart', onDown, {passive:true});
+#             el.addEventListener('touchmove',  onMove, {passive:true});
+#             el.addEventListener('touchend',   onUp,   {passive:false});
+#             el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
+#             el.addEventListener('mousedown',  onDown);
+#             el.addEventListener('mousemove',  onMove);
+#             el.addEventListener('mouseup',    onUp);
+#         }
+#     };
+                                   
+#     attachLongPress(txt, {
+#     delay: 550,
+#     thresh: 8,
+#     onUrl: () => url    // ta variable url déjà calculée
+#     });
+                                     
+#     this.eGui = e;
+#   }
+#   getGui(){ return this.eGui; }
+#   refresh(){ return false; }
+# }
+# """)
+
+ACTIVITE_LONGPRESS_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
+    // ---- conteneur + texte ----
     const e = document.createElement('div');
-    e.style.display='flex'; e.style.alignItems='center'; e.style.width='100%'; e.style.overflow='hidden';
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
 
     const label = (params.value ?? '').toString();
-    const raw = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
-    const href = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+    const raw   = params.data ? (params.data['Hyperlien'] ?? params.data['Hyperliens'] ?? '') : '';
+    const href  = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
 
     const txt = document.createElement('span');
-    txt.className='longpress';
     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+    txt.style.cursor='pointer';
     txt.textContent = label;
     e.appendChild(txt);
 
-    // Fallback local si window.attachLongPress est absent (iframe AG Grid)
-    const attachLongPress = window.attachLongPress || function attachLongPress(el, opts){
-        const DELAY  = opts?.delay  ?? 550;
-        const THRESH = opts?.thresh ?? 8;
-        const onUrl  = opts?.onUrl;
-        const onFire = opts?.onFire;
-        const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    // ---- fallback long-press (utilise la version globale si dispo) ----
+    const attachLongPress = window.attachLongPress || function(el, opts){
+      const DELAY  = opts?.delay  ?? 550;
+      const THRESH = opts?.thresh ?? 8;
+      const onUrl  = opts?.onUrl;
+      const onFire = opts?.onFire;
+      const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-        let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
-        let lastResume = 0; // cooldown after returning from another page
+      let sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0;
 
-        function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
-        function openSameTab(url){
-            if (!url) return;
-            try { window.top.location.assign(url); } catch(e) { window.location.assign(url); }
-        }
-        function makeAnchor(url){
-            const a = document.createElement('a');
-            a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
-            a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
-            document.body.appendChild(a); return a;
-        }
-        function openNewTab(url){
-            if (!url) return;
-            try { if (!anchor) anchor = makeAnchor(url); else anchor.href = url; anchor.click(); return; } catch(e){}
-            try { const w = window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
-            openSameTab(url);
-        }
+      function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
+      function openSameTab(url){
+        if (!url) return;
+        try { window.top.location.assign(url); }
+        catch(e){ window.location.assign(url); }
+      }
+      function makeAnchor(u){
+        const a=document.createElement('a');
+        a.href=u; a.target='_blank'; a.rel='noopener,noreferrer';
+        a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+        document.body.appendChild(a); return a;
+      }
+      function openNewTab(url){
+        if (!url) return;
+        try { (makeAnchor(url)).click(); return; } catch(e){}
+        try { const w=window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
+        openSameTab(url);
+      }
 
-        // --- NEW: reset when page is restored from bfcache or becomes visible again
-        const reset = ()=>{
-            pressed=false; armed=false; moved=false; clearTimer(); lastResume = Date.now();
-        };
-        window.addEventListener('pageshow', (ev)=>{ if (ev.persisted) reset(); });
-        document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') reset(); });
-
-        const onDown = ev => {
-            // ignore the first ~250ms of taps right after returning
-            if (Date.now() - lastResume < 250) return;
-
-            const t = ev.touches ? ev.touches[0] : ev;
-            sx = t.clientX || 0; sy = t.clientY || 0;
-            moved=false; pressed=true; armed=false; startT = Date.now();
-
-            if (!anchor){
-            const u0 = onUrl?.(); if (u0) anchor = makeAnchor(u0);
-            }
-
-            clearTimer();
-            timer = setTimeout(()=>{
-            if (pressed && !moved){
-                try{ navigator.vibrate?.(10);}catch(_){}
-                if (isIOS){
-                armed = true; // fire on 'up'
-                } else {
-                onFire?.();
-                openNewTab(onUrl?.());
-                pressed = false;
-                }
-            }
-            }, DELAY);
-        };
-
-        const onMove = ev => {
-            if (!pressed) return;
-            const t = ev.touches ? ev.touches[0] : ev;
-            const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
-            if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
-        };
-
-        const onUp = ev => {
-            // if we never really pressed (due to cooldown), ignore
-            if (!pressed) return;
-            const long = (Date.now()-startT) >= DELAY && !moved;
-            pressed=false; clearTimer();
-
-            if (isIOS && long && armed){
-            ev.preventDefault?.(); ev.stopPropagation?.();
+      const onDown = ev => {
+        const t = ev.touches ? ev.touches[0] : ev;
+        sx=t.clientX||0; sy=t.clientY||0;
+        moved=false; pressed=true; startT=Date.now();
+        clearTimer();
+        timer=setTimeout(()=>{
+          if (pressed && !moved){
             onFire?.();
-            openSameTab(onUrl?.()); // iOS = same-tab (reliable)
-            }
-            armed=false;
-        };
+            const u = onUrl?.();
+            if (isIOS) openSameTab(u); else openNewTab(u);
+            pressed=false;
+          }
+        }, DELAY);
+      };
+      const onMove = ev => {
+        if (!pressed) return;
+        const t = ev.touches ? ev.touches[0] : ev;
+        const dx=Math.abs((t.clientX||0)-sx), dy=Math.abs((t.clientY||0)-sy);
+        if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
+      };
+      const onUp = () => { pressed=false; clearTimer(); };
 
-        el.addEventListener('contextmenu', e=>e.preventDefault());
-        el.style.webkitTouchCallout='none';
-        el.style.webkitUserSelect='none';
-        el.style.userSelect='none';
-        el.style.touchAction='manipulation';
-
-        if (window.PointerEvent){
-            el.addEventListener('pointerdown', onDown, {passive:true});
-            el.addEventListener('pointermove', onMove,  {passive:true});
-            el.addEventListener('pointerup',   onUp,    {passive:false});
-            el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
-        } else {
-            el.addEventListener('touchstart', onDown, {passive:true});
-            el.addEventListener('touchmove',  onMove, {passive:true});
-            el.addEventListener('touchend',   onUp,   {passive:false});
-            el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
-            el.addEventListener('mousedown',  onDown);
-            el.addEventListener('mousemove',  onMove);
-            el.addEventListener('mouseup',    onUp);
-        }
+      el.addEventListener('contextmenu', e=>e.preventDefault());
+      el.style.webkitTouchCallout='none';
+      el.style.webkitUserSelect='none';
+      el.style.userSelect='none';
+      el.style.touchAction='manipulation';
+      el.addEventListener('touchstart', onDown, {passive:true});
+      el.addEventListener('touchmove',  onMove, {passive:true});
+      el.addEventListener('touchend',   onUp,   {passive:false});
+      el.addEventListener('mousedown',  onDown);
+      el.addEventListener('mousemove',  onMove);
+      el.addEventListener('mouseup',    onUp);
     };
-                                   
+
+    // ---- branchement du long-press ----
     attachLongPress(txt, {
-    delay: 550,
-    thresh: 8,
-    onUrl: () => href   // ta variable href déjà calculée
+      delay: 550,
+      thresh: 8,
+      onUrl: () => href
     });
 
     this.eGui = e;
@@ -718,14 +971,16 @@ class ActiviteRenderer {
 }
 """)
 
-# JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via appui long
 LIEU_LONGPRESS_RENDERER = JsCode("""
 class LieuRenderer {
   init(params){
+    // ---- conteneur + texte ----
     const e = document.createElement('div');
-    e.style.display='flex'; e.style.alignItems='center'; e.style.width='100%'; e.style.overflow='hidden';
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
 
     const label = (params.value ?? '').toString().trim();
+
     const addrEnc = (params.data && params.data.__addr_enc)
       ? String(params.data.__addr_enc).trim()
       : encodeURIComponent(label || "");
@@ -742,138 +997,98 @@ class LieuRenderer {
       if (app === "Apple Maps" && plat === "iOS") {
         url = `http://maps.apple.com/?daddr=${addrEnc}`;
       } else if (app === "Google Maps App") {
-        if (plat === "iOS")       url = `comgooglemaps://?daddr=${addrEnc}`;
+        if (plat === "iOS")        url = `comgooglemaps://?daddr=${addrEnc}`;
         else if (plat === "Android") url = `geo:0,0?q=${addrEnc}`;
-        else                      url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
+        else                       url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
       } else {
         url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
       }
     }
 
     const txt = document.createElement('span');
-    txt.className='longpress';
     txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+    txt.style.cursor='pointer';
     txt.textContent = label;
     e.appendChild(txt);
 
-    // Fallback local si window.attachLongPress est absent (iframe AG Grid)
-    const attachLongPress = window.attachLongPress || function attachLongPress(el, opts){
-        const DELAY  = opts?.delay  ?? 550;
-        const THRESH = opts?.thresh ?? 8;
-        const onUrl  = opts?.onUrl;
-        const onFire = opts?.onFire;
-        const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    // ---- fallback long-press (utilise la version globale si dispo) ----
+    const attachLongPress = window.attachLongPress || function(el, opts){
+      const DELAY  = opts?.delay  ?? 550;
+      const THRESH = opts?.thresh ?? 8;
+      const onUrl  = opts?.onUrl;
+      const onFire = opts?.onFire;
+      const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-        let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
-        let lastResume = 0; // cooldown after returning from another page
+      let sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0;
 
-        function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
-        function openSameTab(url){
-            if (!url) return;
-            try { window.top.location.assign(url); } catch(e) { window.location.assign(url); }
-        }
-        function makeAnchor(url){
-            const a = document.createElement('a');
-            a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
-            a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
-            document.body.appendChild(a); return a;
-        }
-        function openNewTab(url){
-            if (!url) return;
-            try { if (!anchor) anchor = makeAnchor(url); else anchor.href = url; anchor.click(); return; } catch(e){}
-            try { const w = window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
-            openSameTab(url);
-        }
+      function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
+      function openSameTab(url){
+        if (!url) return;
+        try { window.top.location.assign(url); }
+        catch(e){ window.location.assign(url); }
+      }
+      function makeAnchor(u){
+        const a=document.createElement('a');
+        a.href=u; a.target='_blank'; a.rel='noopener,noreferrer';
+        a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+        document.body.appendChild(a); return a;
+      }
+      function openNewTab(url){
+        if (!url) return;
+        try { (makeAnchor(url)).click(); return; } catch(e){}
+        try { const w=window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
+        openSameTab(url);
+      }
 
-        // --- NEW: reset when page is restored from bfcache or becomes visible again
-        const reset = ()=>{
-            pressed=false; armed=false; moved=false; clearTimer(); lastResume = Date.now();
-        };
-        window.addEventListener('pageshow', (ev)=>{ if (ev.persisted) reset(); });
-        document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') reset(); });
-
-        const onDown = ev => {
-            // ignore the first ~250ms of taps right after returning
-            if (Date.now() - lastResume < 250) return;
-
-            const t = ev.touches ? ev.touches[0] : ev;
-            sx = t.clientX || 0; sy = t.clientY || 0;
-            moved=false; pressed=true; armed=false; startT = Date.now();
-
-            if (!anchor){
-            const u0 = onUrl?.(); if (u0) anchor = makeAnchor(u0);
-            }
-
-            clearTimer();
-            timer = setTimeout(()=>{
-            if (pressed && !moved){
-                try{ navigator.vibrate?.(10);}catch(_){}
-                if (isIOS){
-                armed = true; // fire on 'up'
-                } else {
-                onFire?.();
-                openNewTab(onUrl?.());
-                pressed = false;
-                }
-            }
-            }, DELAY);
-        };
-
-        const onMove = ev => {
-            if (!pressed) return;
-            const t = ev.touches ? ev.touches[0] : ev;
-            const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
-            if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
-        };
-
-        const onUp = ev => {
-            // if we never really pressed (due to cooldown), ignore
-            if (!pressed) return;
-            const long = (Date.now()-startT) >= DELAY && !moved;
-            pressed=false; clearTimer();
-
-            if (isIOS && long && armed){
-            ev.preventDefault?.(); ev.stopPropagation?.();
+      const onDown = ev => {
+        const t = ev.touches ? ev.touches[0] : ev;
+        sx=t.clientX||0; sy=t.clientY||0;
+        moved=false; pressed=true; startT=Date.now();
+        clearTimer();
+        timer=setTimeout(()=>{
+          if (pressed && !moved){
             onFire?.();
-            openSameTab(onUrl?.()); // iOS = same-tab (reliable)
-            }
-            armed=false;
-        };
+            const u = onUrl?.();
+            if (isIOS) openSameTab(u); else openNewTab(u);
+            pressed=false;
+          }
+        }, DELAY);
+      };
+      const onMove = ev => {
+        if (!pressed) return;
+        const t = ev.touches ? ev.touches[0] : ev;
+        const dx=Math.abs((t.clientX||0)-sx), dy=Math.abs((t.clientY||0)-sy);
+        if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
+      };
+      const onUp = () => { pressed=false; clearTimer(); };
 
-        el.addEventListener('contextmenu', e=>e.preventDefault());
-        el.style.webkitTouchCallout='none';
-        el.style.webkitUserSelect='none';
-        el.style.userSelect='none';
-        el.style.touchAction='manipulation';
-
-        if (window.PointerEvent){
-            el.addEventListener('pointerdown', onDown, {passive:true});
-            el.addEventListener('pointermove', onMove,  {passive:true});
-            el.addEventListener('pointerup',   onUp,    {passive:false});
-            el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
-        } else {
-            el.addEventListener('touchstart', onDown, {passive:true});
-            el.addEventListener('touchmove',  onMove, {passive:true});
-            el.addEventListener('touchend',   onUp,   {passive:false});
-            el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
-            el.addEventListener('mousedown',  onDown);
-            el.addEventListener('mousemove',  onMove);
-            el.addEventListener('mouseup',    onUp);
-        }
+      el.addEventListener('contextmenu', e=>e.preventDefault());
+      el.style.webkitTouchCallout='none';
+      el.style.webkitUserSelect='none';
+      el.style.userSelect='none';
+      el.style.touchAction='manipulation';
+      el.addEventListener('touchstart', onDown, {passive:true});
+      el.addEventListener('touchmove',  onMove, {passive:true});
+      el.addEventListener('touchend',   onUp,   {passive:false});
+      el.addEventListener('mousedown',  onDown);
+      el.addEventListener('mousemove',  onMove);
+      el.addEventListener('mouseup',    onUp);
     };
-                                   
+
+    // ---- branchement du long-press ----
     attachLongPress(txt, {
-    delay: 550,
-    thresh: 8,
-    onUrl: () => url    // ta variable url déjà calculée
+      delay: 550,
+      thresh: 8,
+      onUrl: () => url
     });
-                                     
+
     this.eGui = e;
   }
   getGui(){ return this.eGui; }
   refresh(){ return false; }
 }
 """)
+
 
 ##################
 # Sqlite Manager #
@@ -3968,7 +4183,7 @@ def init_activites_programmees_grid_options(df_display):
     # gb.configure_column("Lieu", editable=True, cellRenderer=LIEU_ICON_RENDERER) #, minWidth=200)
 
     # Configuration de l'appui long pour la recherche Web et la recherche d'itinéraire
-    gb.configure_column("Activité", editable=True, cellRenderer=ACTIVITÉ_LONGPRESS_RENDERER) #, minWidth=220)
+    gb.configure_column("Activité", editable=True, cellRenderer=ACTIVITE_LONGPRESS_RENDERER) #, minWidth=220)
     gb.configure_column("Lieu",     editable=True, cellRenderer=LIEU_LONGPRESS_RENDERER) #, minWidth=200)
 
     # Colorisation
@@ -4000,11 +4215,39 @@ def init_activites_programmees_grid_options(df_display):
         onGridReady=JS_SELECT_DESELECT_ONCE,
     )
 
-    # Mise en page de la grille
-    gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
-        function(params) {{
-            params.api.sizeColumnsToFit();
-        }}
+    # # Mise en page de la grille
+    # gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
+    #     function(params) {{
+    #         params.api.sizeColumnsToFit();
+    #     }}
+    # """))
+    # JS à installer sur le onFirstDataRendered pour le sizeColumnsToFit et le Hook iOS pour recharge la grille au retour d'une page Web (bfcache) 
+    gb.configure_grid_options(onFirstDataRendered=JsCode("""
+        function(params){
+            // Redimensionnement habituel
+            try { params.api.sizeColumnsToFit(); } catch(e){}
+
+            // --- Hook iOS : recharge la grille au retour d'une page Web (bfcache) 
+            if (window.__iosBackHookInstalled) return;
+            window.__iosBackHookInstalled = true;
+
+            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            function cameFromBackForward(){
+                try {
+                    var nav = performance.getEntriesByType &&
+                            performance.getEntriesByType('navigation');
+                    return !!(nav && nav[0] && nav[0].type === 'back_forward');
+                } catch(e){ return false; }
+            }
+
+            window.addEventListener('pageshow', function(e){
+                if (!isIOS) return;
+                if (e.persisted || cameFromBackForward()){
+                    // recharge l’IFRAME AG-Grid => état propre
+                    location.reload();
+                }
+            }, false);
+        }
     """))
 
     grid_options = gb.build()
@@ -4513,7 +4756,7 @@ def init_activites_non_programmees_grid_options(df_display):
     # gb.configure_column("Lieu", editable=True, cellRenderer=LIEU_ICON_RENDERER) #, minWidth=200)
 
     # Configuration de l'appui long pour la recherche Web et la recherche d'itinéraire
-    gb.configure_column("Activité", editable=True, cellRenderer=ACTIVITÉ_LONGPRESS_RENDERER) #, minWidth=220)
+    gb.configure_column("Activité", editable=True, cellRenderer=ACTIVITE_LONGPRESS_RENDERER) #, minWidth=220)
     gb.configure_column("Lieu",     editable=True, cellRenderer=LIEU_LONGPRESS_RENDERER) #, minWidth=200)
 
     # Colorisation 
@@ -4538,11 +4781,39 @@ def init_activites_non_programmees_grid_options(df_display):
         onGridReady=JS_SELECT_DESELECT_ONCE,
     )
 
-    # Mise en page de la grille
-    gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
-        function(params) {{
-            params.api.sizeColumnsToFit();
-        }}
+    # # Mise en page de la grille
+    # gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
+    #     function(params) {{
+    #         params.api.sizeColumnsToFit();
+    #     }}
+    # """))
+    # JS à installer sur le onFirstDataRendered pour le sizeColumnsToFit et le Hook iOS pour recharge la grille au retour d'une page Web (bfcache) 
+    gb.configure_grid_options(onFirstDataRendered=JsCode("""
+        function(params){
+            // Redimensionnement habituel
+            try { params.api.sizeColumnsToFit(); } catch(e){}
+
+            // --- Hook iOS : recharge la grille au retour d'une page Web (bfcache) 
+            if (window.__iosBackHookInstalled) return;
+            window.__iosBackHookInstalled = true;
+
+            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            function cameFromBackForward(){
+                try {
+                    var nav = performance.getEntriesByType &&
+                            performance.getEntriesByType('navigation');
+                    return !!(nav && nav[0] && nav[0].type === 'back_forward');
+                } catch(e){ return false; }
+            }
+
+            window.addEventListener('pageshow', function(e){
+                if (!isIOS) return;
+                if (e.persisted || cameFromBackForward()){
+                    // recharge l’IFRAME AG-Grid => état propre
+                    location.reload();
+                }
+            }, false);
+        }
     """))
 
     grid_options = gb.build()
