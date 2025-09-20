@@ -601,80 +601,99 @@ class ActiviteRenderer {
 
     // Fallback local si window.attachLongPress est absent (iframe AG Grid)
     const attachLongPress = window.attachLongPress || function(el, opts){
-    const DELAY  = opts?.delay  ?? 550;
-    const THRESH = opts?.thresh ?? 8;
-    const onUrl  = opts?.onUrl;        // () => string | null
-    const onFire = opts?.onFire;       // () => void
-    const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const DELAY  = opts?.delay  ?? 550;
+        const THRESH = opts?.thresh ?? 8;
+        const onUrl  = opts?.onUrl;
+        const onFire = opts?.onFire;
+        const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-    let startT=0, sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null;
+        let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
 
-    function openNow(url){
-        if (!url) return;
-        try {
-        const a = document.createElement('a');
-        a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
-        a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
-        } catch { window.open(url, '_blank', 'noopener'); }
-    }
-    const clearTimer = ()=>{ if (timer){ clearTimeout(timer); timer=null; } };
+        function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
+        function makeAnchor(url){
+          const a = document.createElement('a');
+          a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
+          a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+          document.body.appendChild(a);
+          return a;
+        }
+        function openNow(url){
+          if (!url) return;
+          try {
+            if (!anchor) anchor = makeAnchor(url); else anchor.href = url;
+            anchor.click();
+            return;
+          } catch(e) {}
+          try { window.open(url, '_blank','noopener'); return; } catch(e){}
+          try { window.location.assign(url); } catch(e){}
+        }
 
-    const onDown = ev => {
-        const t = ev.touches ? ev.touches[0] : ev;
-        sx = t.clientX || 0; sy = t.clientY || 0;
-        moved=false; pressed=true; armed=false; startT = Date.now();
-        clearTimer();
-        timer = setTimeout(()=>{
-        if (pressed && !moved){
-            try{ navigator.vibrate?.(10); }catch{}
-            if (isIOS){ armed = true; }             // iOS: attend touchend
-            else {
-            if (typeof onFire === 'function') onFire();
-            if (typeof onUrl === 'function') { const u = onUrl(); if (u) openNow(u); }
-            pressed = false;
+        const onDown = ev => {
+          const t = ev.touches ? ev.touches[0] : ev;
+          sx = t.clientX || 0; sy = t.clientY || 0;
+          moved=false; pressed=true; armed=false; startT = Date.now();
+          if (!anchor){
+            const u = (typeof onUrl === 'function') ? onUrl() : null;
+            if (u) anchor = makeAnchor(u);
+          }
+          clearTimer();
+          timer = setTimeout(()=>{
+            if (pressed && !moved){
+              try{ navigator.vibrate?.(10);}catch(_){}
+              if (isIOS){ armed = true; }
+              else {
+                if (typeof onFire === 'function') onFire();
+                const u = (typeof onUrl === 'function') ? onUrl() : null;
+                openNow(u);
+                pressed = false;
+              }
             }
+          }, DELAY);
+        };
+
+        const onMove = ev => {
+          if (!pressed) return;
+          const t = ev.touches ? ev.touches[0] : ev;
+          const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+          if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
+        };
+
+        const onUp = ev => {
+          if (!pressed) return;
+          const dur = Date.now() - startT;
+          const isLong = dur >= DELAY && !moved;
+          pressed=false; clearTimer();
+          if (isIOS && isLong && armed){
+            ev.preventDefault?.(); ev.stopPropagation?.();
+            if (typeof onFire === 'function') onFire();
+            const u = (typeof onUrl === 'function') ? onUrl() : null;
+            openNow(u);
+          }
+          armed=false;
+        };
+
+        el.addEventListener('contextmenu', e=>e.preventDefault());
+        el.style.webkitTouchCallout='none';
+        el.style.webkitUserSelect='none';
+        el.style.userSelect='none';
+        el.style.touchAction='manipulation';
+
+        if (window.PointerEvent){
+          el.addEventListener('pointerdown', onDown, {passive:true});
+          el.addEventListener('pointermove', onMove,  {passive:true});
+          el.addEventListener('pointerup',   onUp,    {passive:false});
+          el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
+        } else {
+          el.addEventListener('touchstart', onDown, {passive:true});
+          el.addEventListener('touchmove',  onMove, {passive:true});
+          el.addEventListener('touchend',   onUp,   {passive:false});
+          el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
+          el.addEventListener('mousedown',  onDown);
+          el.addEventListener('mousemove',  onMove);
+          el.addEventListener('mouseup',    onUp);
         }
-        }, DELAY);
-    };
-    const onMove = ev => {
-        if (!pressed) return;
-        const t = ev.touches ? ev.touches[0] : ev;
-        const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
-        if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
-    };
-    const onUp = ev => {
-        if (!pressed) return;
-        const dur = Date.now() - startT;
-        const isLong = dur >= DELAY && !moved;
-        pressed=false; clearTimer();
-        if (isIOS && isLong && armed){
-        ev.preventDefault?.(); ev.stopPropagation?.();
-        if (typeof onFire === 'function') onFire();
-        if (typeof onUrl === 'function') { const u = onUrl(); if (u) openNow(u); }
-        }
-        armed=false;
-    };
-
-    el.addEventListener('contextmenu', e=>e.preventDefault());
-    el.style.webkitTouchCallout='none'; el.style.webkitUserSelect='none';
-    el.style.userSelect='none'; el.style.touchAction='manipulation';
-
-    if (window.PointerEvent){
-        el.addEventListener('pointerdown', onDown, {passive:true});
-        el.addEventListener('pointermove', onMove,  {passive:true});
-        el.addEventListener('pointerup',   onUp,    {passive:false});
-        el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
-    } else {
-        el.addEventListener('touchstart', onDown, {passive:true});
-        el.addEventListener('touchmove',  onMove, {passive:true});
-        el.addEventListener('touchend',   onUp,   {passive:false});
-        el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
-        el.addEventListener('mousedown',  onDown);
-        el.addEventListener('mousemove',  onMove);
-        el.addEventListener('mouseup',    onUp);
-    }
-    };
-
+      };
+                                   
     attachLongPress(txt, {
     delay: 550,
     thresh: 8,
@@ -728,80 +747,99 @@ class LieuRenderer {
 
     // Fallback local si window.attachLongPress est absent (iframe AG Grid)
     const attachLongPress = window.attachLongPress || function(el, opts){
-    const DELAY  = opts?.delay  ?? 550;
-    const THRESH = opts?.thresh ?? 8;
-    const onUrl  = opts?.onUrl;        // () => string | null
-    const onFire = opts?.onFire;       // () => void
-    const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const DELAY  = opts?.delay  ?? 550;
+        const THRESH = opts?.thresh ?? 8;
+        const onUrl  = opts?.onUrl;
+        const onFire = opts?.onFire;
+        const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-    let startT=0, sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null;
+        let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
 
-    function openNow(url){
-        if (!url) return;
-        try {
-        const a = document.createElement('a');
-        a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
-        a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
-        } catch { window.open(url, '_blank', 'noopener'); }
-    }
-    const clearTimer = ()=>{ if (timer){ clearTimeout(timer); timer=null; } };
+        function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
+        function makeAnchor(url){
+          const a = document.createElement('a');
+          a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
+          a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+          document.body.appendChild(a);
+          return a;
+        }
+        function openNow(url){
+          if (!url) return;
+          try {
+            if (!anchor) anchor = makeAnchor(url); else anchor.href = url;
+            anchor.click();
+            return;
+          } catch(e) {}
+          try { window.open(url, '_blank','noopener'); return; } catch(e){}
+          try { window.location.assign(url); } catch(e){}
+        }
 
-    const onDown = ev => {
-        const t = ev.touches ? ev.touches[0] : ev;
-        sx = t.clientX || 0; sy = t.clientY || 0;
-        moved=false; pressed=true; armed=false; startT = Date.now();
-        clearTimer();
-        timer = setTimeout(()=>{
-        if (pressed && !moved){
-            try{ navigator.vibrate?.(10); }catch{}
-            if (isIOS){ armed = true; }             // iOS: attend touchend
-            else {
-            if (typeof onFire === 'function') onFire();
-            if (typeof onUrl === 'function') { const u = onUrl(); if (u) openNow(u); }
-            pressed = false;
+        const onDown = ev => {
+          const t = ev.touches ? ev.touches[0] : ev;
+          sx = t.clientX || 0; sy = t.clientY || 0;
+          moved=false; pressed=true; armed=false; startT = Date.now();
+          if (!anchor){
+            const u = (typeof onUrl === 'function') ? onUrl() : null;
+            if (u) anchor = makeAnchor(u);
+          }
+          clearTimer();
+          timer = setTimeout(()=>{
+            if (pressed && !moved){
+              try{ navigator.vibrate?.(10);}catch(_){}
+              if (isIOS){ armed = true; }
+              else {
+                if (typeof onFire === 'function') onFire();
+                const u = (typeof onUrl === 'function') ? onUrl() : null;
+                openNow(u);
+                pressed = false;
+              }
             }
+          }, DELAY);
+        };
+
+        const onMove = ev => {
+          if (!pressed) return;
+          const t = ev.touches ? ev.touches[0] : ev;
+          const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+          if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
+        };
+
+        const onUp = ev => {
+          if (!pressed) return;
+          const dur = Date.now() - startT;
+          const isLong = dur >= DELAY && !moved;
+          pressed=false; clearTimer();
+          if (isIOS && isLong && armed){
+            ev.preventDefault?.(); ev.stopPropagation?.();
+            if (typeof onFire === 'function') onFire();
+            const u = (typeof onUrl === 'function') ? onUrl() : null;
+            openNow(u);
+          }
+          armed=false;
+        };
+
+        el.addEventListener('contextmenu', e=>e.preventDefault());
+        el.style.webkitTouchCallout='none';
+        el.style.webkitUserSelect='none';
+        el.style.userSelect='none';
+        el.style.touchAction='manipulation';
+
+        if (window.PointerEvent){
+          el.addEventListener('pointerdown', onDown, {passive:true});
+          el.addEventListener('pointermove', onMove,  {passive:true});
+          el.addEventListener('pointerup',   onUp,    {passive:false});
+          el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
+        } else {
+          el.addEventListener('touchstart', onDown, {passive:true});
+          el.addEventListener('touchmove',  onMove, {passive:true});
+          el.addEventListener('touchend',   onUp,   {passive:false});
+          el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
+          el.addEventListener('mousedown',  onDown);
+          el.addEventListener('mousemove',  onMove);
+          el.addEventListener('mouseup',    onUp);
         }
-        }, DELAY);
-    };
-    const onMove = ev => {
-        if (!pressed) return;
-        const t = ev.touches ? ev.touches[0] : ev;
-        const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
-        if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
-    };
-    const onUp = ev => {
-        if (!pressed) return;
-        const dur = Date.now() - startT;
-        const isLong = dur >= DELAY && !moved;
-        pressed=false; clearTimer();
-        if (isIOS && isLong && armed){
-        ev.preventDefault?.(); ev.stopPropagation?.();
-        if (typeof onFire === 'function') onFire();
-        if (typeof onUrl === 'function') { const u = onUrl(); if (u) openNow(u); }
-        }
-        armed=false;
-    };
-
-    el.addEventListener('contextmenu', e=>e.preventDefault());
-    el.style.webkitTouchCallout='none'; el.style.webkitUserSelect='none';
-    el.style.userSelect='none'; el.style.touchAction='manipulation';
-
-    if (window.PointerEvent){
-        el.addEventListener('pointerdown', onDown, {passive:true});
-        el.addEventListener('pointermove', onMove,  {passive:true});
-        el.addEventListener('pointerup',   onUp,    {passive:false});
-        el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
-    } else {
-        el.addEventListener('touchstart', onDown, {passive:true});
-        el.addEventListener('touchmove',  onMove, {passive:true});
-        el.addEventListener('touchend',   onUp,   {passive:false});
-        el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
-        el.addEventListener('mousedown',  onDown);
-        el.addEventListener('mousemove',  onMove);
-        el.addEventListener('mouseup',    onUp);
-    }
-    };
-
+      };
+                                   
     attachLongPress(txt, {
     delay: 550,
     thresh: 8,
@@ -7082,59 +7120,52 @@ def inject_longpress_util():
     st.markdown("""
         <script>
         (function(){
+        // --- Long-press helper robuste (iOS + iframe) ---
         window.attachLongPress = function(el, opts){
-            const DELAY  = opts.delay  ?? 550;
-            const THRESH = opts.thresh ?? 8;
-            const onUrl  = opts.onUrl;         // optional: () => string | null
-            const onFire = opts.onFire;        // optional: () => void
+            const DELAY  = opts?.delay  ?? 550;
+            const THRESH = opts?.thresh ?? 8;
+            const onUrl  = opts?.onUrl;
+            const onFire = opts?.onFire;
             const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-            let startT=0, sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null;
+            let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
 
-            // helper: open in new tab reliably
+            function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
+            function makeAnchor(url){
+            const a = document.createElement('a');
+            a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
+            a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+            document.body.appendChild(a);
+            return a;
+            }
             function openNow(url){
             if (!url) return;
-            // Prefer anchor click for maximum compatibility
             try {
-                const a = document.createElement('a');
-                a.href = url;
-                a.target = '_blank';
-                a.rel = 'noopener,noreferrer';
-                // Must be in the DOM for some iOS versions
-                a.style.display = 'none';
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-            } catch (e) {
-                // Fallback
-                window.open(url, '_blank', 'noopener');
-            }
-            }
-
-            function clearTimer(){
-            if (timer) { clearTimeout(timer); timer = null; }
+                if (!anchor) anchor = makeAnchor(url); else anchor.href = url;
+                anchor.click();
+                return;
+            } catch(e) {}
+            try { window.open(url, '_blank','noopener'); return; } catch(e){}
+            try { window.location.assign(url); } catch(e){}
             }
 
             const onDown = ev => {
             const t = ev.touches ? ev.touches[0] : ev;
             sx = t.clientX || 0; sy = t.clientY || 0;
-            moved=false; pressed=true; armed=false;
-            startT = Date.now();
-
+            moved=false; pressed=true; armed=false; startT = Date.now();
+            if (!anchor){
+                const u = (typeof onUrl === 'function') ? onUrl() : null;
+                if (u) anchor = makeAnchor(u);
+            }
             clearTimer();
             timer = setTimeout(()=>{
-                if (pressed && !moved) {
-                // long-press reached
-                try { navigator.vibrate?.(10); } catch(_) {}
-                if (isIOS) {
-                    // iOS: arm and wait for touchend/mouseup to open inside gesture
-                    armed = true;
-                } else {
-                    // Desktop/Android: open immediately on timeout
+                if (pressed && !moved){
+                try{ navigator.vibrate?.(10);}catch(_){}
+                if (isIOS){ armed = true; }
+                else {
                     if (typeof onFire === 'function') onFire();
-                    if (typeof onUrl === 'function') {
-                    const url = onUrl(); if (url) openNow(url);
-                    }
+                    const u = (typeof onUrl === 'function') ? onUrl() : null;
+                    openNow(u);
                     pressed = false;
                 }
                 }
@@ -7145,34 +7176,28 @@ def inject_longpress_util():
             if (!pressed) return;
             const t = ev.touches ? ev.touches[0] : ev;
             const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
-            if (dx>THRESH || dy>THRESH) { moved = true; clearTimer(); }
+            if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
             };
 
             const onUp = ev => {
             if (!pressed) return;
             const dur = Date.now() - startT;
             const isLong = dur >= DELAY && !moved;
-            pressed=false;
-            clearTimer();
-
-            if (isIOS && isLong && armed) {
-                // iOS: fire NOW inside the gesture handler
-                ev.preventDefault?.();
-                ev.stopPropagation?.();
+            pressed=false; clearTimer();
+            if (isIOS && isLong && armed){
+                ev.preventDefault?.(); ev.stopPropagation?.();
                 if (typeof onFire === 'function') onFire();
-                if (typeof onUrl === 'function') {
-                const url = onUrl(); if (url) openNow(url);
-                }
+                const u = (typeof onUrl === 'function') ? onUrl() : null;
+                openNow(u);
             }
-            armed = false;
+            armed=false;
             };
 
             el.addEventListener('contextmenu', e=>e.preventDefault());
-            // prevent text selection / callout on long-press
-            el.style.webkitTouchCallout = 'none';
-            el.style.webkitUserSelect   = 'none';
-            el.style.userSelect         = 'none';
-            el.style.touchAction        = 'manipulation';
+            el.style.webkitTouchCallout='none';
+            el.style.webkitUserSelect='none';
+            el.style.userSelect='none';
+            el.style.touchAction='manipulation';
 
             if (window.PointerEvent){
             el.addEventListener('pointerdown', onDown, {passive:true});
