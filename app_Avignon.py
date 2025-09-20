@@ -600,17 +600,16 @@ class ActiviteRenderer {
     e.appendChild(txt);
 
     // Fallback local si window.attachLongPress est absent (iframe AG Grid)
-        const attachLongPress = window.attachLongPress || function(el, opts){
+    const attachLongPress = window.attachLongPress || function(el, opts){
         const DELAY  = opts?.delay  ?? 550;
         const THRESH = opts?.thresh ?? 8;
-        const onUrl  = opts?.onUrl;     // () => string | null
-        const onFire = opts?.onFire;    // () => void
+        const onUrl  = opts?.onUrl;
+        const onFire = opts?.onFire;
         const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
         let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
 
         function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
-
         function makeAnchor(url){
         const a = document.createElement('a');
         a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
@@ -618,49 +617,35 @@ class ActiviteRenderer {
         document.body.appendChild(a);
         return a;
         }
-
-        function openBest(url){
+        function openSameTab(url){
         if (!url) return;
-        // 1) click d’ancre (nouvel onglet)
-        try {
-            if (!anchor) anchor = makeAnchor(url); else anchor.href = url;
-            anchor.click();
-            return;
-        } catch(e) {}
-        // 2) window.open
-        try {
-            const w = window.open(url, '_blank', 'noopener');
-            if (w) return;
-        } catch(e){}
-        // 3) même onglet (parent si possible)
-        try { window.top.location.assign(url); return; } catch(e){}
-        try { window.location.assign(url); return; } catch(e){}
+        try { window.top.location.assign(url); }
+        catch(e){ window.location.assign(url); }
+        }
+        function openNewTab(url){
+        if (!url) return;
+        try { if (!anchor) anchor = makeAnchor(url); else anchor.href = url; anchor.click(); return; } catch(e){}
+        try { const w = window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
+        openSameTab(url);
         }
 
         const onDown = ev => {
         const t = ev.touches ? ev.touches[0] : ev;
         sx = t.clientX || 0; sy = t.clientY || 0;
-        moved=false; pressed=true; armed=false; startT = Date.now();
-
-        // Préparer l’ancre tôt (certaines versions iOS y tiennent)
+        moved = false; pressed = true; armed = false;
+        startT = Date.now();
         if (!anchor){
-            try {
-            const u0 = (typeof onUrl === 'function') ? onUrl() : null;
-            if (u0) anchor = makeAnchor(u0);
-            } catch(e){}
+            const u0 = onUrl?.(); if (u0) anchor = makeAnchor(u0);
         }
-
         clearTimer();
         timer = setTimeout(()=>{
             if (pressed && !moved){
-            try{ navigator.vibrate?.(10);}catch(_){}
+            try { navigator.vibrate?.(10); } catch(_){}
             if (isIOS){
-                // Attendre touchend/pointerup pour ouvrir dans le gesture
                 armed = true;
             } else {
-                if (typeof onFire === 'function') onFire();
-                const u = (typeof onUrl === 'function') ? onUrl() : null;
-                openBest(u);
+                onFire?.();
+                openNewTab(onUrl?.());
                 pressed = false;
             }
             }
@@ -670,28 +655,24 @@ class ActiviteRenderer {
         const onMove = ev => {
         if (!pressed) return;
         const t = ev.touches ? ev.touches[0] : ev;
-        const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+        const dx = Math.abs((t.clientX||0)-sx),
+                dy = Math.abs((t.clientY||0)-sy);
         if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
         };
 
         const onUp = ev => {
         if (!pressed) return;
-        const dur = Date.now() - startT;
-        const isLong = dur >= DELAY && !moved;
-        pressed=false; clearTimer();
-
-        if (isIOS && isLong && armed){
-            // Ouvre MAINTENANT dans le handler (gesture iOS)
+        const long = (Date.now()-startT) >= DELAY && !moved;
+        pressed = false; clearTimer();
+        if (isIOS && long && armed){
             ev.preventDefault?.();
             ev.stopPropagation?.();
-            if (typeof onFire === 'function') onFire();
-            const u = (typeof onUrl === 'function') ? onUrl() : null;
-            openBest(u);
+            onFire?.();
+            openSameTab(onUrl?.());
         }
-        armed=false;
+        armed = false;
         };
 
-        // iOS: pas de menu loupe/sélection
         el.addEventListener('contextmenu', e=>e.preventDefault());
         el.style.webkitTouchCallout='none';
         el.style.webkitUserSelect='none';
@@ -701,12 +682,12 @@ class ActiviteRenderer {
         if (window.PointerEvent){
         el.addEventListener('pointerdown', onDown, {passive:true});
         el.addEventListener('pointermove', onMove,  {passive:true});
-        el.addEventListener('pointerup',   onUp,    {passive:false}); // <— pas passive
+        el.addEventListener('pointerup',   onUp,    {passive:false});
         el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
         } else {
         el.addEventListener('touchstart', onDown, {passive:true});
         el.addEventListener('touchmove',  onMove, {passive:true});
-        el.addEventListener('touchend',   onUp,   {passive:false});   // <— pas passive
+        el.addEventListener('touchend',   onUp,   {passive:false});
         el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
         el.addEventListener('mousedown',  onDown);
         el.addEventListener('mousemove',  onMove);
@@ -769,14 +750,13 @@ class LieuRenderer {
     const attachLongPress = window.attachLongPress || function(el, opts){
         const DELAY  = opts?.delay  ?? 550;
         const THRESH = opts?.thresh ?? 8;
-        const onUrl  = opts?.onUrl;     // () => string | null
-        const onFire = opts?.onFire;    // () => void
+        const onUrl  = opts?.onUrl;
+        const onFire = opts?.onFire;
         const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
         let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
 
         function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
-
         function makeAnchor(url){
         const a = document.createElement('a');
         a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
@@ -784,49 +764,35 @@ class LieuRenderer {
         document.body.appendChild(a);
         return a;
         }
-
-        function openBest(url){
+        function openSameTab(url){
         if (!url) return;
-        // 1) click d’ancre (nouvel onglet)
-        try {
-            if (!anchor) anchor = makeAnchor(url); else anchor.href = url;
-            anchor.click();
-            return;
-        } catch(e) {}
-        // 2) window.open
-        try {
-            const w = window.open(url, '_blank', 'noopener');
-            if (w) return;
-        } catch(e){}
-        // 3) même onglet (parent si possible)
-        try { window.top.location.assign(url); return; } catch(e){}
-        try { window.location.assign(url); return; } catch(e){}
+        try { window.top.location.assign(url); }
+        catch(e){ window.location.assign(url); }
+        }
+        function openNewTab(url){
+        if (!url) return;
+        try { if (!anchor) anchor = makeAnchor(url); else anchor.href = url; anchor.click(); return; } catch(e){}
+        try { const w = window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
+        openSameTab(url);
         }
 
         const onDown = ev => {
         const t = ev.touches ? ev.touches[0] : ev;
         sx = t.clientX || 0; sy = t.clientY || 0;
-        moved=false; pressed=true; armed=false; startT = Date.now();
-
-        // Préparer l’ancre tôt (certaines versions iOS y tiennent)
+        moved = false; pressed = true; armed = false;
+        startT = Date.now();
         if (!anchor){
-            try {
-            const u0 = (typeof onUrl === 'function') ? onUrl() : null;
-            if (u0) anchor = makeAnchor(u0);
-            } catch(e){}
+            const u0 = onUrl?.(); if (u0) anchor = makeAnchor(u0);
         }
-
         clearTimer();
         timer = setTimeout(()=>{
             if (pressed && !moved){
-            try{ navigator.vibrate?.(10);}catch(_){}
+            try { navigator.vibrate?.(10); } catch(_){}
             if (isIOS){
-                // Attendre touchend/pointerup pour ouvrir dans le gesture
                 armed = true;
             } else {
-                if (typeof onFire === 'function') onFire();
-                const u = (typeof onUrl === 'function') ? onUrl() : null;
-                openBest(u);
+                onFire?.();
+                openNewTab(onUrl?.());
                 pressed = false;
             }
             }
@@ -836,28 +802,24 @@ class LieuRenderer {
         const onMove = ev => {
         if (!pressed) return;
         const t = ev.touches ? ev.touches[0] : ev;
-        const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+        const dx = Math.abs((t.clientX||0)-sx),
+                dy = Math.abs((t.clientY||0)-sy);
         if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
         };
 
         const onUp = ev => {
         if (!pressed) return;
-        const dur = Date.now() - startT;
-        const isLong = dur >= DELAY && !moved;
-        pressed=false; clearTimer();
-
-        if (isIOS && isLong && armed){
-            // Ouvre MAINTENANT dans le handler (gesture iOS)
+        const long = (Date.now()-startT) >= DELAY && !moved;
+        pressed = false; clearTimer();
+        if (isIOS && long && armed){
             ev.preventDefault?.();
             ev.stopPropagation?.();
-            if (typeof onFire === 'function') onFire();
-            const u = (typeof onUrl === 'function') ? onUrl() : null;
-            openBest(u);
+            onFire?.();
+            openSameTab(onUrl?.());
         }
-        armed=false;
+        armed = false;
         };
 
-        // iOS: pas de menu loupe/sélection
         el.addEventListener('contextmenu', e=>e.preventDefault());
         el.style.webkitTouchCallout='none';
         el.style.webkitUserSelect='none';
@@ -867,18 +829,19 @@ class LieuRenderer {
         if (window.PointerEvent){
         el.addEventListener('pointerdown', onDown, {passive:true});
         el.addEventListener('pointermove', onMove,  {passive:true});
-        el.addEventListener('pointerup',   onUp,    {passive:false}); // <— pas passive
+        el.addEventListener('pointerup',   onUp,    {passive:false});
         el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
         } else {
         el.addEventListener('touchstart', onDown, {passive:true});
         el.addEventListener('touchmove',  onMove, {passive:true});
-        el.addEventListener('touchend',   onUp,   {passive:false});   // <— pas passive
+        el.addEventListener('touchend',   onUp,   {passive:false});
         el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
         el.addEventListener('mousedown',  onDown);
         el.addEventListener('mousemove',  onMove);
         el.addEventListener('mouseup',    onUp);
         }
     };
+
                                    
     attachLongPress(txt, {
     delay: 550,
