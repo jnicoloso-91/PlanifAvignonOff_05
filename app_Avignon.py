@@ -600,7 +600,7 @@ class ActiviteRenderer {
     e.appendChild(txt);
 
     // Fallback local si window.attachLongPress est absent (iframe AG Grid)
-    const attachLongPress = window.attachLongPress || function(el, opts){
+    const attachLongPress = window.attachLongPress || function attachLongPress(el, opts){
         const DELAY  = opts?.delay  ?? 550;
         const THRESH = opts?.thresh ?? 8;
         const onUrl  = opts?.onUrl;
@@ -608,69 +608,79 @@ class ActiviteRenderer {
         const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
         let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
+        let lastResume = 0; // cooldown after returning from another page
 
         function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
-        function makeAnchor(url){
-        const a = document.createElement('a');
-        a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
-        a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
-        document.body.appendChild(a);
-        return a;
-        }
         function openSameTab(url){
-        if (!url) return;
-        try { window.top.location.assign(url); }
-        catch(e){ window.location.assign(url); }
+            if (!url) return;
+            try { window.top.location.assign(url); } catch(e) { window.location.assign(url); }
+        }
+        function makeAnchor(url){
+            const a = document.createElement('a');
+            a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
+            a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+            document.body.appendChild(a); return a;
         }
         function openNewTab(url){
-        if (!url) return;
-        try { if (!anchor) anchor = makeAnchor(url); else anchor.href = url; anchor.click(); return; } catch(e){}
-        try { const w = window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
-        openSameTab(url);
+            if (!url) return;
+            try { if (!anchor) anchor = makeAnchor(url); else anchor.href = url; anchor.click(); return; } catch(e){}
+            try { const w = window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
+            openSameTab(url);
         }
 
+        // --- NEW: reset when page is restored from bfcache or becomes visible again
+        const reset = ()=>{
+            pressed=false; armed=false; moved=false; clearTimer(); lastResume = Date.now();
+        };
+        window.addEventListener('pageshow', (ev)=>{ if (ev.persisted) reset(); });
+        document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') reset(); });
+
         const onDown = ev => {
-        const t = ev.touches ? ev.touches[0] : ev;
-        sx = t.clientX || 0; sy = t.clientY || 0;
-        moved = false; pressed = true; armed = false;
-        startT = Date.now();
-        if (!anchor){
+            // ignore the first ~250ms of taps right after returning
+            if (Date.now() - lastResume < 250) return;
+
+            const t = ev.touches ? ev.touches[0] : ev;
+            sx = t.clientX || 0; sy = t.clientY || 0;
+            moved=false; pressed=true; armed=false; startT = Date.now();
+
+            if (!anchor){
             const u0 = onUrl?.(); if (u0) anchor = makeAnchor(u0);
-        }
-        clearTimer();
-        timer = setTimeout(()=>{
+            }
+
+            clearTimer();
+            timer = setTimeout(()=>{
             if (pressed && !moved){
-            try { navigator.vibrate?.(10); } catch(_){}
-            if (isIOS){
-                armed = true;
-            } else {
+                try{ navigator.vibrate?.(10);}catch(_){}
+                if (isIOS){
+                armed = true; // fire on 'up'
+                } else {
                 onFire?.();
                 openNewTab(onUrl?.());
                 pressed = false;
+                }
             }
-            }
-        }, DELAY);
+            }, DELAY);
         };
 
         const onMove = ev => {
-        if (!pressed) return;
-        const t = ev.touches ? ev.touches[0] : ev;
-        const dx = Math.abs((t.clientX||0)-sx),
-                dy = Math.abs((t.clientY||0)-sy);
-        if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
+            if (!pressed) return;
+            const t = ev.touches ? ev.touches[0] : ev;
+            const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+            if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
         };
 
         const onUp = ev => {
-        if (!pressed) return;
-        const long = (Date.now()-startT) >= DELAY && !moved;
-        pressed = false; clearTimer();
-        if (isIOS && long && armed){
-            ev.preventDefault?.();
-            ev.stopPropagation?.();
+            // if we never really pressed (due to cooldown), ignore
+            if (!pressed) return;
+            const long = (Date.now()-startT) >= DELAY && !moved;
+            pressed=false; clearTimer();
+
+            if (isIOS && long && armed){
+            ev.preventDefault?.(); ev.stopPropagation?.();
             onFire?.();
-            openSameTab(onUrl?.());
-        }
-        armed = false;
+            openSameTab(onUrl?.()); // iOS = same-tab (reliable)
+            }
+            armed=false;
         };
 
         el.addEventListener('contextmenu', e=>e.preventDefault());
@@ -680,18 +690,18 @@ class ActiviteRenderer {
         el.style.touchAction='manipulation';
 
         if (window.PointerEvent){
-        el.addEventListener('pointerdown', onDown, {passive:true});
-        el.addEventListener('pointermove', onMove,  {passive:true});
-        el.addEventListener('pointerup',   onUp,    {passive:false});
-        el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
+            el.addEventListener('pointerdown', onDown, {passive:true});
+            el.addEventListener('pointermove', onMove,  {passive:true});
+            el.addEventListener('pointerup',   onUp,    {passive:false});
+            el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
         } else {
-        el.addEventListener('touchstart', onDown, {passive:true});
-        el.addEventListener('touchmove',  onMove, {passive:true});
-        el.addEventListener('touchend',   onUp,   {passive:false});
-        el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
-        el.addEventListener('mousedown',  onDown);
-        el.addEventListener('mousemove',  onMove);
-        el.addEventListener('mouseup',    onUp);
+            el.addEventListener('touchstart', onDown, {passive:true});
+            el.addEventListener('touchmove',  onMove, {passive:true});
+            el.addEventListener('touchend',   onUp,   {passive:false});
+            el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
+            el.addEventListener('mousedown',  onDown);
+            el.addEventListener('mousemove',  onMove);
+            el.addEventListener('mouseup',    onUp);
         }
     };
                                    
@@ -747,77 +757,86 @@ class LieuRenderer {
     e.appendChild(txt);
 
     // Fallback local si window.attachLongPress est absent (iframe AG Grid)
-    const attachLongPress = window.attachLongPress || function(el, opts){
-        const DELAY  = opts?.delay  ?? 550;
+    const attachLongPress = window.attachLongPress ||         const DELAY  = opts?.delay  ?? 550;
         const THRESH = opts?.thresh ?? 8;
         const onUrl  = opts?.onUrl;
         const onFire = opts?.onFire;
         const isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
         let sx=0, sy=0, moved=false, pressed=false, armed=false, timer=null, anchor=null, startT=0;
+        let lastResume = 0; // cooldown after returning from another page
 
         function clearTimer(){ if (timer){ clearTimeout(timer); timer=null; } }
-        function makeAnchor(url){
-        const a = document.createElement('a');
-        a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
-        a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
-        document.body.appendChild(a);
-        return a;
-        }
         function openSameTab(url){
-        if (!url) return;
-        try { window.top.location.assign(url); }
-        catch(e){ window.location.assign(url); }
+            if (!url) return;
+            try { window.top.location.assign(url); } catch(e) { window.location.assign(url); }
+        }
+        function makeAnchor(url){
+            const a = document.createElement('a');
+            a.href = url; a.target = '_blank'; a.rel = 'noopener,noreferrer';
+            a.style.position='absolute'; a.style.left='-9999px'; a.style.top='-9999px';
+            document.body.appendChild(a); return a;
         }
         function openNewTab(url){
-        if (!url) return;
-        try { if (!anchor) anchor = makeAnchor(url); else anchor.href = url; anchor.click(); return; } catch(e){}
-        try { const w = window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
-        openSameTab(url);
+            if (!url) return;
+            try { if (!anchor) anchor = makeAnchor(url); else anchor.href = url; anchor.click(); return; } catch(e){}
+            try { const w = window.open(url,'_blank','noopener'); if (w) return; } catch(e){}
+            openSameTab(url);
         }
 
+        // --- NEW: reset when page is restored from bfcache or becomes visible again
+        const reset = ()=>{
+            pressed=false; armed=false; moved=false; clearTimer(); lastResume = Date.now();
+        };
+        window.addEventListener('pageshow', (ev)=>{ if (ev.persisted) reset(); });
+        document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') reset(); });
+
         const onDown = ev => {
-        const t = ev.touches ? ev.touches[0] : ev;
-        sx = t.clientX || 0; sy = t.clientY || 0;
-        moved = false; pressed = true; armed = false;
-        startT = Date.now();
-        if (!anchor){
+            // ignore the first ~250ms of taps right after returning
+            if (Date.now() - lastResume < 250) return;
+
+            const t = ev.touches ? ev.touches[0] : ev;
+            sx = t.clientX || 0; sy = t.clientY || 0;
+            moved=false; pressed=true; armed=false; startT = Date.now();
+
+            if (!anchor){
             const u0 = onUrl?.(); if (u0) anchor = makeAnchor(u0);
-        }
-        clearTimer();
-        timer = setTimeout(()=>{
+            }
+
+            clearTimer();
+            timer = setTimeout(()=>{
             if (pressed && !moved){
-            try { navigator.vibrate?.(10); } catch(_){}
-            if (isIOS){
-                armed = true;
-            } else {
+                try{ navigator.vibrate?.(10);}catch(_){}
+                if (isIOS){
+                armed = true; // fire on 'up'
+                } else {
                 onFire?.();
                 openNewTab(onUrl?.());
                 pressed = false;
+                }
             }
-            }
-        }, DELAY);
+            }, DELAY);
         };
 
         const onMove = ev => {
-        if (!pressed) return;
-        const t = ev.touches ? ev.touches[0] : ev;
-        const dx = Math.abs((t.clientX||0)-sx),
-                dy = Math.abs((t.clientY||0)-sy);
-        if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
+            if (!pressed) return;
+            const t = ev.touches ? ev.touches[0] : ev;
+            const dx = Math.abs((t.clientX||0)-sx), dy = Math.abs((t.clientY||0)-sy);
+            if (dx>THRESH || dy>THRESH){ moved=true; clearTimer(); }
         };
 
         const onUp = ev => {
-        if (!pressed) return;
-        const long = (Date.now()-startT) >= DELAY && !moved;
-        pressed = false; clearTimer();
-        if (isIOS && long && armed){
-            ev.preventDefault?.();
-            ev.stopPropagation?.();
+            // if we never really pressed (due to cooldown), ignore
+            if (!pressed) return;
+            const long = (Date.now()-startT) >= DELAY && !moved;
+            pressed=false; clearTimer();
+
+            if (isIOS && long && armed){
+            ev.preventDefault?.(); ev.stopPropagation?.();
             onFire?.();
-            openSameTab(onUrl?.());
-        }
-        armed = false;
+            openSameTab(onUrl?.()); // iOS = same-tab (reliable)
+            }
+            armed=false;
         };
 
         el.addEventListener('contextmenu', e=>e.preventDefault());
@@ -827,22 +846,21 @@ class LieuRenderer {
         el.style.touchAction='manipulation';
 
         if (window.PointerEvent){
-        el.addEventListener('pointerdown', onDown, {passive:true});
-        el.addEventListener('pointermove', onMove,  {passive:true});
-        el.addEventListener('pointerup',   onUp,    {passive:false});
-        el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
+            el.addEventListener('pointerdown', onDown, {passive:true});
+            el.addEventListener('pointermove', onMove,  {passive:true});
+            el.addEventListener('pointerup',   onUp,    {passive:false});
+            el.addEventListener('pointercancel', ()=>{ pressed=false; clearTimer(); });
         } else {
-        el.addEventListener('touchstart', onDown, {passive:true});
-        el.addEventListener('touchmove',  onMove, {passive:true});
-        el.addEventListener('touchend',   onUp,   {passive:false});
-        el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
-        el.addEventListener('mousedown',  onDown);
-        el.addEventListener('mousemove',  onMove);
-        el.addEventListener('mouseup',    onUp);
+            el.addEventListener('touchstart', onDown, {passive:true});
+            el.addEventListener('touchmove',  onMove, {passive:true});
+            el.addEventListener('touchend',   onUp,   {passive:false});
+            el.addEventListener('touchcancel',()=>{ pressed=false; clearTimer(); });
+            el.addEventListener('mousedown',  onDown);
+            el.addEventListener('mousemove',  onMove);
+            el.addEventListener('mouseup',    onUp);
         }
     };
 
-                                   
     attachLongPress(txt, {
     delay: 550,
     thresh: 8,
