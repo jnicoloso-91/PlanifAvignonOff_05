@@ -757,7 +757,8 @@ class LieuRenderer {
     e.appendChild(txt);
 
     // Fallback local si window.attachLongPress est absent (iframe AG Grid)
-    const attachLongPress = window.attachLongPress ||         const DELAY  = opts?.delay  ?? 550;
+    const attachLongPress = window.attachLongPress || function attachLongPress(el, opts){
+        const DELAY  = opts?.delay  ?? 550;
         const THRESH = opts?.thresh ?? 8;
         const onUrl  = opts?.onUrl;
         const onFire = opts?.onFire;
@@ -860,7 +861,7 @@ class LieuRenderer {
             el.addEventListener('mouseup',    onUp);
         }
     };
-
+                                   
     attachLongPress(txt, {
     delay: 550,
     thresh: 8,
