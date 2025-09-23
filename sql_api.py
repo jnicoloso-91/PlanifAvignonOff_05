@@ -243,7 +243,7 @@ def sauvegarder_contexte(enqueue=True):
         # ca : reset puis insert
         if ca is not None:
             con.execute("DELETE FROM carnet")
-            if len(ca):
+            if len(ca) > 0:
                 cols = ca.columns.tolist()
                 con.executemany(
                     f"INSERT INTO carnet ({','.join(cols)}) VALUES ({','.join(['?']*len(cols))})",
