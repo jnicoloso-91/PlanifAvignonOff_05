@@ -464,8 +464,6 @@ MAX_IDLE = 600  # 10 min
 def _start_new_worker():
     """Crée un worker neuf et l'enregistre dans st.session_state."""
 
-    tracer.log(types=["wk"])
-
     # artefacts partagés
     q        = queue.Queue()
     stop_evt = threading.Event()
@@ -499,6 +497,9 @@ def _start_new_worker():
     st.session_state.gsync_stop   = stop_evt
     st.session_state.gsync_status = status
     st.session_state.gsync_thread = t
+
+    tracer.log("Started !", types=["wk"])
+
 
 
 def ensure_worker_alive():
