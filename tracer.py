@@ -21,6 +21,7 @@ TRACE_TYPES = [
     "_gs_push_row",
     "_gs_push_param",
     "wk",
+    "cold start"
     # "bd_maj_contexte",
     ]  # "all" ou liste des types de trace / noms de fonctions à afficher
 
