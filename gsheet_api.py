@@ -151,7 +151,7 @@ def charger_contexte():
         
         try:
             worksheet = gsheets["adrs"]
-            ca = get_as_dataframe(worksheet, evaluate_formulas=True).drop
+            ca = get_as_dataframe(worksheet, evaluate_formulas=True)
         except Exception as e:
             print(f"Erreur au chargement du carnet d'adresses depuis la Google Sheet : {e}")
             ca = pd.DataFrame(columns=COLONNES_ATTENDUES_CARNET_ADRESSES)
