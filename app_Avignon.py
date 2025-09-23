@@ -682,8 +682,6 @@ def charger_contexte_depuis_sql():
     if "df" not in st.session_state:
         df, meta, ca = sql.charger_contexte()
 
-        tracer.log(f"Type de ca {ca}", types=["wk"])
-
         try:
             wb = None
             fn  = meta["fn"]
@@ -5528,6 +5526,7 @@ def tracer_rerun():
 def app_boot():
 
     cold_start = not sql.db_exists()
+    tracer.log(f"Cold Start {cold_start}", types=["main"])
 
     # DEBUG ONLY - Reset DB
     # with sqlite3.connect(DB_PATH) as con:
@@ -5543,9 +5542,8 @@ def app_boot():
 
     sql.init_db()                           # Crée les tables si besoin
     if cold_start and WITH_GOOGLE_SHEET:    # Hydratation des tables avec les données Google Sheet en cas de cold start et si Google Sheet est utilisé
-        tracer.log("Cold Start", types=["wk"])
         charger_contexte_depuis_gsheet()
-        tracer.log(f"Type de ca {type(st.session_state.ca)}", types=["wk"])
+        tracer.log(f"Type de ca {type(st.session_state.ca)}", types=["cold start"])
         sql.sauvegarder_contexte(enqueue=False)
 
 def main():
