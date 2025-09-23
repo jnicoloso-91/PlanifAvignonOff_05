@@ -224,8 +224,8 @@ def sauvegarder_contexte(enqueue=True):
                     f"ON CONFLICT(id) DO UPDATE SET {set_clause}"
         meta_vals = vals
 
-    # preparer ca
-    ca = st.session_state.ca
+    # preparer carnet d'adresses
+    carnet = st.session_state.ca
 
     with _conn_rw() as con:
         con.execute("PRAGMA busy_timeout=30000")
@@ -240,17 +240,17 @@ def sauvegarder_contexte(enqueue=True):
         if sql_meta is not None:
             con.execute(sql_meta, meta_vals)
 
-        # ca : reset puis insert
-        if ca is not None:
+        # carnet d'adresses : reset puis insert
+        if isinstance(carnet, pd.DataFrame):
             con.execute("DELETE FROM carnet")
-            if len(ca) > 0:
-                cols = ca.columns.tolist()
+            if not carnet.empty:
+                cols = carnet.columns.tolist()
                 con.executemany(
                     f"INSERT INTO carnet ({','.join(cols)}) VALUES ({','.join(['?']*len(cols))})",
-                    ca.where(pd.notna(ca), None).itertuples(index=False, name=None)
+                    carnet.where(pd.notna(carnet), None).itertuples(index=False, name=None)
                 )
     if enqueue:
-        wk.enqueue_save_full(df, meta, ca)
+        wk.enqueue_save_full(df, meta, carnet)
 
 def sauvegarder_df():
     df = _strip_display_cols(st.session_state.df)
