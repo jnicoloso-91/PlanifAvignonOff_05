@@ -682,7 +682,7 @@ def charger_contexte_depuis_sql():
     if "df" not in st.session_state:
         df, meta, ca = sql.charger_contexte()
 
-        tracer.log(f"Type de ca {ca}")
+        tracer.log(f"Type de ca {ca}", types=["wk"])
 
         try:
             wb = None
@@ -5545,7 +5545,7 @@ def app_boot():
     if cold_start and WITH_GOOGLE_SHEET:    # Hydratation des tables avec les données Google Sheet en cas de cold start et si Google Sheet est utilisé
         tracer.log("Cold Start", types=["wk"])
         charger_contexte_depuis_gsheet()
-        tracer.log(f"Type de ca {type(st.session_state.ca)}")
+        tracer.log(f"Type de ca {type(st.session_state.ca)}", types=["wk"])
         sql.sauvegarder_contexte(enqueue=False)
 
 def main():
