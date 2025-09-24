@@ -60,7 +60,7 @@ META_COLS_DICO = {
 
 DEFAULT_META = {k: None for k in META_COLS_DICO if k != "id"}
 
-META_COLS = list(META_COLS_DICO.keys())
+META_COLS = [c for c in META_COLS_DICO.keys() if c != "id"]  
 
 @contextmanager
 def _conn_rw():
@@ -212,17 +212,9 @@ def sauvegarder_contexte(enqueue=True):
     meta = get_meta()
     sql_meta = meta_vals = None
     if meta is not None:
-        placeholders = ",".join(["?"] * len(META_COLS))
-        set_clause   = ",".join([f"{c}=excluded.{c}" for c in META_COLS])
-        vals = []
-        for col in META_COLS:
-            v = meta.get(col)
-            if col == "payload_json" and isinstance(v, (dict, list)):
-                v = json.dumps(v, ensure_ascii=False)
-            vals.append(v)
-        sql_meta  = f"INSERT INTO meta (id,{','.join(META_COLS)}) VALUES (1,{placeholders}) " \
-                    f"ON CONFLICT(id) DO UPDATE SET {set_clause}"
-        meta_vals = vals
+        cols = ",".join(["id"] + META_COLS)
+        ph   = ",".join(["?"] * (1 + len(META_COLS)))
+        vals = [1] + [meta.get(c) for c in META_COLS]
 
     # preparer carnet d'adresses
     carnet = st.session_state.ca
@@ -237,8 +229,9 @@ def sauvegarder_contexte(enqueue=True):
             con.executemany(sql_df, rows_params)
 
         # meta : upsert complet (toutes colonnes dans META_COLS sont fixées, y compris à NULL)
-        if sql_meta is not None:
-            con.execute(sql_meta, meta_vals)
+        con.execute("DELETE FROM meta")
+        if meta is not None:
+            con.execute(f"INSERT INTO meta ({cols}) VALUES ({ph})", vals)
 
         # carnet d'adresses : reset puis insert
         if isinstance(carnet, pd.DataFrame):
