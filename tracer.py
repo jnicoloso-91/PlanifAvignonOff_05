@@ -16,13 +16,13 @@ TRACE_TYPES = [
     # "afficher_activites_non_programmees",
     # "afficher_df",
     # "sel_source",
+    # "bd_maj_contexte",
+    "app_boot",
     "_gs_push_full",
     "_gs_push_df",
     "_gs_push_row",
     "_gs_push_param",
     "wk",
-    "cold start"
-    # "bd_maj_contexte",
     ]  # "all" ou liste des types de trace / noms de fonctions à afficher
 
 def get_logger(nom):
