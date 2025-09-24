@@ -1481,7 +1481,7 @@ def afficher_parametres():
 
             # Application itinéraire
             itin_options = get_itin_options(platform)
-            if st.session_state.get("itineraire_app") is None:
+            if st.session_state.get("itineraire_app") is None or st.session_state.get("itineraire_app") not in itin_options:
                 st.session_state.itineraire_app = itin_options[0]
                 sql.sauvegarder_param("itineraire_app")  
                         
