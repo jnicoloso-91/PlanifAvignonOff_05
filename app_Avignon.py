@@ -494,9 +494,9 @@ class ActiviteRenderer {
 JS_ACTIVITE_LONGPRESS_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
-    // --- helper: sélection "propre" de la ligne (1 tap)
+    // --- tap court = sélection propre
     function tapSelectViaSyntheticClick(el){
-      var cell = el.closest ? el.closest('.ag-cell') : null;
+      const cell = el.closest ? el.closest('.ag-cell') : null;
       if (!cell) return;
       try {
         cell.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
@@ -505,109 +505,132 @@ class ActiviteRenderer {
       } catch(_){}
     }
 
-    // --- helper: ouvre en nouvel onglet; iOS -> about:blank puis redirect
+    // --- ouvre nouvel onglet (iOS : about:blank -> redirect)
     function openPreferNewTab(u){
       if (!u) return;
-      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       if (isIOS){
-        try {
-          var w = window.open('about:blank','_blank');
-          if (w){ w.location.href = u; return; }
-        } catch(_){}
+        try { const w = window.open('about:blank','_blank'); if (w){ w.location.href = u; return; } } catch(_){}
       }
       try { window.open(u, '_blank', 'noopener'); }
       catch(_) { window.location.assign(u); }
     }
 
-    // --- long-press unifié (iOS: ouverture en pointerup pour conserver le "user gesture")
-    function attachLongPressOpenNewTab(el, getUrl, onTap, opts){
-      var DELAY = (opts && opts.delay) != null ? opts.delay : 550;
-      var THRESH= (opts && opts.thresh)!= null ? opts.thresh: 8;
-      var TAP_MS= (opts && opts.tapMs) != null ? opts.tapMs : 220;
-
-      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      var sx=0, sy=0, moved=false, pressed=false, startT=0, timer=null, firedLong=false, hadTouchTs=0;
-
-      function clearT(){ if(timer){ clearTimeout(timer); timer=null; } }
-      function now(){ return Date.now(); }
-      function withinTouchGrace(){ return (now()-hadTouchTs) < 800; }
-
-      function onDown(ev){
-        if (ev.type==='mousedown' && withinTouchGrace()) return; // ignore souris synthétique après touch
-        var t = ev.touches ? ev.touches[0] : ev;
-        sx=(t&&t.clientX)||0; sy=(t&&t.clientY)||0;
-        moved=false; pressed=true; firedLong=false; startT=now();
-        clearT();
-        timer = setTimeout(function(){ if (pressed && !moved){ firedLong = true; } }, DELAY);
-      }
-      function onMove(ev){
-        if (!pressed) return;
-        var t = ev.touches ? ev.touches[0] : ev;
-        var dx=Math.abs(((t&&t.clientX)||0)-sx), dy=Math.abs(((t&&t.clientY)||0)-sy);
-        if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
-      }
-      function onUp(ev){
-        if (ev.type==='mouseup' && withinTouchGrace()) return;
-        var dur = now()-startT;
-        var isTap = (dur < TAP_MS) && !moved;
-        var url = (typeof getUrl==='function') ? getUrl() : null;
-
-        pressed=false; clearT();
-
-        if (firedLong && !moved){
-          // IMPORTANT: ouvrir ici (pointerup/touchend) => geste utilisateur direct
-          try { ev.preventDefault(); ev.stopPropagation(); } catch(_){}
-          openPreferNewTab(url);
-          return;
-        }
-        if (isTap && typeof onTap==='function'){
-          requestAnimationFrame(function(){ try{ onTap(); }catch(_){ } });
-        }
-      }
-      function onCancel(){ pressed=false; clearT(); }
-
-      if (window.PointerEvent){
-        el.addEventListener('pointerdown', onDown, {passive:true});
-        el.addEventListener('pointermove', onMove,  {passive:true});
-        el.addEventListener('pointerup',   onUp,    {passive:false});
-        el.addEventListener('pointercancel', onCancel, {passive:true});
-      } else {
-        el.addEventListener('touchstart', function(e){ hadTouchTs=now(); onDown(e); }, {passive:true});
-        el.addEventListener('touchmove',  onMove, {passive:true});
-        el.addEventListener('touchend',   onUp,   {passive:false});
-        el.addEventListener('touchcancel', onCancel, {passive:true});
-        el.addEventListener('mousedown', onDown, true);
-        el.addEventListener('mousemove', onMove, true);
-        el.addEventListener('mouseup',   onUp,   false);
-      }
-      el.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);
-      el.style.webkitTouchCallout='none';
-      el.style.webkitUserSelect='none';
-      el.style.userSelect='none';
-      el.style.touchAction='manipulation';
-    }
-
     // --- container + label
-    var e = document.createElement('div');
+    const e = document.createElement('div');
     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
     e.style.width='100%'; e.style.overflow='hidden';
 
-    var label = (params.value != null ? String(params.value) : '');
-    var raw   = (params.data && (params.data['Hyperlien'] || params.data['Hyperliens']))
-                ? (params.data['Hyperlien'] || params.data['Hyperliens'])
-                : '';
-    var href  = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+    const label = (params.value != null ? String(params.value) : '');
+    const raw   = (params.data && (params.data['Hyperlien'] || params.data['Hyperliens'])) ? (params.data['Hyperlien'] || params.data['Hyperliens']) : '';
+    const href  = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
 
-    var txt = document.createElement('span');
-    txt.style.flex='1 1 auto';
-    txt.style.overflow='hidden';
-    txt.style.textOverflow='ellipsis';
+    const txt = document.createElement('span');
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
     txt.style.cursor='pointer';
+    txt.style.webkitTouchCallout='none';
+    txt.style.webkitUserSelect='none';
+    txt.style.userSelect='none';
+    txt.style.touchAction='manipulation';
     txt.textContent = label;
     e.appendChild(txt);
 
-    // branchement: long-press -> nouvel onglet (iOS inclus) ; tap court -> sélection
-    attachLongPressOpenNewTab(txt, function(){ return href; }, function(){ tapSelectViaSyntheticClick(txt); }, {delay:550,thresh:8,tapMs:220});
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+    if (isIOS){
+      // ===== iOS: long-press fiable (ouverture dans touchend) =====
+      const DELAY=550, THRESH=8, TAP_MS=220;
+      let sx=0, sy=0, moved=false, pressed=false, startT=0, timer=null, firedLong=false;
+
+      function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
+      function now(){ return Date.now(); }
+
+      txt.addEventListener('touchstart', (ev)=>{
+        // IMPORTANT: passive:false pour pouvoir preventDefault plus tard
+        pressed=true; moved=false; firedLong=false; startT=now();
+        const t = ev.touches && ev.touches[0];
+        sx=(t&&t.clientX)||0; sy=(t&&t.clientY)||0;
+        clearT();
+        timer = setTimeout(()=>{ if (pressed && !moved){ firedLong=true; } }, DELAY);
+      }, {passive:false});
+
+      txt.addEventListener('touchmove', (ev)=>{
+        if (!pressed) return;
+        const t = ev.touches && ev.touches[0];
+        const dx=Math.abs(((t&&t.clientX)||0)-sx), dy=Math.abs(((t&&t.clientY)||0)-sy);
+        if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
+      }, {passive:false});
+
+      txt.addEventListener('touchend', (ev)=>{
+        const dur = now()-startT;
+        const isTap = (dur < TAP_MS) && !moved;
+        pressed=false; clearT();
+
+        if (firedLong && !moved){
+          // Empêche menu/selection, ouvre ICI (geste direct)
+          try { ev.preventDefault(); ev.stopPropagation(); } catch(_){}
+          openPreferNewTab(href);
+          return;
+        }
+        if (isTap){
+          requestAnimationFrame(()=>{ tapSelectViaSyntheticClick(txt); });
+        }
+      }, {passive:false});
+
+      txt.addEventListener('touchcancel', ()=>{ pressed=false; clearT(); }, {passive:true});
+      txt.addEventListener('contextmenu', (e)=>e.preventDefault(), true);
+
+    } else {
+      // ===== Android/Desktop: long-press classique (pointer events) =====
+      const DELAY=550, THRESH=8, TAP_MS=220;
+      let sx=0, sy=0, moved=false, pressed=false, startT=0, timer=null, firedLong=false;
+
+      function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
+      function now(){ return Date.now(); }
+
+      if (window.PointerEvent){
+        txt.addEventListener('pointerdown', (ev)=>{
+          sx=ev.clientX||0; sy=ev.clientY||0;
+          pressed=true; moved=false; firedLong=false; startT=now();
+          clearT();
+          timer=setTimeout(()=>{ if (pressed && !moved){ firedLong=true; } }, DELAY);
+        }, {passive:true});
+
+        txt.addEventListener('pointermove', (ev)=>{
+          if (!pressed) return;
+          const dx=Math.abs((ev.clientX||0)-sx), dy=Math.abs((ev.clientY||0)-sy);
+          if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
+        }, {passive:true});
+
+        txt.addEventListener('pointerup', (ev)=>{
+          const dur=now()-startT, isTap=(dur<TAP_MS)&&!moved;
+          pressed=false; clearT();
+          if (firedLong && !moved){ openPreferNewTab(href); return; }
+          if (isTap){ requestAnimationFrame(()=>{ tapSelectViaSyntheticClick(txt); }); }
+        }, {passive:false});
+
+        txt.addEventListener('pointercancel', ()=>{ pressed=false; clearT(); }, {passive:true});
+      } else {
+        // Fallback souris
+        txt.addEventListener('mousedown', (ev)=>{
+          sx=ev.clientX||0; sy=ev.clientY||0;
+          pressed=true; moved=false; firedLong=false; startT=now();
+          clearT();
+          timer=setTimeout(()=>{ if (pressed && !moved){ firedLong=true; } }, DELAY);
+        }, true);
+        txt.addEventListener('mousemove', (ev)=>{
+          if(!pressed) return;
+          const dx=Math.abs((ev.clientX||0)-sx), dy=Math.abs((ev.clientY||0)-sy);
+          if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
+        }, true);
+        txt.addEventListener('mouseup', (ev)=>{
+          const dur=now()-startT, isTap=(dur<TAP_MS)&&!moved;
+          pressed=false; clearT();
+          if (firedLong && !moved){ openPreferNewTab(href); return; }
+          if (isTap){ requestAnimationFrame(()=>{ tapSelectViaSyntheticClick(txt); }); }
+        }, false);
+      }
+    }
 
     this.eGui = e;
   }
