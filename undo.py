@@ -7,10 +7,9 @@ from collections import deque
 import copy
 
 from app_const import *
-from app_utils import ajouter_options_date
+from app_utils import ajouter_options_date, demander_selection, forcer_reaffichage_df, get_meta, set_meta
 import tracer
 import sql_api as sql 
-from app_Avignon import demander_selection, bd_maj_contexte, forcer_reaffichage_df
 
 # Réactive les sélections dans les grilles à partir d'un snapshot
 def _sel_request_update_from_snapshot(snapshot):
@@ -47,6 +46,7 @@ def save():
     snapshot = {
         "df": df_copy,
         "ca": ca_copy,
+        "meta": get_meta(),
         "activites_programmees_sel_request": activites_programmees_sel_request_copy,
         "activites_non_programmees_sel_request": activites_non_programmees_sel_request_copy,
         "creneaux_disponibles_sel_request": creneaux_disponibles_sel_request_copy,
@@ -55,6 +55,41 @@ def save():
     }
     st.session_state.historique_undo.append(snapshot)
     st.session_state.historique_redo.clear()
+
+# Préparation d'une sauvegarde différée du contexte courant
+def save_prepare():
+    df = st.session_state.get("df", None)
+    if df is None:
+        return      
+    df_copy = st.session_state.df.copy(deep=True)
+    df_copy = ajouter_options_date(df_copy)
+    ca_copy = st.session_state.ca.copy()
+    menu_activites_copy = st.session_state.menu_activites.copy()
+    menu_activites_copy["df"] = df_copy
+    activites_programmees_sel_request_copy = copy.deepcopy(st.session_state.activites_programmees_sel_request)
+    activites_non_programmees_sel_request_copy = copy.deepcopy(st.session_state.activites_non_programmees_sel_request)
+    creneaux_disponibles_sel_request_copy = copy.deepcopy(st.session_state.creneaux_disponibles_sel_request)
+    activites_programmables_sel_request_copy = copy.deepcopy(st.session_state.activites_programmables_sel_request)
+
+    snapshot = {
+        "df": df_copy,
+        "ca": ca_copy,
+        "meta": get_meta(),
+        "activites_programmees_sel_request": activites_programmees_sel_request_copy,
+        "activites_non_programmees_sel_request": activites_non_programmees_sel_request_copy,
+        "creneaux_disponibles_sel_request": creneaux_disponibles_sel_request_copy,
+        "activites_programmables_sel_request": activites_programmables_sel_request_copy,
+        "menu_activites": menu_activites_copy,
+    }
+    st.session_state.snapshot = snapshot
+
+
+# Finalisation d'une sauvegarde différée du contexte courant
+def save_finalize():
+    snapshot = st.session_state.get("snapshot", None)
+    if snapshot: 
+        st.session_state.historique_undo.append(snapshot)
+        st.session_state.historique_redo.clear()
 
 # Undo
 def undo():
@@ -72,6 +107,7 @@ def undo():
         current = {
             "df": df_copy,
             "ca": ca_copy,
+            "meta": get_meta(),
             "activites_programmees_sel_request": activites_programmees_sel_request_copy,
             "activites_non_programmees_sel_request": activites_non_programmees_sel_request_copy,
             "creneaux_disponibles_sel_request": creneaux_disponibles_sel_request_copy,
@@ -83,10 +119,12 @@ def undo():
         snapshot = st.session_state.historique_undo.pop()
         st.session_state.df = snapshot["df"]
         st.session_state.ca = snapshot["ca"]
+        set_meta(snapshot["meta"])
         _sel_request_update_from_snapshot(snapshot)
         st.session_state.menu_activites = snapshot["menu_activites"]
         st.session_state.activites_programmables_select_auto = False 
-        bd_maj_contexte(maj_donnees_calculees=False, maj_options_date=False)
+        from app_metier import maj_contexte
+        maj_contexte(maj_donnees_calculees=False, maj_options_date=False)
         forcer_reaffichage_df("creneaux_disponibles")
         sql.sauvegarder_contexte()
         st.rerun()
@@ -107,6 +145,7 @@ def redo():
         current = {
             "df": df_copy,
             "ca": ca_copy,
+            "meta": get_meta(),
             "activites_programmees_sel_request": activites_programmees_sel_request_copy,
             "activites_non_programmees_sel_request": activites_non_programmees_sel_request_copy,
             "creneaux_disponibles_sel_request": creneaux_disponibles_sel_request_copy,
@@ -118,10 +157,12 @@ def redo():
         snapshot = st.session_state.historique_redo.pop()
         st.session_state.df = snapshot["df"]
         st.session_state.ca = snapshot["ca"]
+        set_meta(snapshot["meta"])
         _sel_request_update_from_snapshot(snapshot)
         st.session_state.menu_activites = snapshot["menu_activites"]
         st.session_state.activites_programmables_select_auto = False 
-        bd_maj_contexte(maj_donnees_calculees=False, maj_options_date=False)
+        from app_metier import maj_contexte
+        maj_contexte(maj_donnees_calculees=False, maj_options_date=False)
         forcer_reaffichage_df("creneaux_disponibles")
         sql.sauvegarder_contexte()
         st.rerun()
