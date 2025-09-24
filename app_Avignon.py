@@ -44,7 +44,6 @@ def app_boot():
     sql.init_db()                           # Crée les tables si besoin
     if cold_start and WITH_GOOGLE_SHEET:    # Hydratation des tables avec les données Google Sheet en cas de cold start et si Google Sheet est utilisé
         charger_contexte_depuis_gsheet()
-        tracer.log(f"Type de ca {type(st.session_state.ca)}", types=["cold start"])
         sql.sauvegarder_contexte(enqueue=False)
 
 def main():
