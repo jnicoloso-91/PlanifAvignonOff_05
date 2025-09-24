@@ -1411,8 +1411,16 @@ def afficher_aide():
                 Dans ces deux tableaux les informations sont éditables, sauf les heures de fin (qui sont calculées automatiquement) 
                 et les dates de programmation, heures de début et durées des activités réservées (celles dont la colonne 'Réservé' est à Oui). 
                 Sur la colonne Date un menu permet de programmer / reprogrammer les activités en fonction du jour sélectionné, 
-                voire de déprogrammer les activités du tableau des activités programmées par sélection de l'item vide du menu. 
-                Dans le tableau des activités programmées la couleur de fond est fonction du jour de programmation 
+                voire de déprogrammer les activités du tableau des activités programmées par sélection de l'item vide du menu.</p>
+                         
+            <p>Dans les deux tableaux les colonnes Activité et Lieu permettent respectivement de lancer soit une recherche Web sur l'activité, soit 
+                une recherche d'itinéraire sur le lieu de l'activité. Le lien utilisé pour la recherche Web sur l'activité est l'hyperlien 
+                mis sur la cellule du tableau Excel d'entrée (lequel est recopié dans la colonne Hyperlien des tableaux d'activités programmées 
+                et non programmées). La recherche d'itinéraire quant à elle est réalisée en utilisant l'application choisie dans les paramètres 
+                et soit l'adresse du carnet d'adresse située en feuille 2 du tableau Excel d'entrée, soit le nom du lieu et la ville par défaut 
+                définie dans les paramètres.</p>
+                        
+            </p>Dans le tableau des activités programmées la couleur de fond est fonction du jour de programmation 
                 et les activités réservées sont écrite en rouge. Dans le tableau des activités non programmées la couleur de fond menthe 
                 permet de repérer les activités programmables.</p>
             
