@@ -395,6 +395,10 @@ class ActiviteRenderer {
           if (pressed && !moved){
             firedLong = true;
             var u = onUrl ? onUrl() : null;
+
+            // NEW: mark leaving (pour que le watchdog iOS sache qu'on revient d'un lien)
+            try { window.__iosRevive && window.__iosRevive.markLeaving && window.__iosRevive.markLeaving(); } catch(_){}
+
             if (isIOS) openSameTab(u); else openNewTab(u);
             pressed=false;
           }
@@ -560,6 +564,10 @@ class LieuRenderer {
           if (pressed && !moved){
             firedLong = true;
             var u = onUrl ? onUrl() : null;
+
+            // NEW: mark leaving (pour que le watchdog iOS sache qu'on revient d'un lien)
+            try { window.__iosRevive && window.__iosRevive.markLeaving && window.__iosRevive.markLeaving(); } catch(_){}
+
             if (isIOS) openSameTab(u); else openNewTab(u);
             pressed=false;
           }
@@ -629,7 +637,7 @@ class LieuRenderer {
 """)
         # if (plat === "iOS")          url = "comgooglemaps://?daddr=" + addrEnc; # l'ouverture directe de l'appli depuis le cellRenderer ne marche pas sur IOS -> fallback sur GoogleMaps Web
 
-# JS Code permettant de régler le probleme de blocage de l'UI au retour d'une page Web sur IOS en complément de inject_ios_soft_revive_global
+# JS Code permettant de régler le probleme de blocage de l'UI au retour d'une page Web sur IOS en complément de inject_ios_revive_global
 JS_IOS_SOFT_REVIVE = JsCode("""
     function(params){
     try { params.api.sizeColumnsToFit(); } catch(e){}
@@ -5488,53 +5496,146 @@ def traiter_sections_critiques():
     if cmd:
         activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
 
-# Permet d'éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab)
+# Permet d'éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
+# @st.cache_resource
+# def inject_ios_revive_global():
+#     st.markdown("""
+#         <script>
+#         (function(){
+#         var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+#         function cameFromBackForward(){
+#             try {
+#             var nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
+#             return !!(nav && nav[0] && nav[0].type === 'back_forward');
+#             } catch(e){ return false; }
+#         }
+
+#         function softRevive(){
+#             try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch(e){}
+#             try { window.dispatchEvent(new Event('focus')); } catch(e){}
+#             try { window.dispatchEvent(new Event('resize')); } catch(e){}
+#             // petit “reflow” pour réveiller WebKit
+#             try {
+#             var html = document.documentElement;
+#             var prev = html.style.webkitTransform;
+#             html.style.webkitTransform = 'translateZ(0)';
+#             void html.offsetHeight;
+#             html.style.webkitTransform = prev || '';
+#             } catch(e){}
+#         }
+
+#         window.addEventListener('pageshow', function(e){
+#             if (!isIOS) return;
+#             if (e.persisted || cameFromBackForward()){
+#             // réveille la page parent
+#             softRevive();
+#             // Laisse les iframes (grilles) gérer leur propre refresh (voir 2B)
+#             }
+#         }, false);
+#         })();
+#         </script>
+#     """, unsafe_allow_html=True)
+#     return True
 @st.cache_resource
-def inject_ios_soft_revive_global():
+def inject_ios_revive_global():
     st.markdown("""
-        <script>
-        (function(){
-        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    <script>
+    (function () {
+      if (window.__iosReviveInstalled) return; window.__iosReviveInstalled = true;
 
-        function cameFromBackForward(){
-            try {
-            var nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
-            return !!(nav && nav[0] && nav[0].type === 'back_forward');
-            } catch(e){ return false; }
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (!isIOS) return;
+
+      // On note qu'on part ouvrir un lien (les renderers mettent ce flag)
+      // sessionStorage est scoped par onglet → parfait
+      function markLeaving() {
+        try { sessionStorage.setItem("__ios_expect_return", "1"); } catch(_) {}
+      }
+      window.__iosMarkLeaving = markLeaving;
+
+      function cameFromBackForward() {
+        try {
+          var nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
+          return !!(nav && nav[0] && nav[0].type === 'back_forward');
+        } catch(e){ return false; }
+      }
+
+      // “Soft revive” léger
+      function softRevive() {
+        try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch(e){}
+        try { window.dispatchEvent(new Event('focus')); } catch(e){}
+        try { window.dispatchEvent(new Event('resize')); } catch(e){}
+        // micro reflow
+        try {
+          var html = document.documentElement;
+          var prev = html.style.webkitTransform;
+          html.style.webkitTransform = 'translateZ(0)'; void html.offsetHeight; html.style.webkitTransform = prev || '';
+        } catch(_) {}
+      }
+
+      // Hard reload si la page semble "gelée"
+      function hardReloadIfNeeded() {
+        var now = Date.now();
+        var lastHard = parseInt(sessionStorage.getItem("__ios_hard_reload_ts") || "0", 10);
+        if (now - lastHard < 3000) return; // garde anti-boucle
+
+        try { sessionStorage.setItem("__ios_hard_reload_ts", String(now)); } catch(_) {}
+        try { sessionStorage.removeItem("__ios_expect_return"); } catch(_) {}
+
+        // reload "doux" (cache autorisé) ; si besoin, on pourrait forcer avec true
+        try { location.reload(); } catch(_) { location.assign(location.href); }
+      }
+
+      // Watchdog : si après pageshow la page ne “respire” pas, on hard-reload
+      function watchdogUnfreeze(timeoutMs) {
+        var alive = false;
+        function tick(){ alive = true; }
+        try { requestAnimationFrame(tick); } catch(_) {}
+        setTimeout(function(){
+          if (!alive) { hardReloadIfNeeded(); }
+        }, timeoutMs || 600);
+      }
+
+      // On sait qu'on quitte la page (même onglet)
+      window.addEventListener("pagehide", function(e){
+        if (!isIOS) return;
+        // iOS met souvent persisted=true quand bfcache est utilisé
+        try { sessionStorage.setItem("__ios_pagehide_persisted", e.persisted ? "1" : "0"); } catch(_) {}
+      }, {passive:true});
+
+      // Au retour
+      window.addEventListener("pageshow", function(e){
+        if (!isIOS) return;
+
+        var expect = null, persisted = null;
+        try { expect = sessionStorage.getItem("__ios_expect_return"); } catch(_) {}
+        try { persisted = sessionStorage.getItem("__ios_pagehide_persisted"); } catch(_) {}
+
+        // On tente d'abord un soft revive
+        softRevive();
+
+        // Si on revient d'un lien et/ou du back-forward cache → surveille et hard-reload si gel
+        if (expect === "1" || e.persisted || cameFromBackForward() || persisted === "1") {
+          // Nettoyage du flag “on revient”
+          try { sessionStorage.removeItem("__ios_expect_return"); } catch(_) {}
+          watchdogUnfreeze(700);
         }
+      }, false);
 
-        function softRevive(){
-            try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch(e){}
-            try { window.dispatchEvent(new Event('focus')); } catch(e){}
-            try { window.dispatchEvent(new Event('resize')); } catch(e){}
-            // petit “reflow” pour réveiller WebKit
-            try {
-            var html = document.documentElement;
-            var prev = html.style.webkitTransform;
-            html.style.webkitTransform = 'translateZ(0)';
-            void html.offsetHeight;
-            html.style.webkitTransform = prev || '';
-            } catch(e){}
-        }
-
-        window.addEventListener('pageshow', function(e){
-            if (!isIOS) return;
-            if (e.persisted || cameFromBackForward()){
-            // réveille la page parent
-            softRevive();
-            // Laisse les iframes (grilles) gérer leur propre refresh (voir 2B)
-            }
-        }, false);
-        })();
-        </script>
+      // Expose utilitaire aux renderers (pour marquer le départ)
+      window.__iosRevive = { markLeaving: markLeaving };
+    })();
+    </script>
     """, unsafe_allow_html=True)
     return True
+
 
 # Initialisation de la page HTML
 def initialiser_page():
 
     # Injecte le JS qui permet d'éviter un figeage au retour d'appel d'une page web dans le meme onglet (same tab)
-    inject_ios_soft_revive_global()
+    inject_ios_revive_global()
 
 # Trace le début d'un rerun
 def tracer_rerun():
