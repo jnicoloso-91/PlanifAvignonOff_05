@@ -27,7 +27,7 @@ def tracer_rerun():
 def app_boot():
 
     cold_start = not sql.db_exists()
-    tracer.log(f"Cold Start {cold_start}", types=["main"])
+    tracer.log(f"Cold Start {cold_start}")
 
     # DEBUG ONLY - Reset DB
     # with sqlite3.connect(DB_PATH) as con:
@@ -39,7 +39,7 @@ def app_boot():
     #         DROP TABLE IF EXISTS carnet;
     #     """)
     #     con.commit()
-    # DEBUG ONLY
+    # DEBUG ONLY - Reset DB
 
     sql.init_db()                           # Crée les tables si besoin
     if cold_start and WITH_GOOGLE_SHEET:    # Hydratation des tables avec les données Google Sheet en cas de cold start et si Google Sheet est utilisé
