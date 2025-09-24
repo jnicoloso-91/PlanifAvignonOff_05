@@ -5631,11 +5631,68 @@ def inject_ios_always_reload_on_return():
     """, unsafe_allow_html=True)
     return True
 
+@st.cache_resource
+def inject_ios_watchdog_reload():
+    st.markdown("""
+    <script>
+    (function () {
+      if (window.__iosWatchdogInstalled) return; window.__iosWatchdogInstalled = true;
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (!isIOS) return;
+
+      var lastBeat = Date.now();
+      var beatRAF  = null, guardTsKey="__ios_last_reload_ts";
+
+      function rafLoop(){
+        lastBeat = Date.now();
+        try { beatRAF = requestAnimationFrame(rafLoop); } catch(_) {}
+      }
+      try { beatRAF = requestAnimationFrame(rafLoop); } catch(_) {}
+
+      function hardReloadGuarded(){
+        var now = Date.now(), last = 0;
+        try { last = parseInt(sessionStorage.getItem(guardTsKey)||"0",10); } catch(_){}
+        if (now - last < 3000) return; // anti-boucle 3s
+        try { sessionStorage.setItem(guardTsKey, String(now)); } catch(_){}
+        try { location.reload(); return; } catch(_){}
+        try { location.replace(location.href); return; } catch(_){}
+        try { window.location.assign(window.location.href); return; } catch(_){}
+      }
+
+      // Watchdog : si la page est visible mais que RAF ne bat pas → reload
+      var watchdog = setInterval(function(){
+        if (document.visibilityState !== "visible") return;
+        var idle = Date.now() - lastBeat;
+        if (idle > 1000) { // RAF n'a pas battu depuis >1s : UI probablement figée
+          hardReloadGuarded();
+        }
+      }, 700);
+
+      // Un petit coup de pouce quand on redevient visible : on redémarre RAF proprement
+      document.addEventListener("visibilitychange", function(){
+        if (document.visibilityState === "visible"){
+          lastBeat = Date.now();
+          try { cancelAnimationFrame(beatRAF); } catch(_){}
+          try { beatRAF = requestAnimationFrame(rafLoop); } catch(_){}
+        }
+      }, false);
+
+      // Et si on reprend le focus (ex. retour depuis Maps)
+      window.addEventListener("focus", function(){
+        lastBeat = Date.now();
+        try { cancelAnimationFrame(beatRAF); } catch(_){}
+        try { beatRAF = requestAnimationFrame(rafLoop); } catch(_){}
+      }, false);
+    })();
+    </script>
+    """, unsafe_allow_html=True)
+    return True
+
 # Initialisation de la page HTML
 def initialiser_page():
 
     # Injecte le JS qui permet d'éviter un figeage au retour d'appel d'une page web dans le meme onglet (same tab)
-    inject_ios_always_reload_on_return()
+    inject_ios_watchdog_reload()
 
 # Trace le début d'un rerun
 def tracer_rerun():
