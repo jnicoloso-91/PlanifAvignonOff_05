@@ -395,11 +395,6 @@ class ActiviteRenderer {
           if (pressed && !moved){
             firedLong = true;
             var u = onUrl ? onUrl() : null;
-
-            // NEW: mark leaving (pour que le watchdog iOS sache qu'on revient d'un lien)
-            try { window.__iosRevive && window.__iosRevive.markLeaving && window.__iosRevive.markLeaving(); } catch(_){}
-            try { window.parent && window.parent.postMessage({ __ios_mark_leaving: 1 }, "*"); } catch(_){}
-
             if (isIOS) openSameTab(u); else openNewTab(u);
             pressed=false;
           }
@@ -565,11 +560,6 @@ class LieuRenderer {
           if (pressed && !moved){
             firedLong = true;
             var u = onUrl ? onUrl() : null;
-
-            // NEW: mark leaving (pour que le watchdog iOS sache qu'on revient d'un lien)
-            try { window.__iosRevive && window.__iosRevive.markLeaving && window.__iosRevive.markLeaving(); } catch(_){}
-            try { window.parent && window.parent.postMessage({ __ios_mark_leaving: 1 }, "*"); } catch(_){}
-
             if (isIOS) openSameTab(u); else openNewTab(u);
             pressed=false;
           }
@@ -639,7 +629,7 @@ class LieuRenderer {
 """)
         # if (plat === "iOS")          url = "comgooglemaps://?daddr=" + addrEnc; # l'ouverture directe de l'appli depuis le cellRenderer ne marche pas sur IOS -> fallback sur GoogleMaps Web
 
-# JS Code permettant de régler le probleme de blocage de l'UI au retour d'une page Web sur IOS en complément de inject_ios_revive_global
+# JS Code permettant de régler le probleme de blocage de l'UI au retour d'une page Web sur IOS en complément des inject_ios_xxx_revive (soft, hard, always)
 JS_IOS_SOFT_REVIVE = JsCode("""
     function(params){
     try { params.api.sizeColumnsToFit(); } catch(e){}
@@ -5499,46 +5489,46 @@ def traiter_sections_critiques():
         activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
 
 # Permet d'éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
-# @st.cache_resource
-# def inject_ios_revive_global():
-#     st.markdown("""
-#         <script>
-#         (function(){
-#         var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+@st.cache_resource
+def inject_ios_soft_revive():
+    st.markdown("""
+        <script>
+        (function(){
+        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-#         function cameFromBackForward(){
-#             try {
-#             var nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
-#             return !!(nav && nav[0] && nav[0].type === 'back_forward');
-#             } catch(e){ return false; }
-#         }
+        function cameFromBackForward(){
+            try {
+            var nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
+            return !!(nav && nav[0] && nav[0].type === 'back_forward');
+            } catch(e){ return false; }
+        }
 
-#         function softRevive(){
-#             try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch(e){}
-#             try { window.dispatchEvent(new Event('focus')); } catch(e){}
-#             try { window.dispatchEvent(new Event('resize')); } catch(e){}
-#             // petit “reflow” pour réveiller WebKit
-#             try {
-#             var html = document.documentElement;
-#             var prev = html.style.webkitTransform;
-#             html.style.webkitTransform = 'translateZ(0)';
-#             void html.offsetHeight;
-#             html.style.webkitTransform = prev || '';
-#             } catch(e){}
-#         }
+        function softRevive(){
+            try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch(e){}
+            try { window.dispatchEvent(new Event('focus')); } catch(e){}
+            try { window.dispatchEvent(new Event('resize')); } catch(e){}
+            // petit “reflow” pour réveiller WebKit
+            try {
+            var html = document.documentElement;
+            var prev = html.style.webkitTransform;
+            html.style.webkitTransform = 'translateZ(0)';
+            void html.offsetHeight;
+            html.style.webkitTransform = prev || '';
+            } catch(e){}
+        }
 
-#         window.addEventListener('pageshow', function(e){
-#             if (!isIOS) return;
-#             if (e.persisted || cameFromBackForward()){
-#             // réveille la page parent
-#             softRevive();
-#             // Laisse les iframes (grilles) gérer leur propre refresh (voir 2B)
-#             }
-#         }, false);
-#         })();
-#         </script>
-#     """, unsafe_allow_html=True)
-#     return True
+        window.addEventListener('pageshow', function(e){
+            if (!isIOS) return;
+            if (e.persisted || cameFromBackForward()){
+            // réveille la page parent
+            softRevive();
+            // Laisse les iframes (grilles) gérer leur propre refresh (voir 2B)
+            }
+        }, false);
+        })();
+        </script>
+    """, unsafe_allow_html=True)
+    return True
 
 @st.cache_resource
 def inject_ios_hard_revive():
@@ -5604,11 +5594,48 @@ def inject_ios_hard_revive():
     """, unsafe_allow_html=True)
     return True
 
+@st.cache_resource
+def inject_ios_always_reload_on_return():
+    st.markdown("""
+    <script>
+    (function () {
+      if (window.__iosAlwaysReloadInstalled) return; window.__iosAlwaysReloadInstalled = true;
+
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (!isIOS) return;
+
+      function guardReload() {
+        var now = Date.now();
+        var last = 0;
+        try { last = parseInt(sessionStorage.getItem("__ios_last_reload_ts")||"0", 10); } catch(_){}
+        if (now - last < 3000) return; // anti-boucle 3s
+        try { sessionStorage.setItem("__ios_last_reload_ts", String(now)); } catch(_){}
+        // plusieurs tentatives pour forcer le rechargement
+        try { location.reload(); return; } catch(_){}
+        try { location.replace(location.href); return; } catch(_){}
+        try { window.location.assign(window.location.href); return; } catch(_){}
+      }
+
+      // 1) Recharger à every 'pageshow' (retour dans l'onglet)
+      window.addEventListener("pageshow", function(){ guardReload(); }, false);
+
+      // 2) Fallback si pageshow ne part pas : quand la page redevient visible
+      document.addEventListener("visibilitychange", function(){
+        if (document.visibilityState === "visible") { guardReload(); }
+      }, false);
+
+      // 3) Fallback supplémentaire : regain de focus
+      window.addEventListener("focus", function(){ guardReload(); }, false);
+    })();
+    </script>
+    """, unsafe_allow_html=True)
+    return True
+
 # Initialisation de la page HTML
 def initialiser_page():
 
     # Injecte le JS qui permet d'éviter un figeage au retour d'appel d'une page web dans le meme onglet (same tab)
-    inject_ios_hard_revive()
+    inject_ios_always_reload_on_return()
 
 # Trace le début d'un rerun
 def tracer_rerun():
