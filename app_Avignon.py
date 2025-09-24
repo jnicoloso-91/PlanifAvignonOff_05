@@ -276,7 +276,7 @@ class LieuRenderer {
 
     // ---- préférences + plateforme (depuis gridOptions.context) ----
     const ctx  = params.context || {};
-    const app  = ctx.itineraire_app || "Google Maps Web";
+    const app  = ctx.itineraire_app || "Google Maps";
     const plat = ctx.platform || (
       /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
       : /Android/.test(navigator.userAgent) ? "Android" : "Desktop"
@@ -287,7 +287,7 @@ class LieuRenderer {
     if (addrEnc) {
       if (app === "Apple Maps" && plat === "iOS") {
         url = `http://maps.apple.com/?daddr=${addrEnc}`;
-      } else if (app === "Google Maps App") {
+      } else if (app === "Google Maps") {
         if (plat === "iOS")       url = `comgooglemaps://?daddr=${addrEnc}`;
         else if (plat === "Android") url = `geo:0,0?q=${addrEnc}`;
         else                      url = `https://www.google.com/maps/dir/?api=1&destination=${addrEnc}`;
@@ -480,7 +480,7 @@ class LieuRenderer {
       : encodeURIComponent(label || "");
 
     var ctx  = params.context || {};
-    var app  = ctx.itineraire_app || "Google Maps Web";
+    var app  = ctx.itineraire_app || "Google Maps";
     var plat = ctx.platform || (
       /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
       : (/Android/.test(navigator.userAgent) ? "Android" : "Desktop")
@@ -490,7 +490,7 @@ class LieuRenderer {
     if (addrEnc) {
       if (app === "Apple Maps" && plat === "iOS") {
         url = "http://maps.apple.com/?daddr=" + addrEnc;
-      } else if (app === "Google Maps App") {
+      } else if (app === "Google Maps") {
         if (plat === "iOS")          url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
         else if (plat === "Android") url = "geo:0,0?q=" + addrEnc;
         else                         url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
@@ -1412,11 +1412,11 @@ def afficher_parametres():
 
     def get_itin_options(platform):
         if platform == "iOS":
-            itin_options = ["Apple Maps", "Google Maps App", "Google Maps Web"]
+            itin_options = ["Apple Maps", "Google Maps"]
         elif platform == "Android":
-            itin_options = ["Google Maps App", "Google Maps Web"]
+            itin_options = ["Google Maps"]
         else:
-            itin_options = ["Google Maps Web"]
+            itin_options = ["Google Maps"]
         return itin_options
 
     with st.expander("Paramètres", expanded=False):
@@ -1491,7 +1491,7 @@ def afficher_parametres():
                 options=itin_options,
                 index=index, 
                 key="itineraire_app_selectbox",
-                help="Sur mobile : Apple/Google Maps App ou Google Maps Web. Sur ordinateur : Google Maps Web."
+                help="Sur IOS : Apple/Google Maps. Sinon : Google Maps."
             )
 
             # Ville par défaut pour la recherche d'itinéraire
@@ -2055,13 +2055,13 @@ def afficher_bouton_itineraire(lieu, disabled=False):
     
      # Résolution depuis carnet + fallback
     addr_human, addr_enc = resolve_address_fast(lieu, st.session_state.ca, city_default=st.session_state.city_default)
-    itineraire_app = st.session_state.get("itineraire_app", "Google Maps Web")
+    itineraire_app = st.session_state.get("itineraire_app", "Google Maps")
     platform = get_platform()  
 
     if itineraire_app == "Apple Maps" and platform == "iOS":
         url = f"http://maps.apple.com/?daddr={addr_enc}"
 
-    elif itineraire_app == "Google Maps App":
+    elif itineraire_app == "Google Maps":
         if platform == "iOS":
             url = f"comgooglemaps://?daddr={addr_enc}"
         elif platform == "Android":
@@ -2070,7 +2070,7 @@ def afficher_bouton_itineraire(lieu, disabled=False):
             # Sur desktop, on retombe sur la version web
             url = f"https://www.google.com/maps/dir/?api=1&destination={addr_enc}"
 
-    else:  # Google Maps Web
+    else:  # Google Maps
         url = f"https://www.google.com/maps/dir/?api=1&destination={addr_enc}"
 
     st.link_button(
@@ -2329,7 +2329,7 @@ def init_activites_programmees_grid_options(df_display):
 
     # Enregistre dans le contexte les paramètres nécessaires à la recherche d'itinéraire (voir JS_LIEU_ICON_RENDERER)
     grid_options["context"] = {
-        "itineraire_app": st.session_state.get("itineraire_app", "Google Maps Web"),
+        "itineraire_app": st.session_state.get("itineraire_app", "Google Maps"),
         "platform": get_platform(),  # "iOS" / "Android" / "Desktop"
     }
 
@@ -2868,7 +2868,7 @@ def init_activites_non_programmees_grid_options(df_display):
 
     # Enregistre dans le contexte les paramètres nécessaires à la recherche d'itinéraire (voir JS_LIEU_ICON_RENDERER)
     grid_options["context"] = {
-        "itineraire_app": st.session_state.get("itineraire_app", "Google Maps Web"),
+        "itineraire_app": st.session_state.get("itineraire_app", "Google Maps"),
         "platform": get_platform(),  # "iOS" / "Android" / "Desktop"
     }
 
