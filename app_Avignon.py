@@ -5688,11 +5688,49 @@ def inject_ios_watchdog_reload():
     """, unsafe_allow_html=True)
     return True
 
+@st.cache_resource
+def inject_ios_disable_bfcache():
+    st.markdown("""
+    <script>
+    (function () {
+      if (window.__iosNoBFCacheInstalled) return; window.__iosNoBFCacheInstalled = true;
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (!isIOS) return;
+
+      // 1) Désactive le Back/Forward Cache sur iOS :
+      //    La présence d'un listener 'unload' suffit à empêcher bfcache.
+      window.addEventListener('unload', function(){ /* nop */ }, {passive:true});
+
+      // 2) Au retour dans l’onglet, force un vrai reload réseau (anti-boucle 3s)
+      function hardReloadGuarded(){
+        var now = Date.now();
+        var last = 0;
+        try { last = parseInt(sessionStorage.getItem("__ios_last_reload_ts")||"0",10); } catch(_){}
+        if (now - last < 3000) return; // garde anti-boucle
+        try { sessionStorage.setItem("__ios_last_reload_ts", String(now)); } catch(_){}
+        // cache-buster pour forcer un chargement frais
+        var url = location.href;
+        var sep = url.indexOf('?') === -1 ? '?' : '&';
+        try { location.replace(url + sep + "_ts=" + now); }
+        catch(_) { location.assign(url + sep + "_ts=" + now); }
+      }
+
+      window.addEventListener('pageshow', function(){
+        // Comme le bfcache est désactivé, on revient déjà via un "vrai" load,
+        // mais si Safari recycle malgré tout, on a un filet de sécurité :
+        hardReloadGuarded();
+      }, false);
+    })();
+    </script>
+    """, unsafe_allow_html=True)
+    return True
+
+
 # Initialisation de la page HTML
 def initialiser_page():
 
     # Injecte le JS qui permet d'éviter un figeage au retour d'appel d'une page web dans le meme onglet (same tab)
-    inject_ios_watchdog_reload()
+    inject_ios_disable_bfcache()
 
 # Trace le début d'un rerun
 def tracer_rerun():
