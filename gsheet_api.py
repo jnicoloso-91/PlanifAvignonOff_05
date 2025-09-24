@@ -7,7 +7,7 @@
 # - Mettre True pour debugger en local sous VsCode                                                #
 # - Mettre False avant d'intégrer dans GitHub                                                     #
 ###################################################################################################
-LOCAL = True
+LOCAL = False
 
 import streamlit as st
 import pandas as pd
@@ -241,4 +241,5 @@ def sauvegarder_param(param):
 
         except Exception as e:
             print(f"Erreur gs_sauvegarder_param : {e}")
+
 
