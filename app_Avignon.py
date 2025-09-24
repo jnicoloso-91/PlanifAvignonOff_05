@@ -27,7 +27,7 @@ import tracer
 import sql_api as sql 
 import gsheet_api as gs
 import sync_worker as wk
-import undo_redo as ur
+import undo
 
 ###########
 # JsCodes #
@@ -680,8 +680,11 @@ def charger_contexte_depuis_sql():
             return default
     
     if "df" not in st.session_state:
+
+        # Récupération df, meta, ca à partir de la base SQLite
         df, meta, ca = sql.charger_contexte()
 
+        # Mise à jour wb, fn, fp
         try:
             wb = None
             fn  = meta["fn"]
@@ -691,6 +694,7 @@ def charger_contexte_depuis_sql():
         except Exception as e:
             print(f"Erreur au chargement du modèle Excel depuis DropBox : {e}")
 
+        # Mise à jour paramètres
         try:
             st.session_state.MARGE = to_timedelta(meta["MARGE"], default=MARGE)
             if meta["MARGE"] is None:
@@ -708,6 +712,7 @@ def charger_contexte_depuis_sql():
         except Exception as e:
             print(f"Erreur au chargement des paramètres depuis SQLite : {e}")
 
+        # Mise à jour période de programmation
         try:
             val = meta["periode_a_programmer_debut"]
             if val is not None and str(val).strip() != "":
@@ -717,15 +722,18 @@ def charger_contexte_depuis_sql():
                 st.session_state.periode_a_programmer_fin = datetime.date.fromisoformat(val.split(" ")[0])
         except Exception as e:
             print(f"Erreur au chargement de la période de programmation depuis SQLite : {e}")
-  
+        
+        # Si période programmation absente des meta rattrapage via init standard à partir des activités programmées du contexte que l'on vient de charger  
         if "periode_a_programmer_debut" not in st.session_state or "periode_a_programmer_fin" not in st.session_state:
-            initialiser_periode_programmation(df) # rattrapage via init standard à partir des activités programmées du contexte que l'on vient de charger
+            initialiser_periode_programmation(df) 
             sql.sauvegarder_param("periode_a_programmer_debut")
             sql.sauvegarder_param("periode_a_programmer_fin")
+    
+        st.session_state["push_periode_programmation_modele_values"] = True 
 
         df = nettoyer_donnees(df, fn)
         initialiser_etat_contexte(df, wb, fn, fp, ca)
-        ur.init(verify=False)
+        undo.init(verify=False)
         bd_maj_contexte(maj_donnees_calculees=True, maj_options_date=False) 
 
         st.session_state.activites_programmees = st.session_state.activites_programmees.drop(columns="__options_date", errors="ignore")
@@ -755,8 +763,10 @@ def charger_contexte_depuis_gsheet():
 
         try:
 
+            # Récupération df, meta, ca à partir de la base SQLite
             df, meta, ca = gs.charger_contexte()
         
+            # Mise à jour wb, fn, fp
             try:
                 wb = None
                 fn  = meta["fn"]
@@ -766,6 +776,7 @@ def charger_contexte_depuis_gsheet():
             except Exception as e:
                 print(f"Erreur au chargement du modèle Excel depuis DropBox : {e}")
 
+            # Mise à jour paramètres
             try:
                 st.session_state.MARGE = to_timedelta(meta["MARGE"], default=MARGE)
                 if meta["MARGE"] is None:
@@ -783,6 +794,7 @@ def charger_contexte_depuis_gsheet():
             except Exception as e:
                 print(f"Erreur au chargement des paramètres depuis SQLite : {e}")
 
+            # Mise à jour période de programmation
             try:
                 val = meta["periode_a_programmer_debut"]
                 if val is not None and str(val).strip() != "":
@@ -793,17 +805,20 @@ def charger_contexte_depuis_gsheet():
             except Exception as e:
                 print(f"Erreur au chargement de la période de programmation depuis SQLite : {e}")
     
+            # Si période programmation absente des meta rattrapage via init standard à partir des activités programmées du contexte que l'on vient de charger  
             if "periode_a_programmer_debut" not in st.session_state or "periode_a_programmer_fin" not in st.session_state:
-                initialiser_periode_programmation(df) # rattrapage via init standard à partir des activités programmées du contexte que l'on vient de charger
+                initialiser_periode_programmation(df) 
                 gs.sauvegarder_param("periode_a_programmer_debut")
                 gs.sauvegarder_param("periode_a_programmer_fin")
+    
+            st.session_state["push_periode_programmation_modele_values"] = True 
 
             initialiser_dtypes(df)
             df = nettoyer_donnees(df, fn)
             df = add_persistent_uuid(df)
             df = add_hyperliens(df)
             initialiser_etat_contexte(df, wb, fn, fp, ca)
-            ur.init(verify=False)
+            undo.init(verify=False)
             bd_maj_contexte(maj_donnees_calculees=True, maj_options_date=False) 
             selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
             demander_selection("activites_non_programmees", selection, deselect="activites_programmees")
@@ -824,10 +839,17 @@ def charger_contexte_depuis_gsheet():
 import dropbox
 from io import BytesIO
 
-# Retourne les credentials pour les API Dropbox
-def get_dropbox_client():
-    access_token = st.secrets["dropbox"]["access_token"]
-    return dropbox.Dropbox(access_token)
+def get_dropbox_client() -> dropbox.Dropbox:
+    """
+    Retourne un client Dropbox qui renouvelle automatiquement
+    l'access token à partir du refresh_token.
+    """
+    cfg = st.secrets["dropbox"]
+    return dropbox.Dropbox(
+        app_key=cfg["app_key"],
+        app_secret=cfg["app_secret"],
+        oauth2_refresh_token=cfg["refresh_token"]
+    )
 
 # Sauvegarde sur Dropbox le fichier Excel de l'utilisateur 
 # Cette sauvegarde permet de garder une trace de la mise en page du fichier utilisateur
@@ -1300,15 +1322,6 @@ def afficher_periode_programmation():
             base_deb = st.session_state.periode_a_programmer_debut
             base_fin = st.session_state.periode_a_programmer_fin
 
-            # deb_kwargs = dict(key="periode_debut_input", format="DD/MM/YYYY")
-            # fin_kwargs = dict(key="periode_fin_input",   format="DD/MM/YYYY")
-
-            # st.session_state.setdefault("periode_debut_input", base_deb)
-            # st.session_state.setdefault("periode_fin_input",   base_fin)
-            
-            # deb_kwargs["value"] = base_deb
-            # fin_kwargs["value"] = base_fin
-
             deb_kwargs = dict(key="periode_debut_input", format="DD/MM/YYYY")
             fin_kwargs = dict(key="periode_fin_input",   format="DD/MM/YYYY")
 
@@ -1317,6 +1330,13 @@ def afficher_periode_programmation():
                 st.session_state.periode_debut_input = base_deb
             if "periode_fin_input" not in st.session_state:
                 st.session_state.periode_fin_input = base_fin
+
+            # Prise en compte des valeurs du modèle si l'app les a recalculées par ailleurs
+            push_modele_values = st.session_state.get("push_periode_programmation_modele_values", True)
+            if push_modele_values and "periode_a_programmer_debut" in st.session_state and "periode_a_programmer_fin" in st.session_state:
+                st.session_state.periode_debut_input = st.session_state.periode_a_programmer_debut
+                st.session_state.periode_fin_input = st.session_state.periode_a_programmer_fin
+                st.session_state["push_periode_programmation_modele_values"] = False
 
             # Surtout: ne PAS mettre deb_kwargs["value"] / fin_kwargs["value"]
             # -> st.date_input lira directement st.session_state[<key>]
@@ -2100,7 +2120,7 @@ def show_dialog_supprimer_activite(df, index_df, df_display):
     col1, col2 = st.columns([1, 1])
     with col1:
         if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS):
-            ur.save()
+            undo.save()
             if est_activite_programmee(df.loc[index_df]):
                 demander_selection("activites_programmees", ligne_voisine_index(df_display, index_df), deselect="activites_non_programmees")
             else:
@@ -2125,7 +2145,7 @@ def show_dialog_reprogrammer_activite_programmee(df, activites_programmees, inde
         if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS):
             if jour_selection == jour_escape:
                 # Déprogrammation
-                ur.save()
+                undo.save()
                 demander_selection("activites_non_programmees", index_df, deselect="activites_programmees")
                 bd_deprogrammer_activite_programmee(index_df)
                 forcer_reaffichage_df("creneaux_disponibles")
@@ -2134,7 +2154,7 @@ def show_dialog_reprogrammer_activite_programmee(df, activites_programmees, inde
             else:
                 # Reprogrammation 
                 jour_choisi = int(jour_selection) 
-                ur.save()
+                undo.save()
                 demander_selection("activites_programmees", index_df, deselect="activites_non_programmees")
                 df.at[index_df, "Date"] = jour_choisi
                 sql.sauvegarder_row(index_df)
@@ -2153,7 +2173,7 @@ def show_dialog_programmer_activite_non_programmee(df, index_df, df_display, jou
         if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS):
             # Programmation à la date choisie
             jour_choisi = int(jour_selection.split()[-1])
-            ur.save()
+            undo.save()
             demander_selection("activites_programmees", index_df, deselect="activites_non_programmees")
             df.at[index_df, "Date"] = jour_choisi
             forcer_reaffichage_df("creneaux_disponibles")
@@ -2526,7 +2546,7 @@ def afficher_activites_programmees():
                                 if col == "Date":
                                     if df_dom.at[i, col] == "":
                                         # Déprogrammation de l'activité (Suppression de l'activité des activités programmées)
-                                        ur.save()
+                                        undo.save()
                                         demander_selection("activites_non_programmees", idx, deselect="activites_programmees", visible_id=ligne_voisine_index(df_display, idx))
                                         activites_programmees_deprogrammer(idx)
                                         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[idx])[0])
@@ -2535,7 +2555,7 @@ def afficher_activites_programmees():
                                     elif pd.isna(df.at[idx, "Date"]) or df_dom.at[i, col] != str(int(df.at[idx, "Date"])):
                                         # Reprogrammation de l'activité à la date choisie
                                         jour_choisi = int(df_dom.at[i, col])
-                                        ur.save()
+                                        undo.save()
                                         demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
                                         activites_programmees_reprogrammer(idx, jour_choisi)
                                         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[idx])[0])
@@ -2693,7 +2713,7 @@ def menu_activites_programmees(index_df):
 
     # Affichage contrôle Supprimer
     if st.button(LABEL_BOUTON_SUPPRIMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled or activite_reservee, key="menu_activite_supprimer"):
-        ur.save()
+        undo.save()
         demander_selection("activites_programmees", ligne_voisine_index(df_display, index_df), deselect="activites_non_programmees")
         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
         st.session_state.forcer_maj_menu_activites_programmees = True
@@ -2704,7 +2724,7 @@ def menu_activites_programmees(index_df):
 
     # Affichage contrôle Déprogrammer
     if st.button(LABEL_BOUTON_DEPROGRAMMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled or activite_reservee or est_nom_pause(nom_activite), key="menu_activite_deprogrammer"):
-        ur.save()
+        undo.save()
         st.session_state.forcer_menu_activites_non_programmees = True
         demander_selection("activites_non_programmees", index_df, deselect="activites_programmees")
         bd_deprogrammer_activite_programmee(index_df)
@@ -2718,7 +2738,7 @@ def menu_activites_programmees(index_df):
     if st.button(LABEL_BOUTON_REPROGRAMMER, use_container_width=True, disabled=boutons_disabled or activite_reservee or est_nom_pause(nom_activite) or not jours_possibles, key="menu_activite_programmer"):
         if "activites_programmees_jour_choisi" in st.session_state:
             jour_choisi = st.session_state.activites_programmees_jour_choisi
-            ur.save()
+            undo.save()
             demander_selection("activites_programmees", index_df, deselect="activites_non_programmees")
             reprogrammation_request_set(index_df, int(jour_choisi)) # inhibe les cellValuChanged résultant de cette modification et qui inverseraient l'opération
             bd_modifier_cellule(index_df, "Date", int(jour_choisi))
@@ -3056,7 +3076,7 @@ def afficher_activites_non_programmees():
                                     if df_dom.at[i, col] != "":
                                         # Programmation de l'activité à la date choisie
                                         jour_choisi = int(df_dom.at[i, col])
-                                        ur.save()
+                                        undo.save()
                                         demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
                                         activites_non_programmees_programmer(idx, jour_choisi)
                                         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[idx])[0])
@@ -3161,7 +3181,7 @@ def menu_activites_non_programmees(index_df):
 
     # Affichage contrôle Supprimer
     if st.button(LABEL_BOUTON_SUPPRIMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled, key="menu_activite_supprimer"):
-        ur.save()
+        undo.save()
         demander_selection("activites_non_programmees", ligne_voisine_index(df_display, index_df), deselect="activites_programmees")
         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
         st.session_state.forcer_maj_menu_activites_non_programmees = True
@@ -3177,7 +3197,7 @@ def menu_activites_non_programmees(index_df):
     if st.button(LABEL_BOUTON_PROGRAMMER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled or not jours_possibles, key="menu_activite_programmer"):
         if "activites_non_programmees_jour_choisi" in st.session_state:
             jour_choisi = st.session_state.activites_non_programmees_jour_choisi
-            ur.save()
+            undo.save()
             st.session_state.forcer_menu_activites_programmees = True
             demander_selection("activites_programmees", index_df, deselect="activites_non_programmees")
             bd_modifier_cellule(index_df, "Date", int(jour_choisi))
@@ -3298,7 +3318,7 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
 
         if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS):
             if not erreur and st.session_state.editeur_activite_etat["col_modif"]:
-                ur.save()
+                undo.save()
                 try:
                     if st.session_state.editeur_activite_etat["col_modif"]:
                         cols = {}
@@ -3326,7 +3346,7 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
                     st.rerun()
                 except Exception as e:
                     st.error(f"⛔ {e}")
-                    ur.undo()
+                    undo.undo()
 
             else:
                 st.rerun()
@@ -3379,7 +3399,7 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=None):
                 else:
                     set_section_critique_step(section_critique, 2)
                     df.at[index, colonne] = valeur_courante
-                    ur.save()
+                    undo.save()
                     bd_modifier_cellule(index, colonne, nouvelle_valeur)
                     sql.sauvegarder_row(index)
     elif step == 1:
@@ -3394,12 +3414,12 @@ def affecter_valeur_df(index, colonne, nouvelle_valeur, section_critique=None):
             else:
                 set_section_critique_step(section_critique, 2)
                 df.at[index, colonne] = valeur_courante
-                ur.save()
+                undo.save()
                 bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
                 sql.sauvegarder_row(index)
     elif step == 2:
         df.at[index, colonne] = valeur_courante
-        ur.save()
+        undo.save()
         bd_modifier_cellule(index, colonne, nouvelle_valeur, section_critique=section_critique)
         sql.sauvegarder_row(index)
         
@@ -4044,7 +4064,7 @@ def programmer_activite_non_programmee(date_ref, activite):
 
     df = st.session_state.df
     type_activite = activite["__type_activite"]
-    ur.save()
+    undo.save()
     if type_activite == "ActiviteExistante":
         # Pour les spectacles, on programme la date et l'heure
         index = activite["__index"]
@@ -4679,7 +4699,7 @@ def afficher_bouton_nouvelle_activite(disabled=False, key="ajouter_activite"):
     # Bouton Ajouter
     if st.button(LABEL_BOUTON_AJOUTER, use_container_width=CENTRER_BOUTONS, disabled=disabled, key=key):
 
-        ur.save()
+        undo.save()
         
         new_idx = bd_ajouter_activite()
 
@@ -4726,10 +4746,11 @@ def charger_contexte_depuis_fichier():
                     df = add_hyperliens(df, lnk)
                     fn = fd.name if fd is not None else ""
                     fp = upload_excel_to_dropbox(fd.getvalue(), fd.name) if fd is not None else ""
-                    ur.save()
+                    undo.save()
                     initialiser_etat_contexte(df, wb, fn, fp, ca)
                     initialiser_periode_programmation(df)
-                    # ur.init(verify=False)
+                    st.session_state["push_periode_programmation_modele_values"] = True 
+                    # undo.init(verify=False)
                     bd_maj_contexte(maj_donnees_calculees=True)
                     sql.sauvegarder_contexte()
                     selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
@@ -4788,7 +4809,7 @@ def initialiser_nouveau_contexte():
 def creer_nouveau_contexte():
     if st.button(LABEL_BOUTON_NOUVEAU, use_container_width=CENTRER_BOUTONS, key="creer_nouveau_contexte"):
         curseur_attente()
-        ur.save()
+        undo.save()
         initialiser_nouveau_contexte()
         bd_maj_contexte(maj_donnees_calculees=True)
         st.rerun()
@@ -5208,12 +5229,12 @@ def afficher_controles_edition():
         disabled=not st.session_state.get("historique_undo"), 
         use_container_width=CENTRER_BOUTONS, 
         key="undo_btn") and st.session_state.historique_undo:
-        ur.undo()
+        undo.undo()
     if st.button(LABEL_BOUTON_REFAIRE, 
         disabled=not st.session_state.get("historique_redo"), 
         use_container_width=CENTRER_BOUTONS, 
         key="redo_btn") and st.session_state.historique_redo:
-        ur.redo()
+        undo.redo()
 
 # Affichage des choix généraux
 def afficher_infos_generales():
