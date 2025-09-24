@@ -333,8 +333,8 @@ class LieuRenderer {
     # a.addEventListener('click', ev=>ev.stopPropagation()); // ne pas sélectionner la ligne
 
 
-# JS Code chargé de lancer la recherche Web sur la colonne Activité via appui long
-JS_ACTIVITE_LONGPRESS_RENDERER_orig = JsCode("""
+# JS Code chargé de lancer la recherche Web sur la colonne Activité via appui long (mais figeage d'interface sur IOS au retour de la page Web)
+JS_ACTIVITE_LONGPRESS_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
     // ---- conteneur + texte ----
@@ -491,98 +491,7 @@ class ActiviteRenderer {
 }
 """)
 
-JS_ACTIVITE_LONGPRESS_RENDERER = JsCode("""
-class ActiviteRenderer {
-  init(params){
-    function tapSelect(el){
-      const cell = el.closest ? el.closest('.ag-cell') : null;
-      if (!cell) return;
-      try {
-        cell.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
-        cell.dispatchEvent(new MouseEvent('mouseup',   {bubbles:true}));
-        cell.dispatchEvent(new MouseEvent('click',     {bubbles:true}));
-      } catch(_){}
-    }
-    function openNewTab(u){
-      if (!u) return;
-      try { window.open(u,'_blank','noopener'); }
-      catch(_) { window.location.assign(u); }
-    }
-    function attachLongPress(el, getUrl, onTap){
-      const DELAY=550, THRESH=8, TAP_MS=220;
-      let sx=0, sy=0, moved=false, pressed=false, startT=0, timer=null, firedLong=false, hadTouchTs=0;
-      const now = ()=>Date.now();
-      const withinTouchGrace = ()=> (now()-hadTouchTs)<800;
-      const clearT=()=>{ if (timer){ clearTimeout(timer); timer=null; } };
-
-      const onDown = ev=>{
-        if (ev.type==='mousedown' && withinTouchGrace()) return;
-        const t = ev.touches ? ev.touches[0] : ev;
-        sx=(t?.clientX)||0; sy=(t?.clientY)||0;
-        moved=false; pressed=true; firedLong=false; startT=now();
-        clearT(); timer=setTimeout(()=>{ if(pressed && !moved){ firedLong=true; } }, DELAY);
-      };
-      const onMove = ev=>{
-        if(!pressed) return;
-        const t = ev.touches ? ev.touches[0] : ev;
-        const dx=Math.abs((t?.clientX||0)-sx), dy=Math.abs((t?.clientY||0)-sy);
-        if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
-      };
-      const onUp = ev=>{
-        if (ev.type==='mouseup' && withinTouchGrace()) return;
-        const dur = now()-startT, isTap=(dur<TAP_MS)&&!moved;
-        pressed=false; clearT();
-        if (firedLong && !moved){ openNewTab(getUrl()); return; }
-        if (isTap && typeof onTap==='function'){ requestAnimationFrame(()=>onTap()); }
-      };
-      const onCancel=()=>{ pressed=false; clearT(); };
-
-      if (window.PointerEvent){
-        el.addEventListener('pointerdown', onDown, {passive:true});
-        el.addEventListener('pointermove', onMove,  {passive:true});
-        el.addEventListener('pointerup',   onUp,    {passive:false});
-        el.addEventListener('pointercancel', onCancel, {passive:true});
-      } else {
-        el.addEventListener('touchstart', e=>{ hadTouchTs=now(); onDown(e); }, {passive:true});
-        el.addEventListener('touchmove',  onMove,  {passive:true});
-        el.addEventListener('touchend',   onUp,    {passive:false});
-        el.addEventListener('touchcancel', onCancel, {passive:true});
-        el.addEventListener('mousedown',  onDown,  true);
-        el.addEventListener('mousemove',  onMove,  true);
-        el.addEventListener('mouseup',    onUp,    false);
-      }
-      el.addEventListener('contextmenu', e=>e.preventDefault(), true);
-      el.style.webkitTouchCallout='none';
-      el.style.webkitUserSelect='none';
-      el.style.userSelect='none';
-      el.style.touchAction='manipulation';
-    }
-
-    const e = document.createElement('div');
-    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
-    e.style.width='100%'; e.style.overflow='hidden';
-
-    const label = (params.value != null ? String(params.value) : '');
-    const raw   = (params.data && (params.data['Hyperlien'] || params.data['Hyperliens'])) ? (params.data['Hyperlien'] || params.data['Hyperliens']) : '';
-    const href  = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
-
-    const txt = document.createElement('span');
-    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
-    txt.style.cursor='pointer';
-    txt.textContent = label;
-    e.appendChild(txt);
-
-    attachLongPress(txt, ()=>href, ()=>tapSelect(txt));
-
-    this.eGui = e;
-  }
-  getGui(){ return this.eGui; }
-  refresh(){ return false; }
-}
-""")
-
-
-# JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via appui long
+# JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via appui long (mais figeage d'interface sur IOS au retour de la page Web)
 JS_LIEU_LONGPRESS_RENDERER = JsCode("""
 class LieuRenderer {
   init(params){
@@ -799,6 +708,82 @@ JS_IOS_SOFT_REVIVE = JsCode("""
     }, false);
     }
     """)
+
+# JS Code chargé de lancer la recherche Web sur la colonne Activité via icône sur IOS et appui long sur autres plateformes
+JS_ACTIVITE_RENDERER = JsCode("""
+class ActiviteRenderer {
+  init(params){
+    // helpers
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    function tapSelect(el){
+      const cell = el.closest ? el.closest('.ag-cell') : null;
+      if (!cell) return;
+      try{
+        cell.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('mouseup',   {bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('click',     {bubbles:true}));
+      }catch(_){}
+    }
+    function openPreferNewTab(u){
+      if (!u) return;
+      if (isIOS){
+        try{ const w = window.open('about:blank','_blank'); if (w){ w.location.href = u; return; } }catch(_){}
+      }
+      try{ window.open(u,'_blank','noopener'); }catch(_){ window.location.assign(u); }
+    }
+    function attachLongPress(el, getUrl, onTap){
+      const DELAY=550, THRESH=8, TAP_MS=220;
+      let sx=0, sy=0, moved=false, pressed=false, startT=0, timer=null, firedLong=false, hadTouchTs=0;
+      const now=()=>Date.now(), withinTouchGrace=()=> (now()-hadTouchTs)<800, clearT=()=>{ if(timer){clearTimeout(timer);timer=null;} };
+      const onDown=ev=>{ if(ev.type==='mousedown' && withinTouchGrace()) return; const t=ev.touches?ev.touches[0]:ev; sx=t?.clientX||0; sy=t?.clientY||0; moved=false; pressed=true; firedLong=false; startT=now(); clearT(); timer=setTimeout(()=>{ if(pressed&&!moved) firedLong=true; }, DELAY); };
+      const onMove=ev=>{ if(!pressed) return; const t=ev.touches?ev.touches[0]:ev; const dx=Math.abs((t?.clientX||0)-sx), dy=Math.abs((t?.clientY||0)-sy); if(dx>THRESH||dy>THRESH){ moved=true; clearT(); } };
+      const onUp=ev=>{ if(ev.type==='mouseup' && withinTouchGrace()) return; const dur=now()-startT, isTap=(dur<TAP_MS)&&!moved; pressed=false; clearT(); if(firedLong && !moved){ openPreferNewTab(getUrl()); return; } if(isTap && typeof onTap==='function'){ requestAnimationFrame(onTap); } };
+      const onCancel=()=>{ pressed=false; clearT(); };
+      if (window.PointerEvent){ el.addEventListener('pointerdown',onDown,{passive:true}); el.addEventListener('pointermove',onMove,{passive:true}); el.addEventListener('pointerup',onUp,{passive:false}); el.addEventListener('pointercancel',onCancel,{passive:true}); }
+      else { el.addEventListener('touchstart',e=>{hadTouchTs=now();onDown(e);},{passive:true}); el.addEventListener('touchmove',onMove,{passive:true}); el.addEventListener('touchend',onUp,{passive:false}); el.addEventListener('touchcancel',onCancel,{passive:true}); el.addEventListener('mousedown',onDown,true); el.addEventListener('mousemove',onMove,true); el.addEventListener('mouseup',onUp,false); }
+      el.addEventListener('contextmenu', e=>e.preventDefault(), true);
+      el.style.webkitTouchCallout='none'; el.style.webkitUserSelect='none'; el.style.userSelect='none'; el.style.touchAction='manipulation';
+    }
+
+    // container + label
+    const e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
+
+    const label = (params.value != null ? String(params.value) : '');
+    const raw   = (params.data && (params.data['Hyperlien'] || params.data['Hyperliens'])) ? (params.data['Hyperlien'] || params.data['Hyperliens']) : '';
+    const href  = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+
+    const txt = document.createElement('span');
+    txt.style.flex='1 1 auto'; txt.style.overflow='hidden'; txt.style.textOverflow='ellipsis';
+    txt.style.cursor='pointer'; txt.textContent = label;
+    e.appendChild(txt);
+
+    if (isIOS){
+      // icône fiable (tap court)
+      const a = document.createElement('a');
+      a.textContent = '🔎';
+      a.href = href || '#';
+      a.target = '_blank';
+      a.rel = 'noopener,noreferrer';
+      a.title = 'Recherche';
+      a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
+      a.addEventListener('click', ev => { ev.stopPropagation(); });
+      e.appendChild(a);
+
+      // tap court sur le texte = sélection
+      txt.addEventListener('click', () => tapSelect(txt));
+    } else {
+      // long-press Android/Desktop
+      attachLongPress(txt, ()=>href, ()=>tapSelect(txt));
+    }
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
 
 ####################
 # Contexte Manager #
@@ -2412,7 +2397,7 @@ def init_activites_programmees_grid_options(df_display):
     # gb.configure_column("Lieu", editable=True, cellRenderer=JS_LIEU_ICON_RENDERER) #, minWidth=200)
 
     # Configuration de l'appui long pour la recherche Web et la recherche d'itinéraire
-    gb.configure_column("Activité", editable=True, cellRenderer=JS_ACTIVITE_LONGPRESS_RENDERER) #, minWidth=220)
+    gb.configure_column("Activité", editable=True, cellRenderer=JS_ACTIVITE_RENDERER) #, minWidth=220)
     gb.configure_column("Lieu",     editable=True, cellRenderer=JS_LIEU_LONGPRESS_RENDERER) #, minWidth=200)
 
     # Colorisation
@@ -5621,7 +5606,7 @@ def traiter_sections_critiques():
     if cmd:
         activites_non_programmees_programmer(cmd["idx"], cmd["jour"])
 
-# Permet d'éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
+# Essai infructueux pour éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
 @st.cache_resource
 def inject_ios_soft_revive():
     st.markdown("""
@@ -5663,6 +5648,7 @@ def inject_ios_soft_revive():
     """, unsafe_allow_html=True)
     return True
 
+# Essai infructueux pour éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
 @st.cache_resource
 def inject_ios_hard_revive():
     st.markdown("""
@@ -5727,6 +5713,7 @@ def inject_ios_hard_revive():
     """, unsafe_allow_html=True)
     return True
 
+# Essai infructueux pour éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
 @st.cache_resource
 def inject_ios_always_reload_on_return():
     st.markdown("""
@@ -5764,6 +5751,7 @@ def inject_ios_always_reload_on_return():
     """, unsafe_allow_html=True)
     return True
 
+# Essai infructueux pour éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
 @st.cache_resource
 def inject_ios_watchdog_reload():
     st.markdown("""
@@ -5821,6 +5809,7 @@ def inject_ios_watchdog_reload():
     """, unsafe_allow_html=True)
     return True
 
+# Essai infructueux pour éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
 @st.cache_resource
 def inject_ios_disable_bfcache():
     st.markdown("""
@@ -5862,8 +5851,7 @@ def inject_ios_disable_bfcache():
 # Initialisation de la page HTML
 def initialiser_page():
 
-    # Injecte le JS qui permet d'éviter un figeage au retour d'appel d'une page web dans le meme onglet (same tab)
-    # inject_ios_always_reload_on_return()
+    # Coller ici les essais pour éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
     pass
 
 # Trace le début d'un rerun
