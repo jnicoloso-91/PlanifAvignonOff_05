@@ -500,8 +500,6 @@ def _start_new_worker():
 
     tracer.log("Started !", types=["wk"])
 
-
-
 def ensure_worker_alive():
     """
     À appeler AU DÉBUT DE CHAQUE RUN (et avant tout enqueue).
