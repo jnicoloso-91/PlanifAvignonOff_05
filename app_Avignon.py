@@ -671,44 +671,6 @@ class LieuRenderer {
 """)
         # if (plat === "iOS")          url = "comgooglemaps://?daddr=" + addrEnc; # l'ouverture directe de l'appli depuis le cellRenderer ne marche pas sur IOS -> fallback sur GoogleMaps Web
 
-# JS Code permettant de régler le probleme de blocage de l'UI au retour d'une page Web sur IOS en complément des inject_ios_xxx_revive (soft, hard, always)
-JS_IOS_SOFT_REVIVE = JsCode("""
-    function(params){
-    try { params.api.sizeColumnsToFit(); } catch(e){}
-
-    if (window.__iosSoftReviveInstalled) return;
-    window.__iosSoftReviveInstalled = true;
-
-    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    function cameFromBackForward(){
-        try {
-        var nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
-        return !!(nav && nav[0] && nav[0].type === 'back_forward');
-        } catch(e){ return false; }
-    }
-
-    window.addEventListener('pageshow', function(e){
-        if (!isIOS) return;
-        if (e.persisted || cameFromBackForward()){
-        // “soft revive” côté grille (pas de reload)
-        try { params.api.deselectAll(); } catch(_) {}
-        try { params.api.refreshCells({ force: true }); } catch(_) {}
-        try { params.api.redrawRows(); } catch(_) {}
-        try { window.dispatchEvent(new Event('resize')); } catch(_) {}
-
-        // astuce : micro reflow de l’iframe
-        try { 
-            var root = document.documentElement;
-            var prev = root.style.webkitTransform;
-            root.style.webkitTransform = 'translateZ(0)';
-            void root.offsetHeight;
-            root.style.webkitTransform = prev || '';
-        } catch(_) {}
-        }
-    }, false);
-    }
-    """)
-
 # JS Code chargé de lancer la recherche Web sur la colonne Activité via icône sur IOS et appui long sur autres plateformes
 JS_ACTIVITE_RENDERER = JsCode("""
 class ActiviteRenderer {
@@ -784,6 +746,177 @@ class ActiviteRenderer {
   refresh(){ return false; }
 }
 """)
+
+# JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via icône sur IOS et appui long sur autres plateformes
+JS_LIEU_RENDERER = JsCode("""
+class LieuRenderer {
+  init(params){
+    // --- helpers sélection & ouverture ---
+    function tapSelect(el){
+      const cell = el.closest ? el.closest('.ag-cell') : null;
+      if (!cell) return;
+      try {
+        cell.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      } catch(_){}
+    }
+    function openNewTab(u){
+      if (!u) return;
+      try { window.open(u,'_blank','noopener'); }
+      catch(_) { window.location.assign(u); }
+    }
+    // --- long-press universel ---
+    function attachLongPress(el, getUrl, onTap){
+      const DELAY=550, THRESH=8, TAP_MS=220;
+      let sx=0, sy=0, moved=false, pressed=false, startT=0, timer=null, firedLong=false, hadTouchTs=0;
+      const now = ()=>Date.now();
+      const withinTouchGrace = ()=> (now()-hadTouchTs)<800;
+      const clearT=()=>{ if (timer){ clearTimeout(timer); timer=null; } };
+
+      const onDown = ev=>{
+        if (ev.type==='mousedown' && withinTouchGrace()) return;
+        const t = ev.touches ? ev.touches[0] : ev;
+        sx=(t?.clientX)||0; sy=(t?.clientY)||0;
+        moved=false; pressed=true; firedLong=false; startT=now();
+        clearT(); timer=setTimeout(()=>{ if(pressed && !moved){ firedLong=true; } }, DELAY);
+      };
+      const onMove = ev=>{
+        if(!pressed) return;
+        const t = ev.touches ? ev.touches[0] : ev;
+        const dx=Math.abs((t?.clientX||0)-sx), dy=Math.abs((t?.clientY||0)-sy);
+        if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
+      };
+      const onUp = ev=>{
+        if (ev.type==='mouseup' && withinTouchGrace()) return;
+        const dur = now()-startT, isTap=(dur<TAP_MS)&&!moved;
+        pressed=false; clearT();
+        if (firedLong && !moved){ openNewTab(getUrl()); return; }
+        if (isTap && typeof onTap==='function'){ requestAnimationFrame(()=>onTap()); }
+      };
+      const onCancel=()=>{ pressed=false; clearT(); };
+
+      if (window.PointerEvent){
+        el.addEventListener('pointerdown', onDown, {passive:true});
+        el.addEventListener('pointermove', onMove,  {passive:true});
+        el.addEventListener('pointerup',   onUp,    {passive:false});
+        el.addEventListener('pointercancel', onCancel, {passive:true});
+      } else {
+        el.addEventListener('touchstart', e=>{ hadTouchTs=now(); onDown(e); }, {passive:true});
+        el.addEventListener('touchmove',  onMove,  {passive:true});
+        el.addEventListener('touchend',   onUp,    {passive:false});
+        el.addEventListener('touchcancel', onCancel, {passive:true});
+        el.addEventListener('mousedown',  onDown,  true);
+        el.addEventListener('mousemove',  onMove,  true);
+        el.addEventListener('mouseup',    onUp,    false);
+      }
+      el.addEventListener('contextmenu', e=>e.preventDefault(), true);
+      el.style.webkitTouchCallout='none';
+      el.style.webkitUserSelect='none';
+      el.style.userSelect='none';
+      el.style.touchAction='manipulation';
+    }
+
+    // --- construction du rendu ---
+    const e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
+
+    const label = (params.value ?? '').toString().trim();
+    const addrEnc = (params.data && params.data.__addr_enc)
+      ? String(params.data.__addr_enc).trim()
+      : encodeURIComponent(label || "");
+
+    const ctx  = params.context || {};
+    const app  = ctx.itineraire_app || "Google Maps Web";
+    const plat = ctx.platform || (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS"
+      : /Android/.test(navigator.userAgent) ? "Android" : "Desktop"
+    );
+
+    let url = "#";
+    if (addrEnc) {
+      if (app === "Apple Maps" && plat === "iOS") {
+        url = "http://maps.apple.com/?daddr=" + addrEnc;
+      } else if (app === "Google Maps App") {
+        if (plat === "iOS")        url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
+        else if (plat === "Android") url = "geo:0,0?q=" + addrEnc;
+        else                       url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
+      } else {
+        url = "https://www.google.com/maps/dir/?api=1&destination=" + addrEnc;
+      }
+    }
+
+    const txt = document.createElement('span');
+    txt.style.flex='1 1 auto';
+    txt.style.overflow='hidden';
+    txt.style.textOverflow='ellipsis';
+    txt.style.cursor='pointer';
+    txt.textContent = label;
+    e.appendChild(txt);
+
+    // --- icône cliquable (iOS) ou long-press ailleurs ---
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS){
+      const icon = document.createElement('a');
+      icon.textContent = '📍';
+      icon.href = url;
+      icon.target = '_blank';
+      icon.rel = 'noopener';
+      icon.style.flex='0 0 auto';
+      icon.style.textDecoration='none';
+      icon.style.marginLeft='0.4rem';
+      icon.title = 'Itinéraire';
+      e.appendChild(icon);
+    } else {
+      attachLongPress(txt, ()=>url, ()=>tapSelect(txt));
+    }
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
+
+# JS Code permettant de régler le probleme de blocage de l'UI au retour d'une page Web sur IOS en complément des inject_ios_xxx_revive (soft, hard, always)
+# Essai infructueux
+JS_IOS_SOFT_REVIVE = JsCode("""
+    function(params){
+    try { params.api.sizeColumnsToFit(); } catch(e){}
+
+    if (window.__iosSoftReviveInstalled) return;
+    window.__iosSoftReviveInstalled = true;
+
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    function cameFromBackForward(){
+        try {
+        var nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
+        return !!(nav && nav[0] && nav[0].type === 'back_forward');
+        } catch(e){ return false; }
+    }
+
+    window.addEventListener('pageshow', function(e){
+        if (!isIOS) return;
+        if (e.persisted || cameFromBackForward()){
+        // “soft revive” côté grille (pas de reload)
+        try { params.api.deselectAll(); } catch(_) {}
+        try { params.api.refreshCells({ force: true }); } catch(_) {}
+        try { params.api.redrawRows(); } catch(_) {}
+        try { window.dispatchEvent(new Event('resize')); } catch(_) {}
+
+        // astuce : micro reflow de l’iframe
+        try { 
+            var root = document.documentElement;
+            var prev = root.style.webkitTransform;
+            root.style.webkitTransform = 'translateZ(0)';
+            void root.offsetHeight;
+            root.style.webkitTransform = prev || '';
+        } catch(_) {}
+        }
+    }, false);
+    }
+    """)
 
 ####################
 # Contexte Manager #
@@ -2392,13 +2525,9 @@ def init_activites_programmees_grid_options(df_display):
         """)
     )
 
-    # Configuration des icônes de colonnes pour la recherche Web et la recherche d'itinéraire
-    # gb.configure_column("Activité", editable=True, cellRenderer=JS_ACTIVITE_ICON_RENDERER) #, minWidth=220)
-    # gb.configure_column("Lieu", editable=True, cellRenderer=JS_LIEU_ICON_RENDERER) #, minWidth=200)
-
     # Configuration de l'appui long pour la recherche Web et la recherche d'itinéraire
     gb.configure_column("Activité", editable=True, cellRenderer=JS_ACTIVITE_RENDERER) #, minWidth=220)
-    gb.configure_column("Lieu",     editable=True, cellRenderer=JS_LIEU_LONGPRESS_RENDERER) #, minWidth=200)
+    gb.configure_column("Lieu",     editable=True, cellRenderer=JS_LIEU_RENDERER) #, minWidth=200)
 
     # Colorisation
     gb.configure_grid_options(getRowStyle=JsCode(f"""
@@ -2445,7 +2574,7 @@ def init_activites_programmees_grid_options(df_display):
     # Supprime le highlight de survol qui pose problème sur mobile et tablette
     grid_options["suppressRowHoverHighlight"] = True
 
-    # Enregistre dans le contexte les paramètres nécessaires à la recherche d'itinéraire (voir JS_LIEU_ICON_RENDERER)
+    # Enregistre dans le contexte les paramètres nécessaires à la recherche d'itinéraire (voir JS_LIEU_xxx_RENDERER)
     grid_options["context"] = {
         "itineraire_app": st.session_state.get("itineraire_app", "Google Maps"),
         "platform": get_platform(),  # "iOS" / "Android" / "Desktop"
@@ -2938,13 +3067,9 @@ def init_activites_non_programmees_grid_options(df_display):
         """)
     )
 
-    # Configuration des icônes de colonnes pour la recherche Web et la recherche d'itinéraire
-    # gb.configure_column("Activité", editable=True, cellRenderer=JS_ACTIVITE_ICON_RENDERER) #, minWidth=220)
-    # gb.configure_column("Lieu", editable=True, cellRenderer=JS_LIEU_ICON_RENDERER) #, minWidth=200)
-
     # Configuration de l'appui long pour la recherche Web et la recherche d'itinéraire
-    gb.configure_column("Activité", editable=True, cellRenderer=JS_ACTIVITE_LONGPRESS_RENDERER) #, minWidth=220)
-    gb.configure_column("Lieu",     editable=True, cellRenderer=JS_LIEU_LONGPRESS_RENDERER) #, minWidth=200)
+    gb.configure_column("Activité", editable=True, cellRenderer=JS_ACTIVITE_RENDERER) #, minWidth=220)
+    gb.configure_column("Lieu",     editable=True, cellRenderer=JS_LIEU_RENDERER) #, minWidth=200)
 
     # Colorisation 
     gb.configure_grid_options(getRowStyle= JsCode(f"""
@@ -2984,7 +3109,7 @@ def init_activites_non_programmees_grid_options(df_display):
     # Supprime le highlight de survol qui pose problème sur mobile et tablette
     grid_options["suppressRowHoverHighlight"] = True
 
-    # Enregistre dans le contexte les paramètres nécessaires à la recherche d'itinéraire (voir JS_LIEU_ICON_RENDERER)
+    # Enregistre dans le contexte les paramètres nécessaires à la recherche d'itinéraire (voir JS_LIEU_xxx_RENDERER)
     grid_options["context"] = {
         "itineraire_app": st.session_state.get("itineraire_app", "Google Maps"),
         "platform": get_platform(),  # "iOS" / "Android" / "Desktop"
