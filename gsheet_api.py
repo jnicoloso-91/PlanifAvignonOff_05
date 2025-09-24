@@ -7,7 +7,7 @@
 # - Mettre True pour debugger en local sous VsCode                                                #
 # - Mettre False avant d'intégrer dans GitHub                                                     #
 ###################################################################################################
-LOCAL = False
+LOCAL = True
 
 import streamlit as st
 import pandas as pd
@@ -74,9 +74,9 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
 
         # Adaptation sheet_names selon fonctionnement local ou hébergé
         if LOCAL: # Pour debugger en local
-            sheet_names = [f"data", f"links", f"meta", f"adrs"]                                            
+            sheet_names = [f"data", f"meta", f"adrs"]                                            
         else:     # Utilisation nominale en mode multiuser avec hébergement streamlit share community cloud
-            sheet_names = [f"data_{user_id}", f"links_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     
+            sheet_names = [f"data_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     
 
         gsheets = {}
 
@@ -85,7 +85,7 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
                 ws = sh.worksheet(name)
             except gspread.WorksheetNotFound:
                 ws = sh.add_worksheet(title=name, rows=1000, cols=20)
-            gsheets[name.split("_")[0]] = ws  # 'data', 'links', 'meta', 'adrs'
+            gsheets[name.split("_")[0]] = ws  # 'data', 'meta', 'adrs'
 
     return gsheets
 
@@ -241,5 +241,4 @@ def sauvegarder_param(param):
 
         except Exception as e:
             print(f"Erreur gs_sauvegarder_param : {e}")
-
 
