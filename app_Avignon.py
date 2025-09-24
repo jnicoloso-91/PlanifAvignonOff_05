@@ -491,7 +491,7 @@ class ActiviteRenderer {
 }
 """)
 
-JS_ACTIVITE_RENDERER = JsCode("""
+JS_ACTIVITE_LONGPRESS_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
     function tapSelectViaSyntheticClick(el){
