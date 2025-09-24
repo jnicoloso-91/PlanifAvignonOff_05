@@ -7,7 +7,7 @@
 # - Mettre True pour debugger en local sous VsCode                                                #
 # - Mettre False avant d'intégrer dans GitHub                                                     #
 ###################################################################################################
-LOCAL = False
+LOCAL = True
 
 import streamlit as st
 import pandas as pd
