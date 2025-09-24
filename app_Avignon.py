@@ -334,7 +334,7 @@ class LieuRenderer {
 
 
 # JS Code chargé de lancer la recherche Web sur la colonne Activité via appui long
-JS_ACTIVITE_LONGPRESS_RENDERER = JsCode("""
+JS_ACTIVITE_LONGPRESS_RENDERER_orig = JsCode("""
 class ActiviteRenderer {
   init(params){
     // ---- conteneur + texte ----
@@ -490,6 +490,132 @@ class ActiviteRenderer {
   refresh(){ return false; }
 }
 """)
+
+JS_ACTIVITE_LONGPRESS_RENDERER = JsCode("""
+class ActiviteRenderer {
+  init(params){
+    // --- helper: sélection "propre" de la ligne (1 tap)
+    function tapSelectViaSyntheticClick(el){
+      var cell = el.closest ? el.closest('.ag-cell') : null;
+      if (!cell) return;
+      try {
+        cell.dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('mouseup',   {bubbles:true}));
+        cell.dispatchEvent(new MouseEvent('click',     {bubbles:true}));
+      } catch(_){}
+    }
+
+    // --- helper: ouvre en nouvel onglet; iOS -> about:blank puis redirect
+    function openPreferNewTab(u){
+      if (!u) return;
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS){
+        try {
+          var w = window.open('about:blank','_blank');
+          if (w){ w.location.href = u; return; }
+        } catch(_){}
+      }
+      try { window.open(u, '_blank', 'noopener'); }
+      catch(_) { window.location.assign(u); }
+    }
+
+    // --- long-press unifié (iOS: ouverture en pointerup pour conserver le "user gesture")
+    function attachLongPressOpenNewTab(el, getUrl, onTap, opts){
+      var DELAY = (opts && opts.delay) != null ? opts.delay : 550;
+      var THRESH= (opts && opts.thresh)!= null ? opts.thresh: 8;
+      var TAP_MS= (opts && opts.tapMs) != null ? opts.tapMs : 220;
+
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      var sx=0, sy=0, moved=false, pressed=false, startT=0, timer=null, firedLong=false, hadTouchTs=0;
+
+      function clearT(){ if(timer){ clearTimeout(timer); timer=null; } }
+      function now(){ return Date.now(); }
+      function withinTouchGrace(){ return (now()-hadTouchTs) < 800; }
+
+      function onDown(ev){
+        if (ev.type==='mousedown' && withinTouchGrace()) return; // ignore souris synthétique après touch
+        var t = ev.touches ? ev.touches[0] : ev;
+        sx=(t&&t.clientX)||0; sy=(t&&t.clientY)||0;
+        moved=false; pressed=true; firedLong=false; startT=now();
+        clearT();
+        timer = setTimeout(function(){ if (pressed && !moved){ firedLong = true; } }, DELAY);
+      }
+      function onMove(ev){
+        if (!pressed) return;
+        var t = ev.touches ? ev.touches[0] : ev;
+        var dx=Math.abs(((t&&t.clientX)||0)-sx), dy=Math.abs(((t&&t.clientY)||0)-sy);
+        if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
+      }
+      function onUp(ev){
+        if (ev.type==='mouseup' && withinTouchGrace()) return;
+        var dur = now()-startT;
+        var isTap = (dur < TAP_MS) && !moved;
+        var url = (typeof getUrl==='function') ? getUrl() : null;
+
+        pressed=false; clearT();
+
+        if (firedLong && !moved){
+          // IMPORTANT: ouvrir ici (pointerup/touchend) => geste utilisateur direct
+          try { ev.preventDefault(); ev.stopPropagation(); } catch(_){}
+          openPreferNewTab(url);
+          return;
+        }
+        if (isTap && typeof onTap==='function'){
+          requestAnimationFrame(function(){ try{ onTap(); }catch(_){ } });
+        }
+      }
+      function onCancel(){ pressed=false; clearT(); }
+
+      if (window.PointerEvent){
+        el.addEventListener('pointerdown', onDown, {passive:true});
+        el.addEventListener('pointermove', onMove,  {passive:true});
+        el.addEventListener('pointerup',   onUp,    {passive:false});
+        el.addEventListener('pointercancel', onCancel, {passive:true});
+      } else {
+        el.addEventListener('touchstart', function(e){ hadTouchTs=now(); onDown(e); }, {passive:true});
+        el.addEventListener('touchmove',  onMove, {passive:true});
+        el.addEventListener('touchend',   onUp,   {passive:false});
+        el.addEventListener('touchcancel', onCancel, {passive:true});
+        el.addEventListener('mousedown', onDown, true);
+        el.addEventListener('mousemove', onMove, true);
+        el.addEventListener('mouseup',   onUp,   false);
+      }
+      el.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);
+      el.style.webkitTouchCallout='none';
+      el.style.webkitUserSelect='none';
+      el.style.userSelect='none';
+      el.style.touchAction='manipulation';
+    }
+
+    // --- container + label
+    var e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
+    e.style.width='100%'; e.style.overflow='hidden';
+
+    var label = (params.value != null ? String(params.value) : '');
+    var raw   = (params.data && (params.data['Hyperlien'] || params.data['Hyperliens']))
+                ? (params.data['Hyperlien'] || params.data['Hyperliens'])
+                : '';
+    var href  = String(raw || ("https://www.festivaloffavignon.com/resultats-recherche?recherche="+encodeURIComponent(label))).trim();
+
+    var txt = document.createElement('span');
+    txt.style.flex='1 1 auto';
+    txt.style.overflow='hidden';
+    txt.style.textOverflow='ellipsis';
+    txt.style.cursor='pointer';
+    txt.textContent = label;
+    e.appendChild(txt);
+
+    // branchement: long-press -> nouvel onglet (iOS inclus) ; tap court -> sélection
+    attachLongPressOpenNewTab(txt, function(){ return href; }, function(){ tapSelectViaSyntheticClick(txt); }, {delay:550,thresh:8,tapMs:220});
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
+
 
 # JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via appui long
 JS_LIEU_LONGPRESS_RENDERER = JsCode("""
@@ -2890,15 +3016,15 @@ def init_activites_non_programmees_grid_options(df_display):
         getRowId=JsCode("function(p){ return String(p.data.__uuid); }"),
         columnTypes={"textColumn": {}},  # évite l'erreur #36
         onGridReady=JS_SELECT_DESELECT_ONCE,
-        onFirstDataRendered=JS_IOS_SOFT_REVIVE,
+        # onFirstDataRendered=JS_IOS_SOFT_REVIVE,
     )
 
     # Mise en page de la grille (repris dans JS_IOS_SOFT_REVIVE)
-    # gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
-    #     function(params) {{
-    #         params.api.sizeColumnsToFit();
-    #     }}
-    # """))
+    gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
+        function(params) {{
+            params.api.sizeColumnsToFit();
+        }}
+    """))
 
     grid_options = gb.build()
 
@@ -5772,7 +5898,8 @@ def inject_ios_disable_bfcache():
 def initialiser_page():
 
     # Injecte le JS qui permet d'éviter un figeage au retour d'appel d'une page web dans le meme onglet (same tab)
-    inject_ios_always_reload_on_return()
+    # inject_ios_always_reload_on_return()
+    pass
 
 # Trace le début d'un rerun
 def tracer_rerun():
