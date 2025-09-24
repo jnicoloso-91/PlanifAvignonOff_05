@@ -491,10 +491,9 @@ class ActiviteRenderer {
 }
 """)
 
-JS_ACTIVITE_LONGPRESS_RENDERER = JsCode("""
+JS_ACTIVITE_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
-    // --- tap court = sélection propre
     function tapSelectViaSyntheticClick(el){
       const cell = el.closest ? el.closest('.ag-cell') : null;
       if (!cell) return;
@@ -504,19 +503,12 @@ class ActiviteRenderer {
         cell.dispatchEvent(new MouseEvent('click',     {bubbles:true}));
       } catch(_){}
     }
-
-    // --- ouvre nouvel onglet (iOS : about:blank -> redirect)
     function openPreferNewTab(u){
       if (!u) return;
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      if (isIOS){
-        try { const w = window.open('about:blank','_blank'); if (w){ w.location.href = u; return; } } catch(_){}
-      }
-      try { window.open(u, '_blank', 'noopener'); }
+      try { window.open(u,'_blank','noopener'); }
       catch(_) { window.location.assign(u); }
     }
 
-    // --- container + label
     const e = document.createElement('div');
     e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.4rem';
     e.style.width='100%'; e.style.overflow='hidden';
@@ -538,18 +530,22 @@ class ActiviteRenderer {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     if (isIOS){
-      // ===== iOS: long-press fiable (ouverture dans touchend) =====
+      // ===== iOS: popup priming =====
       const DELAY=550, THRESH=8, TAP_MS=220;
       let sx=0, sy=0, moved=false, pressed=false, startT=0, timer=null, firedLong=false;
+      let primedWin = null;  // fenêtre pré-ouverte dans touchstart
 
       function clearT(){ if (timer){ clearTimeout(timer); timer=null; } }
       function now(){ return Date.now(); }
 
       txt.addEventListener('touchstart', (ev)=>{
-        // IMPORTANT: passive:false pour pouvoir preventDefault plus tard
         pressed=true; moved=false; firedLong=false; startT=now();
         const t = ev.touches && ev.touches[0];
         sx=(t&&t.clientX)||0; sy=(t&&t.clientY)||0;
+
+        // OUVRE ICI (geste direct) une fenêtre “vide” à armer
+        try { primedWin = window.open('about:blank','_blank'); } catch(_){ primedWin = null; }
+
         clearT();
         timer = setTimeout(()=>{ if (pressed && !moved){ firedLong=true; } }, DELAY);
       }, {passive:false});
@@ -567,21 +563,34 @@ class ActiviteRenderer {
         pressed=false; clearT();
 
         if (firedLong && !moved){
-          // Empêche menu/selection, ouvre ICI (geste direct)
+          // Long-press confirmé → utilise la fenêtre primée
           try { ev.preventDefault(); ev.stopPropagation(); } catch(_){}
+          if (primedWin && !primedWin.closed){
+            try { primedWin.location.href = href; return; } catch(_){}
+          }
+          // fallback si popup priming a été bloqué
           openPreferNewTab(href);
           return;
         }
-        if (isTap){
-          requestAnimationFrame(()=>{ tapSelectViaSyntheticClick(txt); });
+
+        // Tap court → ferme la fenêtre primée (si ouverte), et sélectionne
+        if (primedWin && !primedWin.closed){
+          try { primedWin.close(); } catch(_){}
         }
+        requestAnimationFrame(()=>{ tapSelectViaSyntheticClick(txt); });
       }, {passive:false});
 
-      txt.addEventListener('touchcancel', ()=>{ pressed=false; clearT(); }, {passive:true});
-      txt.addEventListener('contextmenu', (e)=>e.preventDefault(), true);
+      txt.addEventListener('touchcancel', ()=>{
+        pressed=false; clearT();
+        if (primedWin && !primedWin.closed){
+          try { primedWin.close(); } catch(_){}
+        }
+      }, {passive:true});
+
+      txt.addEventListener('contextmenu', e=>e.preventDefault(), true);
 
     } else {
-      // ===== Android/Desktop: long-press classique (pointer events) =====
+      // ===== Android/Desktop: long-press standard =====
       const DELAY=550, THRESH=8, TAP_MS=220;
       let sx=0, sy=0, moved=false, pressed=false, startT=0, timer=null, firedLong=false;
 
@@ -592,8 +601,7 @@ class ActiviteRenderer {
         txt.addEventListener('pointerdown', (ev)=>{
           sx=ev.clientX||0; sy=ev.clientY||0;
           pressed=true; moved=false; firedLong=false; startT=now();
-          clearT();
-          timer=setTimeout(()=>{ if (pressed && !moved){ firedLong=true; } }, DELAY);
+          clearT(); timer=setTimeout(()=>{ if(pressed&&!moved){firedLong=true;} }, DELAY);
         }, {passive:true});
 
         txt.addEventListener('pointermove', (ev)=>{
@@ -606,30 +614,34 @@ class ActiviteRenderer {
           const dur=now()-startT, isTap=(dur<TAP_MS)&&!moved;
           pressed=false; clearT();
           if (firedLong && !moved){ openPreferNewTab(href); return; }
-          if (isTap){ requestAnimationFrame(()=>{ tapSelectViaSyntheticClick(txt); }); }
+          if (isTap){ requestAnimationFrame(()=> tapSelectViaSyntheticClick(txt)); }
         }, {passive:false});
 
         txt.addEventListener('pointercancel', ()=>{ pressed=false; clearT(); }, {passive:true});
       } else {
-        // Fallback souris
+        // Souris fallback
         txt.addEventListener('mousedown', (ev)=>{
           sx=ev.clientX||0; sy=ev.clientY||0;
           pressed=true; moved=false; firedLong=false; startT=now();
-          clearT();
-          timer=setTimeout(()=>{ if (pressed && !moved){ firedLong=true; } }, DELAY);
+          clearT(); timer=setTimeout(()=>{ if(pressed&&!moved){firedLong=true;} }, DELAY);
         }, true);
         txt.addEventListener('mousemove', (ev)=>{
           if(!pressed) return;
           const dx=Math.abs((ev.clientX||0)-sx), dy=Math.abs((ev.clientY||0)-sy);
-          if (dx>THRESH || dy>THRESH){ moved=true; clearT(); }
+          if (dx>THRESH||dy>THRESH){ moved=true; clearT(); }
         }, true);
         txt.addEventListener('mouseup', (ev)=>{
           const dur=now()-startT, isTap=(dur<TAP_MS)&&!moved;
           pressed=false; clearT();
           if (firedLong && !moved){ openPreferNewTab(href); return; }
-          if (isTap){ requestAnimationFrame(()=>{ tapSelectViaSyntheticClick(txt); }); }
+          if (isTap){ requestAnimationFrame(()=> tapSelectViaSyntheticClick(txt)); }
         }, false);
       }
+      txt.addEventListener('contextmenu', e=>e.preventDefault(), true);
+      txt.style.webkitTouchCallout='none';
+      txt.style.webkitUserSelect='none';
+      txt.style.userSelect='none';
+      txt.style.touchAction='manipulation';
     }
 
     this.eGui = e;
@@ -638,7 +650,6 @@ class ActiviteRenderer {
   refresh(){ return false; }
 }
 """)
-
 
 # JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via appui long
 JS_LIEU_LONGPRESS_RENDERER = JsCode("""
