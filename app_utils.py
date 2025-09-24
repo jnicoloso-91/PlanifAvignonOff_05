@@ -15,8 +15,13 @@ import numpy as np
 import time
 import streamlit.components.v1 as components
 import unicodedata
+import requests
+from bs4 import BeautifulSoup
+from streamlit_javascript import st_javascript
+import copy
 
 from app_const import *
+import tracer
 
 # Permet de mesurer le temps d'exécution d'une fonction avec le décorateur # @chrono
 def chrono(func):
@@ -179,7 +184,7 @@ def est_duree_valide(val):
     except Exception:
         return False
     
-
+# Transforme une chaine en minutes
 def hhmm_to_min(s):
     """Accepte 'HHhMM', 'HH:MM', 'HH MM', 'HHMM', 'HhM', 'H:M'… -> minutes depuis minuit."""
     if s is None or (isinstance(s, float) and pd.isna(s)) or pd.isna(s):
@@ -196,6 +201,14 @@ def hhmm_to_min(s):
         raise ValueError(f"Heure hors bornes: {s!r}")
     return h*60 + mm
 
+# Transforme des minutes en timedelta
+def to_timedelta(value, default):
+    try:
+        minutes = int(str(value).strip())
+        return datetime.timedelta(minutes=minutes)    
+    except (ValueError, TypeError, AttributeError):
+        return default
+    
 # Calcule l'heure de fin à partir de l'heure de début et de la durée    
 def calculer_fin(h, d, fin_actuelle=""):
     if isinstance(d, pd.Timedelta) and not pd.isna(h):
@@ -636,6 +649,31 @@ def get_meta():
         "periode_a_programmer_fin": to_iso_date(st.session_state.periode_a_programmer_fin),
     }
 
+# Rehydrate les métadonnées du contexte à partir d'un dico
+def set_meta(meta: dict):
+        # Mise à jour paramètres
+        try:
+            st.session_state.MARGE = to_timedelta(meta["MARGE"], default=MARGE)
+            st.session_state.DUREE_REPAS = to_timedelta(meta["DUREE_REPAS"], default=DUREE_REPAS)
+            st.session_state.DUREE_CAFE = to_timedelta(meta["DUREE_CAFE"], default=DUREE_CAFE)
+
+            st.session_state.itineraire_app = meta["itineraire_app"]
+            st.session_state.city_default = meta["city_default"]
+            st.session_state.traiter_pauses = str(meta["traiter_pauses"]).strip().lower() == "true"
+        except Exception as e:
+            print(f"set_meta : {e}")
+
+        # Mise à jour période de programmation
+        try:
+            val = meta["periode_a_programmer_debut"]
+            if val is not None and str(val).strip() != "":
+                st.session_state.periode_a_programmer_debut = datetime.date.fromisoformat(val.split(" ")[0])
+            val = meta["periode_a_programmer_fin"]
+            if val is not None and str(val).strip() != "":
+                st.session_state.periode_a_programmer_fin = datetime.date.fromisoformat(val.split(" ")[0])
+        except Exception as e:
+            print(f"set_meta : {e}")
+
 # Injecte un CSS permettent de colorer les primary buttons selon les styles de PALETTE_COULEUR_PRIMARY_BUTTONS ("info", "error", etc.) 
 def injecter_css_pour_primary_buttons(type_css):
     palette = PALETTE_COULEUR_PRIMARY_BUTTONS.get(type_css, PALETTE_COULEUR_PRIMARY_BUTTONS["info"])
@@ -689,4 +727,211 @@ def st_info_avec_label(label, info_text, key=None, color="blue", afficher_label=
     else:
         info_text = f"**{label}:** {info_text}" if afficher_label else info_text
         return st_info_error_ou_bouton(label, info_text, key, color)
+
+def get_dates_festival():
+    
+    # 1️⃣ Tentative de récupération des dates du festival depuis le site officiel (recherche simple)
+    def fetch_off_festival_dates():
+
+        try:
+            url = "https://www.festivaloffavignon.com/"
+            r = requests.get(url, timeout=5)
+            soup = BeautifulSoup(r.text, "html.parser")
+            # Recherche dans le texte "du 5 au 26 juillet 2025"
+            text = soup.get_text()
+        except Exception:
+            text = ""
+        
+        match = re.search(r"du\s+(\d{1,2})\s+juillet\s+au\s+(\d{1,2})\s+juillet\s+2025", text, re.IGNORECASE)
+        if match:
+            d1, d2 = map(int, match.groups())
+            base_year = 2025
+            base_month = 7
+            return datetime.date(base_year, base_month, d1), datetime.date(base_year, base_month, d2)
+        return None, None
+
+    if "festival_debut" not in st.session_state or "festival_fin" not in st.session_state:
+        debut, fin = fetch_off_festival_dates()
+        if debut and fin:
+            st.session_state.festival_debut = debut
+            st.session_state.festival_fin = fin
+        else:
+            # Valeurs de secours (manuelles)
+            st.session_state.festival_debut = datetime.date(2025, 7, 5)
+            st.session_state.festival_fin = datetime.date(2025, 7, 26)
+    return {
+        "debut": st.session_state.festival_debut,
+        "fin": st.session_state.festival_fin
+    }
+
+# Détection basique de plateforme
+def get_platform():
+    if "platform" in st.session_state:
+        return st.session_state["platform"]
+
+    user_agent = st_javascript("navigator.userAgent", key="user_agent_detect")
+    if user_agent == 0 or user_agent is None:
+        # tracer.log("Détection plateforme")
+        st.stop()
+
+    # Traitement une fois la valeur reçue
+    ua = user_agent.lower()
+    if "iphone" in ua or "ipad" in ua or "ipod" in ua:
+        platform = "iOS"
+    elif "android" in ua:
+        platform = "Android"
+    elif "windows" in ua:
+        platform = "Windows"
+    elif "macintosh" in ua:
+        platform = "macOS"
+    elif "linux" in ua:
+        platform = "Linux"
+    else:
+        platform = "Autre"
+
+    # tracer.log("Plateforme détectée")
+
+    st.session_state["platform"] = platform
+    st.rerun()   
+
+# Transforme en set un __options_date au format json
+def parse_options_date(s):
+    """Retourne un set[int] à partir du JSON éventuellement hétérogène."""
+    if not s or pd.isna(s):
+        return set()
+    try:
+        lst = json.loads(s)
+    except Exception:
+        return set()
+    # force en int, ignore ce qui n'est pas convertible
+    out = set()
+    for x in lst:
+        try:
+            out.add(str(x))
+        except Exception:
+            pass
+    return out
+
+# Met au format json un __options_date au format set
+def dump_options_date(sset):
+    """Serialize un set[int] en JSON trié."""
+    return json.dumps(sorted(str(x) for x in sset))
+
+# Renvoie le nom d'une colonne en faisant la traduction colonne df -> colonne df_display
+def df_display_col_nom(nom):
+    return RENOMMAGE_COLONNES.get(nom, nom)
+
+# Supprime une row dans un df à partir de son index
+def supprimer_row_df(df, idx):
+    return df.drop(idx) if idx in df.index else df
+
+# Supprime une row dans un df_display d'AgGrid à partir de son index dans le df principal (suppose que cet index est stocké dans la colonne __index du df_display)
+def supprimer_row_df_display(df, idx):
+    matches = df[df["__index"].astype(str) == str(idx)]
+    return df.drop(matches.index) if not matches.empty else df
+
+def est_nom_pause(val):
+    valeurs = val.split()
+    if not valeurs:
+        return False
+    return val.split()[0].lower() == "pause"
+
+def est_pause(ligne_ref):
+    val = str(ligne_ref["Activite"]).strip()
+    return est_nom_pause(val)
+
+def est_pause_cafe(ligne_ref):
+    if not est_pause(ligne_ref):
+        return False
+    val = str(ligne_ref["Activite"]).strip()
+    valeurs = val.split()
+    if not valeurs:
+        return False
+    if len(valeurs) < 2:
+        return False
+    return val.split()[0].lower() == "pause" and val.split()[1].lower() == "café"
+
+# Modifie la valeur d'une cellule d'un df
+def modifier_df_cell(df, idx, col, val):
+    if idx in df.index:
+        df.at[idx, col] = val
+
+# Modifie la valeur d'une cellule d'un df_display
+def modifier_df_display_cell(df, idx, col, val):
+    matches = df[df["__index"].astype(str) == str(idx)]
+    if not matches.empty:
+        df.at[matches.index[0], col] = val
+
+# Retourne les valeurs non nulles et convertibles de la colonne Date d'un df
+def get_dates_from_df(df):
+    return df["Date"].dropna().apply(lambda x: int(float(x)) if str(x).strip() != "" else None).dropna().astype(int)
+     
+# Force le reaffichage de l'agrid des activités programmées
+def forcer_reaffichage_activites_programmees():
+    st.session_state.activites_programmees_key_counter += 1 
+
+# Force le reaffichage de l'agrid des activités non programmées
+def forcer_reaffichage_activites_non_programmees():
+    st.session_state.activites_non_programmees_key_counter += 1 
+
+# Force le reaffichage d'un dataframe
+def forcer_reaffichage_df(key):
+    session_state_key_counter = key + "_key_counter"
+    if session_state_key_counter in st.session_state:
+        st.session_state[session_state_key_counter] += 1 
+    session_state_forcer_reaffichage = key + "_forcer_reaffichage"
+    if session_state_forcer_reaffichage in st.session_state:
+        st.session_state[session_state_forcer_reaffichage] = True
+
+# Renvoie les lignes modifées entre df1 et df2, l'index de df2 est supposé se trouver dans la colonne __index de df1
+def get_lignes_modifiees(df1, df2, columns_to_drop=[]):
+    lignes_modifiees = set()
+    for i, row in df1.iterrows():
+        idx = row["__index"]
+        for col in df1.drop(columns=columns_to_drop).columns:
+            if idx in df2.index:
+                val_avant = df2.at[idx, col]
+                val_apres = row[col]
+                if pd.isna(val_avant) and pd.isna(val_apres):
+                    continue
+                if (pd.isna(val_avant) and pd.notna(val_apres)) or val_avant != val_apres:
+                    lignes_modifiees.add((i, idx))
+    return lignes_modifiees
+
+# Renvoie la première ligne modifée entre df1 et df2, l'index de df2 est supposé se trouver dans la colonne __index de df1
+def get_ligne_modifiee(df1, df2, columns_to_drop=[]):
+    for i, row in df1.iterrows():
+        idx = row["__index"]
+        for col in df1.drop(columns=columns_to_drop).columns:
+            if idx in df2.index:
+                val_avant = df2.at[idx, col]
+                val_apres = row[col]
+                if pd.isna(val_avant) and pd.isna(val_apres):
+                    continue
+                if (pd.isna(val_avant) and pd.notna(val_apres)) or val_avant != val_apres:
+                    return i, idx
+    return None, None
+
+# Demande de sélection d'une ligne sur une grille
+def demander_selection(grid_name: str, target_id: str | None, deselect=None, visible_id: str | None=None):
+    if grid_name is not None:
+        tracer.log(f"{grid_name} {target_id}")
+        k = f"{grid_name}_sel_request"
+        st.session_state.setdefault(k, copy.deepcopy(SEL_REQUEST_DEFAUT))
+        st.session_state[k]["sel"]["ver"] += 1
+        st.session_state[k]["sel"]["id"] = target_id
+        st.session_state[k]["sel"]["pending"] = True
+        demander_deselection(deselect, visible_id=visible_id)
+
+# Demande de désélection de la ligne sélectionnée sur une grille
+def demander_deselection(grid_name: str, visible_id: str | None=None):
+    if grid_name is not None:
+        tracer.log(f"{grid_name}")
+        k = f"{grid_name}_sel_request"
+        st.session_state.setdefault(k, copy.deepcopy(SEL_REQUEST_DEFAUT))
+        st.session_state[k]["desel"]["ver"] += 1
+        st.session_state[k]["desel"]["id"] = visible_id
+        st.session_state[k]["desel"]["pending"] = True
+        st.session_state[k]["sel"]["id"] = None
+
 
