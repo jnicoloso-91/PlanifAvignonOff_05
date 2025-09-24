@@ -2351,15 +2351,15 @@ def init_activites_programmees_grid_options(df_display):
         getRowId=JsCode("function(p){ return String(p.data.__uuid); }"),
         columnTypes={"textColumn": {}},  # évite l'erreur #36
         onGridReady=JS_SELECT_DESELECT_ONCE,
-        onFirstDataRendered=JS_IOS_SOFT_REVIVE,
+        # onFirstDataRendered=JS_IOS_SOFT_REVIVE,
     )
 
     # Mise en page de la grille (repris dans JS_IOS_SOFT_REVIVE)
-    # gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
-    #     function(params) {{
-    #         params.api.sizeColumnsToFit();
-    #     }}
-    # """))
+    gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
+        function(params) {{
+            params.api.sizeColumnsToFit();
+        }}
+    """))
 
     grid_options = gb.build()
 
@@ -5772,8 +5772,7 @@ def inject_ios_disable_bfcache():
 def initialiser_page():
 
     # Injecte le JS qui permet d'éviter un figeage au retour d'appel d'une page web dans le meme onglet (same tab)
-    # inject_ios_disable_bfcache()
-    pass
+    inject_ios_hard_revive()
 
 # Trace le début d'un rerun
 def tracer_rerun():
