@@ -5773,6 +5773,7 @@ def initialiser_page():
 
     # Injecte le JS qui permet d'éviter un figeage au retour d'appel d'une page web dans le meme onglet (same tab)
     # inject_ios_disable_bfcache()
+    pass
 
 # Trace le début d'un rerun
 def tracer_rerun():
