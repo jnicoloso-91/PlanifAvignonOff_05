@@ -5537,94 +5537,45 @@ def traiter_sections_critiques():
 #         </script>
 #     """, unsafe_allow_html=True)
 #     return True
-@st.cache_resource
-def inject_ios_revive_global():
+# @st.cache_resource
+def inject_ios_hard_revive():
     st.markdown("""
     <script>
     (function () {
-      if (window.__iosReviveInstalled) return; window.__iosReviveInstalled = true;
+      if (window.__iosHardReviveInstalled) return; window.__iosHardReviveInstalled = true;
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent); if (!isIOS) return;
 
-      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      if (!isIOS) return;
-
-      // On note qu'on part ouvrir un lien (les renderers mettent ce flag)
-      // sessionStorage est scoped par onglet → parfait
-      function markLeaving() {
-        try { sessionStorage.setItem("__ios_expect_return", "1"); } catch(_) {}
-      }
-      window.__iosMarkLeaving = markLeaving;
-
-      function cameFromBackForward() {
+      function cameFromBackForward(){
         try {
           var nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
           return !!(nav && nav[0] && nav[0].type === 'back_forward');
         } catch(e){ return false; }
       }
 
-      // “Soft revive” léger
-      function softRevive() {
-        try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch(e){}
-        try { window.dispatchEvent(new Event('focus')); } catch(e){}
-        try { window.dispatchEvent(new Event('resize')); } catch(e){}
-        // micro reflow
-        try {
-          var html = document.documentElement;
-          var prev = html.style.webkitTransform;
-          html.style.webkitTransform = 'translateZ(0)'; void html.offsetHeight; html.style.webkitTransform = prev || '';
-        } catch(_) {}
-      }
+      // appelé par les renderers AVANT d’ouvrir l’URL
+      function markLeaving(){ try { sessionStorage.setItem("__ios_expect_return","1"); } catch(_){} }
+      window.__iosRevive = { markLeaving: markLeaving };
 
-      // Hard reload si la page semble "gelée"
-      function hardReloadIfNeeded() {
-        var now = Date.now();
-        var lastHard = parseInt(sessionStorage.getItem("__ios_hard_reload_ts") || "0", 10);
-        if (now - lastHard < 3000) return; // garde anti-boucle
-
-        try { sessionStorage.setItem("__ios_hard_reload_ts", String(now)); } catch(_) {}
-        try { sessionStorage.removeItem("__ios_expect_return"); } catch(_) {}
-
-        // reload "doux" (cache autorisé) ; si besoin, on pourrait forcer avec true
-        try { location.reload(); } catch(_) { location.assign(location.href); }
-      }
-
-      // Watchdog : si après pageshow la page ne “respire” pas, on hard-reload
-      function watchdogUnfreeze(timeoutMs) {
-        var alive = false;
-        function tick(){ alive = true; }
-        try { requestAnimationFrame(tick); } catch(_) {}
-        setTimeout(function(){
-          if (!alive) { hardReloadIfNeeded(); }
-        }, timeoutMs || 600);
-      }
-
-      // On sait qu'on quitte la page (même onglet)
-      window.addEventListener("pagehide", function(e){
-        if (!isIOS) return;
-        // iOS met souvent persisted=true quand bfcache est utilisé
-        try { sessionStorage.setItem("__ios_pagehide_persisted", e.persisted ? "1" : "0"); } catch(_) {}
-      }, {passive:true});
-
-      // Au retour
       window.addEventListener("pageshow", function(e){
-        if (!isIOS) return;
+        // On recharge si :
+        //  - on avait marqué qu’on partait ouvrir un lien
+        //  - OU on revient du bfcache
+        var expect="0", last=0, now=Date.now();
+        try { expect = sessionStorage.getItem("__ios_expect_return") || "0"; } catch(_){}
+        try { last = parseInt(sessionStorage.getItem("__ios_hard_reload_ts")||"0",10); } catch(_){}
 
-        var expect = null, persisted = null;
-        try { expect = sessionStorage.getItem("__ios_expect_return"); } catch(_) {}
-        try { persisted = sessionStorage.getItem("__ios_pagehide_persisted"); } catch(_) {}
-
-        // On tente d'abord un soft revive
-        softRevive();
-
-        // Si on revient d'un lien et/ou du back-forward cache → surveille et hard-reload si gel
-        if (expect === "1" || e.persisted || cameFromBackForward() || persisted === "1") {
-          // Nettoyage du flag “on revient”
-          try { sessionStorage.removeItem("__ios_expect_return"); } catch(_) {}
-          watchdogUnfreeze(700);
+        if (expect==="1" || e.persisted || cameFromBackForward()){
+          // anti-boucle 3s
+          if (now - last > 3000) {
+            try { sessionStorage.setItem("__ios_hard_reload_ts", String(now)); } catch(_){}
+            try { sessionStorage.removeItem("__ios_expect_return"); } catch(_){}
+            try { location.reload(); } catch(_) { location.assign(location.href); }
+          } else {
+            // on vient juste de recharger: nettoie le flag
+            try { sessionStorage.removeItem("__ios_expect_return"); } catch(_){}
+          }
         }
       }, false);
-
-      // Expose utilitaire aux renderers (pour marquer le départ)
-      window.__iosRevive = { markLeaving: markLeaving };
     })();
     </script>
     """, unsafe_allow_html=True)
@@ -5635,7 +5586,7 @@ def inject_ios_revive_global():
 def initialiser_page():
 
     # Injecte le JS qui permet d'éviter un figeage au retour d'appel d'une page web dans le meme onglet (same tab)
-    inject_ios_revive_global()
+    inject_ios_hard_revive()
 
 # Trace le début d'un rerun
 def tracer_rerun():
