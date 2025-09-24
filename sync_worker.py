@@ -68,7 +68,7 @@ def _to_cell(v):
     return v
 
 def _gs_push_full(df, meta: dict, carnet):
-    tracer.log("Début")
+    tracer.log("Début", types=["wk"])
     gs = _get_gsheets_client()
     if not gs or df is None:
         return
@@ -106,18 +106,18 @@ def _gs_push_full(df, meta: dict, carnet):
         wa.clear()
         set_with_dataframe(wa, carnet)
     
-    tracer.log("Fin")
+    tracer.log("Fin", types=["wk"])
 
 def _gs_push_df(df):
     """Écrit uniquement la feuille 'data' (efface puis réécrit tout le DF)."""
-    tracer.log("Début")
+    tracer.log("Début", types=["wk"])
     gs = _get_gsheets_client()
     if not gs or df is None:
         return
     w = gs["data"]
     w.clear()
     set_with_dataframe(w, df)
-    tracer.log("Fin")
+    tracer.log("Fin", types=["wk"])
 
 def _gs_push_row(row_df):
     """
@@ -125,7 +125,7 @@ def _gs_push_row(row_df):
     - Si l'uuid existe déjà -> update en place.
     - Sinon -> append en bas (sans réécrire l'entête).
     """
-    tracer.log("Début")
+    tracer.log("Début", types=["wk"])
     gs = _get_gsheets_client()
     if not gs or row_df is None:
         return
@@ -175,10 +175,10 @@ def _gs_push_row(row_df):
         # update en place
         set_with_dataframe(ws, row_df, row=row_idx, include_column_header=False, resize=False)
     
-    tracer.log("Fin")
+    tracer.log("Fin", types=["wk"])
 
 def _gs_push_param(key: str, value):
-    tracer.log("Début")
+    tracer.log("Début", types=["wk"])
     gs = _get_gsheets_client()
     if not gs or not key:
         return
@@ -197,7 +197,7 @@ def _gs_push_param(key: str, value):
     }.get(key)
     if cell:
         wm.update_acell(cell, _to_cell(value))
-    tracer.log("Fin")
+    tracer.log("Fin", types=["wk"])
 
 # ------------------------------------
 #   Worker: boucle de synchronisation
