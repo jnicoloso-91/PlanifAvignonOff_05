@@ -398,6 +398,7 @@ class ActiviteRenderer {
 
             // NEW: mark leaving (pour que le watchdog iOS sache qu'on revient d'un lien)
             try { window.__iosRevive && window.__iosRevive.markLeaving && window.__iosRevive.markLeaving(); } catch(_){}
+            try { window.parent && window.parent.postMessage({ __ios_mark_leaving: 1 }, "*"); } catch(_){}
 
             if (isIOS) openSameTab(u); else openNewTab(u);
             pressed=false;
@@ -567,6 +568,7 @@ class LieuRenderer {
 
             // NEW: mark leaving (pour que le watchdog iOS sache qu'on revient d'un lien)
             try { window.__iosRevive && window.__iosRevive.markLeaving && window.__iosRevive.markLeaving(); } catch(_){}
+            try { window.parent && window.parent.postMessage({ __ios_mark_leaving: 1 }, "*"); } catch(_){}
 
             if (isIOS) openSameTab(u); else openNewTab(u);
             pressed=false;
@@ -5537,7 +5539,8 @@ def traiter_sections_critiques():
 #         </script>
 #     """, unsafe_allow_html=True)
 #     return True
-# @st.cache_resource
+
+@st.cache_resource
 def inject_ios_hard_revive():
     st.markdown("""
     <script>
@@ -5552,35 +5555,54 @@ def inject_ios_hard_revive():
         } catch(e){ return false; }
       }
 
-      // appelé par les renderers AVANT d’ouvrir l’URL
-      function markLeaving(){ try { sessionStorage.setItem("__ios_expect_return","1"); } catch(_){} }
+      function markLeaving(){
+        try { sessionStorage.setItem("__ios_expect_return","1"); } catch(_) {}
+      }
       window.__iosRevive = { markLeaving: markLeaving };
 
-      window.addEventListener("pageshow", function(e){
-        // On recharge si :
-        //  - on avait marqué qu’on partait ouvrir un lien
-        //  - OU on revient du bfcache
+      // 👂 Reçoit le signal depuis l'iframe (renderer) pour marquer le départ
+      window.addEventListener("message", function(ev){
+        try {
+          var d = ev && ev.data;
+          if (d && d.__ios_mark_leaving === 1) { markLeaving(); }
+        } catch(_){}
+      }, false);
+
+      function shouldReload(e){
         var expect="0", last=0, now=Date.now();
         try { expect = sessionStorage.getItem("__ios_expect_return") || "0"; } catch(_){}
         try { last = parseInt(sessionStorage.getItem("__ios_hard_reload_ts")||"0",10); } catch(_){}
+        var fromBF = (e && e.persisted) || cameFromBackForward();
+        return { expect: expect==="1", fromBF, last, now };
+      }
 
-        if (expect==="1" || e.persisted || cameFromBackForward()){
-          // anti-boucle 3s
-          if (now - last > 3000) {
-            try { sessionStorage.setItem("__ios_hard_reload_ts", String(now)); } catch(_){}
-            try { sessionStorage.removeItem("__ios_expect_return"); } catch(_){}
-            try { location.reload(); } catch(_) { location.assign(location.href); }
-          } else {
-            // on vient juste de recharger: nettoie le flag
-            try { sessionStorage.removeItem("__ios_expect_return"); } catch(_){}
-          }
+      function hardReloadGuarded(){
+        var now = Date.now(), last = 0;
+        try { last = parseInt(sessionStorage.getItem("__ios_hard_reload_ts")||"0",10); } catch(_){}
+        if (now - last < 3000) return; // anti-boucle 3s
+        try { sessionStorage.setItem("__ios_hard_reload_ts", String(now)); } catch(_){}
+        try { sessionStorage.removeItem("__ios_expect_return"); } catch(_){}
+        try { location.reload(); } catch(_) { location.assign(location.href); }
+      }
+
+      // pageshow (retour vers l’onglet)
+      window.addEventListener("pageshow", function(e){
+        var st = shouldReload(e);
+        if (st.expect || st.fromBF) { hardReloadGuarded(); }
+        else { try { sessionStorage.removeItem("__ios_expect_return"); } catch(_){ } }
+      }, false);
+
+      // Bonus: si Safari ne déclenche pas pageshow, on tente via visibilitychange
+      document.addEventListener("visibilitychange", function(){
+        if (document.visibilityState === "visible") {
+          var st = shouldReload(null);
+          if (st.expect) { hardReloadGuarded(); }
         }
       }, false);
     })();
     </script>
     """, unsafe_allow_html=True)
     return True
-
 
 # Initialisation de la page HTML
 def initialiser_page():
