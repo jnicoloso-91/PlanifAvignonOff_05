@@ -249,7 +249,10 @@ class ActiviteRenderer {
     a.title = 'Rechercher / Ouvrir le lien';
     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
     // on bloque juste la propagation pour ne pas déclencher sélection/édition
-    a.addEventListener('click', ev=>ev.stopPropagation());
+    a.addEventListener('click', ev => {
+        ev.stopPropagation();
+        openPreferNewTab(href);
+    });
     e.appendChild(a);
 
     this.eGui = e;
@@ -258,6 +261,9 @@ class ActiviteRenderer {
   refresh(){ return false; }
 }
 """)
+
+    # a.addEventListener('click', ev=>ev.stopPropagation());
+
 
 # JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via l'icône épingle
 JS_LIEU_ICON_RENDERER = JsCode("""
@@ -311,7 +317,10 @@ class LieuRenderer {
     a.title = 'Itinéraire vers ce lieu';
     a.style.flex='0 0 auto'; a.style.textDecoration='none'; a.style.userSelect='none';
     if (url === '#') { a.style.opacity = 0.4; a.style.pointerEvents = 'none'; }
-    a.addEventListener('click', ev=>ev.stopPropagation()); // ne pas sélectionner la ligne
+    a.addEventListener('click', ev => {
+        ev.stopPropagation();
+        openPreferNewTab(href);
+    });
     e.appendChild(a);
 
     this.eGui = e;
@@ -320,6 +329,9 @@ class LieuRenderer {
   refresh(){ return false; }
 }
 """)
+
+    # a.addEventListener('click', ev=>ev.stopPropagation()); // ne pas sélectionner la ligne
+
 
 # JS Code chargé de lancer la recherche Web sur la colonne Activité via appui long
 JS_ACTIVITE_LONGPRESS_RENDERER = JsCode("""
@@ -339,6 +351,21 @@ class ActiviteRenderer {
     txt.style.cursor='pointer';
     txt.textContent = label;
     e.appendChild(txt);
+
+    function openPreferNewTab(u){
+    if (!u) return;
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS) {
+        try {
+        // iOS : ouvre un onglet “about:blank” puis redirige (contourne WebKit)
+        var w = window.open('about:blank','_blank');
+        if (w) { w.location.href = u; return; }
+        } catch(_) {}
+    }
+    // Autres plateformes : nouvel onglet standard
+    try { window.open(u, '_blank', 'noopener'); }
+    catch(_) { window.location.assign(u); }
+    }                                        
 
     // ---- helper: simuler un vrai clic cellule AG Grid (sélection propre) ----
     function tapSelectViaSyntheticClick(el){
@@ -505,6 +532,21 @@ class LieuRenderer {
     txt.textContent = label;
     e.appendChild(txt);
 
+    function openPreferNewTab(u){
+    if (!u) return;
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS) {
+        try {
+        // iOS : ouvre un onglet “about:blank” puis redirige (contourne WebKit)
+        var w = window.open('about:blank','_blank');
+        if (w) { w.location.href = u; return; }
+        } catch(_) {}
+    }
+    // Autres plateformes : nouvel onglet standard
+    try { window.open(u, '_blank', 'noopener'); }
+    catch(_) { window.location.assign(u); }
+    }                                    
+                                    
     // ---- helper: clic synthétique cellule ----
     function tapSelectViaSyntheticClick(el){
       var cell = el.closest ? el.closest('.ag-cell') : null;
@@ -5730,7 +5772,7 @@ def inject_ios_disable_bfcache():
 def initialiser_page():
 
     # Injecte le JS qui permet d'éviter un figeage au retour d'appel d'une page web dans le meme onglet (same tab)
-    inject_ios_disable_bfcache()
+    # inject_ios_disable_bfcache()
 
 # Trace le début d'un rerun
 def tracer_rerun():
