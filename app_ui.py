@@ -2761,9 +2761,9 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
         row = st.session_state.editeur_activite_etat["row"]
 
         if est_activite_reserve(row):
-            colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt", "Debut", "Duree", "__uuid"]]
+            colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt", "Debut", "Duree", "__uuid", "__options_date"]]
         else:
-            colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt", "__uuid"]]
+            colonnes_editables = [col for col in df.columns if col not in ["Date", "Fin", "Debut_dt", "Duree_dt", "__uuid", "__options_date"]]
 
         # Traitement de l'accentuation
         colonnes_editables_avec_accents = [RENOMMAGE_COLONNES.get(col, col) for col in colonnes_editables]
@@ -3394,4 +3394,5 @@ def initialiser_page():
 
     # Coller ici les essais pour éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
     pass
+
 
