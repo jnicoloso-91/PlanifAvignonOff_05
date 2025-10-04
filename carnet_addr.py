@@ -8,7 +8,8 @@ from difflib import SequenceMatcher
 import re
 from urllib.parse import quote_plus
 
-from app_utils import normalize_text
+from app_utils import normalize_text, add_persistent_uuid
+from app_const import COLONNES_ATTENDUES_CARNET_ADRESSES
 
 @st.cache_data(show_spinner=False)
 def prepare_carnet(carnet_df: pd.DataFrame) -> pd.DataFrame:
@@ -121,4 +122,35 @@ def resolve_address(lieu: str, carnet_df: pd.DataFrame | None = None, default_ci
 
     addr_enc = quote_plus(addr) if addr else ""
     return addr, addr_enc
+
+def nettoyer_ca(ca: pd.DataFrame) -> pd.DataFrame:
+    """
+    Nettoie le carnet d'adresses :
+      - ajoute un UUID persistant
+      - conserve uniquement les colonnes obligatoires
+      - crée les colonnes manquantes si besoin
+    """
+    # Ajoute l'UUID si besoin
+    ca = add_persistent_uuid(ca)
+
+    cols_obligatoires = COLONNES_ATTENDUES_CARNET_ADRESSES + ["__uuid"]
+
+    # Supprimer les colonnes non obligatoires
+    cols_a_supprimer = [col for col in ca.columns if col not in cols_obligatoires]
+    ca = ca.drop(columns=cols_a_supprimer, errors="ignore")
+
+    # Ajouter les colonnes manquantes
+    for col in COLONNES_ATTENDUES_CARNET_ADRESSES:
+        if col not in ca.columns:
+            ca[col] = pd.NA
+
+    # Ajoute l'UUID si besoin
+    ca = add_persistent_uuid(ca)
+
+    # Réordonner les colonnes
+    ca = ca[cols_obligatoires]
+
+    return ca             
+       
+
 
