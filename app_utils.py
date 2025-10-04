@@ -1091,7 +1091,7 @@ def diff_cols_between_rows(row1: pd.Series, row2: pd.Series) -> list[str]:
         # comparaison avec gestion des NaN
         if pd.isna(v1) and pd.isna(v2):
             continue
-        if v1 != v2:
+        if pd.isna(v1) and pd.notna(v2) or pd.notna(v1) and pd.isna(v2) or v1 != v2:
             diffs.append(col)
     return diffs
 
@@ -1200,6 +1200,7 @@ def parse_listing_text(text: str) -> dict:
 
     # -------- Relâche --------
     rel_parts = []
+    periode_jouee = None
 
     # Intervalle : “du X au Y <mois>” + parité optionnelle
     # - “..., jours pairs/impairs”  => c'est le rythme de JEU -> relâche = inverse
@@ -1227,8 +1228,8 @@ def parse_listing_text(text: str) -> dict:
                     parite_relache = parite
 
                 part = f"{part}, {parite_relache}"
-
-            rel_parts.append(part)
+            
+            periode_jouee = part
 
     # Liste explicite : “relâche les 9, 16, 23 juillet”
     m = re.search(
@@ -1243,6 +1244,10 @@ def parse_listing_text(text: str) -> dict:
             if jours:
                 part = f"({','.join(str(int(j)) for j in jours)})/{mois_num}"
                 rel_parts.append(part)
+    
+    # Ajout la période jouée en fin de liste
+    if periode_jouee:
+        rel_parts.append(periode_jouee)
 
     # Concatène Relache si on a au moins un morceau
     if rel_parts:
