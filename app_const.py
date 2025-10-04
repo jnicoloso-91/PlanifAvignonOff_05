@@ -20,7 +20,7 @@ COLONNES_ATTENDUES_ACCENTUEES = ["Date", "Début", "Fin", "Durée", "Activité",
 COLONNES_TYPE_INT = ["Date", "Priorite"]
 COLONNES_TYPE_STRING = ["Debut", "Fin", "Duree", "Activite", "Lieu"]
 COLONNES_TYPE_OBJECT = ["Relache", "Reserve", "Commentaire"]
-COLONNES_ATTENDUES_CARNET_ADRESSES = ["Nom", "Adresse"]
+COLONNES_ATTENDUES_CARNET_ADRESSES = ["Nom", "Adresse", "Tel", "Web"]
 
 RENOMMAGE_COLONNES = {
     "Debut": "Début",
