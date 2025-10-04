@@ -12,7 +12,8 @@ Notes de version
 - V58 2025-10-04
 	- Passage aux dates absolues dans le champ Date
 	- Modification du format des relâches pour tenir compte des dates absolues
-	- Ajour de la grille carnet d'adresses et menu correspondant
+	- Ajout de la grille carnet d'adresses et du menu correspondant
+	- Ajout dans le carnet d'adresse des colonnes Tel et Web avec boutons 
 	- Sauvegardes : ajout du carnet d'adresses, prise en compte de l'ordre des colonnes, suppression des colonnes techniques
 	- Ajout du clipboard pour la création contextuelle des activités et la récupération d'infos web
 	- Reconstruction des options_date au chargement
