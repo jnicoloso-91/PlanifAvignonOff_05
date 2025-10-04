@@ -94,6 +94,8 @@ def init_db():
       id TEXT PRIMARY KEY,
       Nom TEXT,
       Adresse TEXT,
+      Tel TEXT,
+      Web TEXT,
       __uuid TEXT,
       extras_json TEXT NOT NULL DEFAULT '{{}}'
     );
