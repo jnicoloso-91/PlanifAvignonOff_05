@@ -6,9 +6,7 @@ import streamlit as st
 
 from app_metier import \
     maj_contexte, \
-    modifier_cellule
-
-from app_ui import \
+    modifier_cellule, \
     activites_programmees_modifier_cellule, \
     activites_programmees_deprogrammer, \
     activites_programmees_reprogrammer, \
