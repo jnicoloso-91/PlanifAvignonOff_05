@@ -125,7 +125,7 @@ def undo():
         st.session_state.activites_programmables_select_auto = False 
         from app_metier import maj_contexte
         maj_contexte(maj_donnees_calculees=False, maj_options_date=False)
-        forcer_reaffichage_df("creneaux_disponibles")
+        # forcer_reaffichage_df("creneaux_disponibles")
         sql.sauvegarder_contexte()
         st.rerun()
 
@@ -163,7 +163,7 @@ def redo():
         st.session_state.activites_programmables_select_auto = False 
         from app_metier import maj_contexte
         maj_contexte(maj_donnees_calculees=False, maj_options_date=False)
-        forcer_reaffichage_df("creneaux_disponibles")
+        # forcer_reaffichage_df("creneaux_disponibles")
         sql.sauvegarder_contexte()
         st.rerun()
 
