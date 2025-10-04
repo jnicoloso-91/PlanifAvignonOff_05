@@ -19,6 +19,7 @@ import requests
 from bs4 import BeautifulSoup
 from streamlit_javascript import st_javascript
 import copy
+import unicodedata
 
 from app_const import *
 import tracer
@@ -208,7 +209,122 @@ def to_timedelta(value, default):
         return datetime.timedelta(minutes=minutes)    
     except (ValueError, TypeError, AttributeError):
         return default
+
+DATE_RE = re.compile(r"^\s*(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\s*$")
+
+def date_to_int(y, m, d):
+    """ 
+    Renvoie l'entier yyyymmdd à partir de yyyy mm dd. 
+    """
+    return y*10000 + m*100 + d
+
+def date_to_dateint(x, default_year=None, default_month=None):
+    """
+    Caste x (Excel serial, 'dd/mm', 'dd/mm/yyyy', pandas Timestamp…) -> int yyyymmdd ou None.
+    """
+    if x is None or (isinstance(x, float) and pd.isna(x)):
+        return None
+
+    # déjà au bon format ?
+    try:
+        n = int(x)
+        if 10**7 <= n <= 99991231:
+            return n
+    except Exception:
+        pass
+
+    # pandas / numpy datetime-like
+    if hasattr(x, "year") and hasattr(x, "month") and hasattr(x, "day"):
+        return date_to_int(int(x.year), int(x.month), int(x.day))
+
+    # Excel serial (approximativement) : 60 = 1900-02-29 bug, base 1899-12-30
+    if isinstance(x, (int, float)) and not math.isnan(x) and 59 < x < 600000:
+        base = datetime.date(1899, 12, 30)
+        try:
+            dte = base + datetime.timedelta(days=int(x))
+            return date_to_int(dte.year, dte.month, dte.day)
+        except Exception:
+            pass
+
+    s = str(x).strip()
+    # entier jour du mois (1..31) -> sur (default_year, default_month)
+    if s.isdigit():
+        n = int(s)
+        if 1 <= n <= 31:
+            y = default_year or datetime.date.today().year
+            m = default_month or datetime.date.today().month
+            try:
+                dte = datetime.date(y, m, n)
+                return date_to_int(y, m, n)
+            except ValueError:
+                return None
+
+    # dd/mm[/(yy)yy]
+    m = DATE_RE.match(s)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), m.group(3)
+        y = int(y) if y else (default_year or datetime.date.today().year)
+        if y < 100: y += 1900 if y >= 70 else 2000
+        try:
+            dte = datetime.date(y, mo, d)
+            return date_to_int(y, mo, d)
+        except ValueError:
+            return None
+
+    # dernier essai: parser “souple” si tu veux (optionnel)
+    try:
+        from dateutil import parser as du
+        dte = du.parse(s, dayfirst=True, default=datetime.datetime(default_year or datetime.date.today().year,
+                                                             default_month or datetime.date.today().month, 1))
+        return date_to_int(dte.year, dte.month, dte.day)
+    except Exception:
+        return None
+
+def dateint_to_str(date_int: int) -> str:
+    """
+    Formate un entier yyyymmdd en:
+    - 'dd' si même mois & année que aujourd'hui
+    - 'dd/mm' si même année mais mois différent
+    - 'dd/mm/yy' sinon
+    """
+    if not date_int:
+        return ""
     
+    try:
+        date_int = int(date_int)
+        y = date_int // 10000
+        m = (date_int // 100) % 100
+        d = date_int % 100
+        date_obj = datetime.date(y, m, d)
+    except Exception:
+        print(f"Erreur de conversion dans dateint_to_str: {date_int}")
+        return str(date_int)
+
+    today = datetime.date.today()
+
+    # if date_obj.year == today.year and date_obj.month == today.month:
+    #     return f"{d:02d}"
+    # elif date_obj.year == today.year:
+    if date_obj.year == today.year:
+        return f"{d:02d}/{m:02d}"
+    else:
+        return f"{d:02d}/{m:02d}/{str(y)[-2:]}"
+
+def dateint_to_date(n: int | float | str | None) -> datetime.date | None:
+    """yyyymmdd -> date; retourne None si invalide/NaN."""
+    if n is None or (isinstance(n, float) and pd.isna(n)): 
+        return None
+    try:
+        n = int(n)
+        y, m, d = n // 10000, (n % 10000) // 100, n % 100
+        return datetime.date(y, m, d)
+    except Exception:
+        return None
+
+def dateint_to_jour(x: int | float | str | None) -> int | None:
+    """yyyymmdd -> dd; retourne None si invalide/NaN."""
+    return int(str(int(float(x)))[-2:]) if pd.notna(x) else None
+
 # Calcule l'heure de fin à partir de l'heure de début et de la durée    
 def calculer_fin(h, d, fin_actuelle=""):
     if isinstance(d, pd.Timedelta) and not pd.isna(h):
@@ -315,8 +431,8 @@ def trouver_ligne(df, valeurs):
             return i, df.index.get_loc(i)
     return None, None
 
-# Renvoie l'index de la ligne la plus proche dans un df_display d'aggrid
-# Le df_display est supposé contenir dans la colonne __index l'index du df de base
+# Renvoie l'index de la ligne la plus proche d'une ligne de référence dans un df_display d'aggrid
+# La ligne de référence est donnée par son index supposé être stocké dans la colonne __index 
 def ligne_voisine_index(df_display, index_df):
     df_display_reset = df_display.reset_index(drop=True)
     if pd.notna(index_df):
@@ -324,6 +440,18 @@ def ligne_voisine_index(df_display, index_df):
             selected_row_pos = df_display_reset["__index"].eq(index_df).idxmax() 
             new_selected_row_pos = selected_row_pos + 1 if  selected_row_pos + 1 <= len(df_display) - 1 else max(selected_row_pos - 1, 0)
             return df_display_reset.iloc[new_selected_row_pos]["__index"] 
+    else:
+        return None
+
+# Renvoie l'index de la ligne la plus proche d'une ligne de référence dans un df_display d'aggrid
+# La ligne de référence est donnée par son uuid supposé être stocké dans la colonne __uuid
+def ligne_voisine_uuid(df_display, uuid):
+    df_display_reset = df_display.reset_index(drop=True)
+    if pd.notna(uuid):
+        if len(df_display_reset) > 0:
+            selected_row_pos = df_display_reset["__uuid"].eq(uuid).idxmax() 
+            new_selected_row_pos = selected_row_pos + 1 if  selected_row_pos + 1 <= len(df_display) - 1 else max(selected_row_pos - 1, 0)
+            return get_index_from_uuid(df_display, df_display_reset.iloc[new_selected_row_pos]["__uuid"])
     else:
         return None
 
@@ -398,7 +526,7 @@ def hash_df(df: pd.DataFrame, colonnes_a_garder: list=None, colonnes_a_enlever: 
         df_subset = df[colonnes_a_garder]
     
     if colonnes_a_enlever is not None:
-        df_subset = df_subset.drop(colonnes_a_enlever, axis=1)
+        df_subset = df_subset.drop(colonnes_a_enlever, axis=1, errors="ignore")
 
     df_subset = df_subset.astype(str)
     
@@ -484,14 +612,14 @@ def get_uuid(df, idx):
         return None 
 
 # renvoie l'index dans le df à partir de l'uuid stocké dans la colonne __uuid 
-def get_index_from_uuid(df, uuid):
+def get_index_from_uuid(df, uuid, col="__uuid"):
     """
     Retourne l'index du DataFrame dont la colonne '__uuid' vaut uuid_value.
     Renvoie None si aucun match.
     """
-    if df is None or len(df) == 0 or "__uuid" not in df.columns:
+    if df is None or len(df) == 0 or col not in df.columns:
         return None
-    matches = df.index[df["__uuid"] == uuid]
+    matches = df.index[df[col] == uuid]
     return matches[0] if len(matches) else None
 
 # def ajouter_options_date(df_save: pd.DataFrame):
@@ -856,11 +984,12 @@ def modifier_df_cell(df, idx, col, val):
     if idx in df.index:
         df.at[idx, col] = val
 
-# Modifie la valeur d'une cellule d'un df_display
-def modifier_df_display_cell(df, idx, col, val):
-    matches = df[df["__index"].astype(str) == str(idx)]
+# Modifie la valeur d'une cellule d'un df_display à partir de l'index du df principal supposé être stocké dans la colonne __index
+# Méthode alternative : récupérer l'index dans le df_display avec get_index_from_uuid et utiliser directement modifier_df_cell sur cet index (uuid est un id unique commun au df principal et aux df_display)
+def modifier_df_display_cell(df_display, idx, col, val):
+    matches = df_display[df_display["__index"].astype(str) == str(idx)]
     if not matches.empty:
-        df.at[matches.index[0], col] = val
+        df_display.at[matches.index[0], col] = val
 
 # Retourne les valeurs non nulles et convertibles de la colonne Date d'un df
 def get_dates_from_df(df):
@@ -879,9 +1008,9 @@ def forcer_reaffichage_df(key):
     session_state_key_counter = key + "_key_counter"
     if session_state_key_counter in st.session_state:
         st.session_state[session_state_key_counter] += 1 
-    session_state_forcer_reaffichage = key + "_forcer_reaffichage"
-    if session_state_forcer_reaffichage in st.session_state:
-        st.session_state[session_state_forcer_reaffichage] = True
+    # session_state_forcer_reaffichage = key + "_forcer_reaffichage"
+    # if session_state_forcer_reaffichage in st.session_state:
+    #     st.session_state[session_state_forcer_reaffichage] = True
 
 # Renvoie les lignes modifées entre df1 et df2, l'index de df2 est supposé se trouver dans la colonne __index de df1
 def get_lignes_modifiees(df1, df2, columns_to_drop=[]):
@@ -903,6 +1032,21 @@ def get_ligne_modifiee(df1, df2, columns_to_drop=[]):
     for i, row in df1.iterrows():
         idx = row["__index"]
         for col in df1.drop(columns=columns_to_drop).columns:
+            if idx in df2.index:
+                val_avant = df2.at[idx, col]
+                val_apres = row[col]
+                if pd.isna(val_avant) and pd.isna(val_apres):
+                    continue
+                if (pd.isna(val_avant) and pd.notna(val_apres)) or val_avant != val_apres:
+                    return i, idx
+    return None, None
+
+# Renvoie la première ligne modifée entre df1 et df2, la jointure entre les deux df se fait via la colonne __uuid
+def get_ligne_modifiee_uuid(df1, df2, columns_to_drop=[]):
+    for i, row in df1.iterrows():
+        uuid = row["__uuid"]
+        for col in df1.drop(columns=columns_to_drop).columns:
+            idx = get_index_from_uuid(df2, uuid)
             if idx in df2.index:
                 val_avant = df2.at[idx, col]
                 val_apres = row[col]
@@ -934,4 +1078,176 @@ def demander_deselection(grid_name: str, visible_id: str | None=None):
         st.session_state[k]["desel"]["pending"] = True
         st.session_state[k]["sel"]["id"] = None
 
+def diff_cols_between_rows(row1: pd.Series, row2: pd.Series) -> list[str]:
+    """
+    Retourne la liste des colonnes dont les valeurs diffèrent entre deux Series.
+    - On ne teste que les colonnes présentes dans row1 et row2.
+    - Les NaN sont traités comme égaux.
+    """
+    common_cols = set(row1.index) & set(row2.index)
+    diffs = []
+    for col in common_cols:
+        v1, v2 = row1[col], row2[col]
+        # comparaison avec gestion des NaN
+        if pd.isna(v1) and pd.isna(v2):
+            continue
+        if v1 != v2:
+            diffs.append(col)
+    return diffs
+
+
+MOIS = {
+    "janvier": "01", "février": "02", "fevrier": "02", "mars": "03",
+    "avril": "04", "mai": "05", "juin": "06", "juillet": "07",
+    "août": "08", "aout": "08", "septembre": "09",
+    "octobre": "10", "novembre": "11", "décembre": "12", "decembre": "12",
+}
+
+def _norm(s: str) -> str:
+    if not isinstance(s, str):
+        return ""
+    t = unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii")
+    return t
+
+def _clean_lieu(s: str) -> str:
+    if not s:
+        return ""
+    # retire tout ce qui est entre parenthèses
+    s = re.sub(r"\s*\([^)]*\)\s*", " ", s).strip()
+    # compact espaces
+    s = re.sub(r"\s+", " ", s)
+    # capitalisation basique (tu peux mettre ta propre table d’exceptions si besoin)
+    return s.title()
+
+def parse_listing_text(text: str) -> dict:
+    res = {
+        "Activite": None,
+        "Lieu": None,
+        "Relache": None,
+        "Debut": None,   # "HHhMM"
+        "Duree": None,   # "HhMM"
+        "Hyperlien": None,
+    }
+    if not text:
+        return res
+
+    txt = text.strip()
+    txt_norm = _norm(txt).lower()
+
+    # --- Activité : 1re ligne après "programme >" sinon 1re ligne non vide ---
+    m = re.search(r"programme\s*>\s*(.+)", text, re.I)
+    if m:
+        # prend ce qui suit "programme >" jusqu’au saut de ligne
+        line = m.group(1).strip().splitlines()[0].strip()
+        if line:
+            res["Activite"] = line
+
+    if not res.get("Activite"):
+        # fallback: 1re ligne non vide mais en filtrant les entêtes type "festival Off Avignon > ..."
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if re.search(r"festival\s+off\s+avignon\s*>\s*programme", line, re.I):
+                continue  # on saute l'entête
+            res["Activite"] = line
+            break
+
+    # --- Lieu : première ligne après le mot 'lieu' qui ressemble à un nom ---
+    # on cherche un bloc “lieu” suivi de lignes ; la 1re “propre” sert de lieu
+    m = re.search(r"\blieu\b(.*)", text, re.I | re.S)
+    if m:
+        tail = m.group(1)
+        for line in tail.splitlines():
+            cand = line.strip()
+            if not cand:
+                continue
+            # ignorer lignes “signalétiques”
+            if re.search(r"nom de la salle|nombre de places|t[eé]l[eé]phone|programmation|voir toute", cand, re.I):
+                continue
+            # heuristique : évite des lignes trop courtes ou “techniques”
+            if len(cand) >= 3:
+                res["Lieu"] = _clean_lieu(cand)
+                break
+
+    # --- Début : première occurrence HHhMM ---
+    m = re.search(r"\b(\d{1,2})h(\d{2})\b", txt_norm, re.I)
+    if m:
+        h, mm = m.groups()
+        res["Debut"] = f"{int(h):02d}h{int(mm):02d}"
+
+    # --- Durée : première occurrence HhMM (souvent juste après) ---
+    # on autorise 1-2 chiffres pour l'heure de durée
+    m = re.search(r"\b(\d{1,2})h(\d{2})\b", txt_norm, re.I)
+    if m:
+        h, mm = m.groups()
+        # si durée identique à début ET début déjà trouvé, on cherche la suivante
+        cand = f"{int(h):d}h{int(mm):02d}"
+        if res["Debut"] and res["Debut"].lower() == f"{int(h):02d}h{int(mm):02d}":
+            # chercher une 2e occurrence
+            m2 = re.search(r"\b(\d{1,2})h(\d{2})\b.*?\b(\d{1,2})h(\d{2})\b", txt_norm, re.I | re.S)
+            if m2:
+                h2, mm2 = m2.groups()[-2:]
+                res["Duree"] = f"{int(h2)}h{int(mm2):02d}"
+        else:
+            res["Duree"] = cand
+
+    # --- Hyperlien : “hyperlien <espaces> <URL-qui-occupe-le-reste-de-la-ligne>” ---
+    # ex: "Hyperlien   https://exemple.com/truc"
+    m = re.search(r"(?im)^\s*hyperlien\s+([^\s].*)$", text)  # prend tout le reste de la ligne
+    if m:
+        res["Hyperlien"] = m.group(1).strip()
+
+    # -------- Relâche --------
+    rel_parts = []
+
+    # Intervalle : “du X au Y <mois>” + parité optionnelle
+    # - “..., jours pairs/impairs”  => c'est le rythme de JEU -> relâche = inverse
+    # - “..., relâche jours pairs/impairs” => déjà la relâche -> on garde
+    m = re.search(
+        r"du\s+(\d{1,2})\s+au\s+(\d{1,2})\s+([a-zéû]+)\s*(?:,\s*(rel[aâ]che\s+)?(jours?\s+pairs?|jours?\s+impairs?))?",
+        txt_norm, re.I
+    )
+    if m:
+        d1, d2, mois_txt, is_relache_prefix, parite = m.groups()
+        mois_num = MOIS.get(mois_txt.lower())
+        if mois_num:
+            # intervalle HORS-RELÂCHE avec chevrons
+            part = f"<{int(d1)}-{int(d2)}>/{mois_num}"
+
+            if parite:
+                parite = parite.strip().lower()  # "jours pairs" | "jours impairs"
+                is_relache = bool(is_relache_prefix)  # True si "relâche ..." était présent
+
+                if not is_relache:
+                    # Parité décrite = jours JOUÉS -> relâche = inverse
+                    parite_relache = "jours impairs" if "pairs" in parite else "jours pairs"
+                else:
+                    # Parité décrite = relâche explicite -> on garde
+                    parite_relache = parite
+
+                part = f"{part}, {parite_relache}"
+
+            rel_parts.append(part)
+
+    # Liste explicite : “relâche les 9, 16, 23 juillet”
+    m = re.search(
+        r"rel[aâ]che\s+les\s+([0-9,\s]+)\s+([a-zéû]+)",
+        txt_norm, re.I
+    )
+    if m:
+        jours_str, mois_txt = m.groups()
+        mois_num = MOIS.get(mois_txt.lower())
+        if mois_num:
+            jours = [s.strip() for s in jours_str.split(",") if s.strip().isdigit()]
+            if jours:
+                part = f"({','.join(str(int(j)) for j in jours)})/{mois_num}"
+                rel_parts.append(part)
+
+    # Concatène Relache si on a au moins un morceau
+    if rel_parts:
+        # NB: l’exigence = toutes les parties séparées par des virgules
+        res["Relache"] = ", ".join(rel_parts)
+
+    return res
 
