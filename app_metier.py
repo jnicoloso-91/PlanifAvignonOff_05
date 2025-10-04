@@ -162,7 +162,7 @@ def charger_contexte_depuis_gsheet():
             df = _nettoyer_donnees(df, fn)
             df = add_persistent_uuid(df)
             df = add_hyperliens(df)
-            ca = add_persistent_uuid(ca)
+            ca = nettoyer_ca(ca)
             initialiser_etat_contexte(df, wb, fn, fp, ca)
             undo.init(verify=False)
             maj_contexte(maj_donnees_calculees=True, maj_options_date=True) 
@@ -2526,7 +2526,7 @@ def charger_contexte_depuis_fichier():
                 if "contexte_invalide" not in st.session_state:
                     df = add_persistent_uuid(df)
                     df = add_hyperliens(df, lnk)
-                    ca = add_persistent_uuid(ca)
+                    ca = nettoyer_ca(ca)
                     fn = fd.name if fd is not None else ""
                     fp = dp.upload_excel_to_dropbox(fd.getvalue(), fd.name) if fd is not None else ""
                     undo.save()
