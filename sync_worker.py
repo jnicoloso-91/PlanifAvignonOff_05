@@ -199,6 +199,17 @@ def _gs_push_param(key: str, value):
         wm.update_acell(cell, _to_cell(value))
     tracer.log("Fin", types=["wk"])
 
+def _gs_push_ca(ca):
+    """Écrit uniquement la feuille 'adrs' (efface puis réécrit tout le DF)."""
+    tracer.log("Début", types=["wk"])
+    gs = _get_gsheets_client()
+    if not gs or ca is None:
+        return
+    w = gs["adrs"]
+    w.clear()
+    set_with_dataframe(w, ca)
+    tracer.log("Fin", types=["wk"])
+
 # ------------------------------------
 #   Worker: boucle de synchronisation
 # ------------------------------------
@@ -279,6 +290,8 @@ def _gsync_worker(q: "queue.Queue[GSTask]", stop_evt: threading.Event, status: D
                     _gs_push_row(task.payload.get("row_df"))
                 elif task.kind == "save_param":
                     _gs_push_param(task.payload.get("key"), task.payload.get("value"))
+                elif task.kind == "save_ca":
+                    _gs_push_ca(task.payload.get("ca"))
                 # 'noop' : rien à faire ici
 
                 status["last_ok"] = time.time()
@@ -306,6 +319,7 @@ def _gsync_worker(q: "queue.Queue[GSTask]", stop_evt: threading.Event, status: D
         # Coalescer
         last_full: Optional[GSTask] = None
         last_df:   Optional[GSTask] = None
+        last_ca:   Optional[GSTask] = None
         rows_by_uuid: Dict[str, GSTask] = {}
         params_by_key: Dict[str, GSTask] = {}
 
@@ -329,6 +343,10 @@ def _gsync_worker(q: "queue.Queue[GSTask]", stop_evt: threading.Event, status: D
                 if (last_df is None) or (t.ts >= last_df.ts):
                     last_df = t
 
+            elif t.kind == "save_ca":
+                if (last_ca is None) or (t.ts >= last_ca.ts):
+                    last_ca = t
+
             elif t.kind == "noop":
                 # simple ping: marque OK, mais ne génère pas d'exécution
                 status["last_ok"] = time.time()
@@ -337,18 +355,21 @@ def _gsync_worker(q: "queue.Queue[GSTask]", stop_evt: threading.Event, status: D
 
         # Ordre d'exécution :
         # 1) s'il y a un save_full -> on exécute UNIQUEMENT lui (il écrase tout)
-        # 2) sinon s'il y a un save_df -> on exécute save_df (option : + params)
-        # 3) sinon -> rows puis params (derniers par clé)
+        # 2) sinon s'il y a un save_df -> on exécute save_df puis params puis ca
+        # 3) sinon -> rows puis params (derniers par clé) puis ca
         tasks_to_run: List[GSTask] = []
         if last_full:
             tasks_to_run.append(last_full)
         elif last_df:
             tasks_to_run.append(last_df)
-            # Si tu veux aussi pousser des params à côté d'un save_df, décommente:
-            # tasks_to_run.extend(params_by_key.values())
+            tasks_to_run.extend(params_by_key.values())
+            if last_ca:
+                        tasks_to_run.append(last_ca)            
         else:
             tasks_to_run.extend(rows_by_uuid.values())
             tasks_to_run.extend(params_by_key.values())
+            if last_ca:
+                        tasks_to_run.append(last_ca)
 
         buf = []
         for t in tasks_to_run:
@@ -585,6 +606,13 @@ def enqueue_save_param(key: str, value):
     if q:
         # tracer.log("->", types=["wk"])
         q.put(GSTask(kind="save_param", payload={"key": key, "value": value}))
+
+def enqueue_save_ca(ca):
+    ensure_worker_alive()
+    q = st.session_state.get("gsync_queue")
+    if q:
+        # tracer.log("->", types=["wk"])
+        q.put(GSTask(kind="save_ca", payload={"ca": ca}))
 
 def enqueue_noop():
     ensure_worker_alive()
