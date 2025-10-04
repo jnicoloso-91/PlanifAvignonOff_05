@@ -8,10 +8,12 @@ import datetime
 import io
 import re
 from openpyxl import load_workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font
 import pandas.api.types as ptypes
 import uuid
 import copy
+from typing import Optional, List, Dict, Any, Tuple
 
 from app_const import *
 from app_utils import *
@@ -84,7 +86,7 @@ def charger_contexte_depuis_sql():
         df = _nettoyer_donnees(df, fn)
         initialiser_etat_contexte(df, wb, fn, fp, ca)
         undo.init(verify=False)
-        maj_contexte(maj_donnees_calculees=True, maj_options_date=False) 
+        maj_contexte(maj_donnees_calculees=True, maj_options_date=True) 
 
         st.session_state.activites_programmees = st.session_state.activites_programmees.drop(columns="__options_date", errors="ignore")
         st.session_state.activites_non_programmees = st.session_state.activites_non_programmees.drop(columns="__options_date", errors="ignore")
@@ -160,9 +162,10 @@ def charger_contexte_depuis_gsheet():
             df = _nettoyer_donnees(df, fn)
             df = add_persistent_uuid(df)
             df = add_hyperliens(df)
+            ca = add_persistent_uuid(ca)
             initialiser_etat_contexte(df, wb, fn, fp, ca)
             undo.init(verify=False)
-            maj_contexte(maj_donnees_calculees=True, maj_options_date=False) 
+            maj_contexte(maj_donnees_calculees=True, maj_options_date=True) 
             selection = st.session_state.activites_non_programmees.index[0] if len(st.session_state.activites_non_programmees) > 0 else None
             demander_selection("activites_non_programmees", selection, deselect="activites_programmees")
             st.session_state.menu_activites = {
@@ -220,7 +223,7 @@ def est_activite_reserve(ligne_df):
 
 # Ajout d'une nouvelle activité à la bd contexte
 # @chrono
-def ajouter_activite(idx=None, nom=None, jour=None, debut=None, duree=None):
+def ajouter_activite(idx=None, nom=None, jour=None, debut=None, duree=None, lieu=None, relache=None, hyperlien=None):
     def get_nom_nouvelle_activite(df):
         noms_existants = df["Activite"].dropna().astype(str).str.strip().tolist()
         while True:
@@ -245,12 +248,17 @@ def ajouter_activite(idx=None, nom=None, jour=None, debut=None, duree=None):
     jour = pd.NA if jour is None else jour
     debut = "09h00" if debut is None else debut
     duree = "1h00" if duree is None else duree
+    lieu = pd.NA if lieu is None else lieu
+    relache = pd.NA if relache is None else relache
+    hyperlien = f"https://www.festivaloffavignon.com/resultats-recherche?recherche={nom.replace(' ', '+')}" if hyperlien is None else hyperlien
 
     df.at[idx, "Date"] = jour
     df.at[idx, "Debut"] = debut
     df.at[idx, "Duree"] = duree
     df.at[idx, "Activite"] = nom
-    df.at[idx, "Hyperlien"] = f"https://www.festivaloffavignon.com/resultats-recherche?recherche={nom.replace(' ', '+')}"
+    df.at[idx, "Lieu"] = lieu
+    df.at[idx, "Relache"] = relache
+    df.at[idx, "Hyperlien"] = hyperlien
     add_persistent_uuid(df, idx)
     _maj_donnees_calculees_row(idx, full=False)
 
@@ -297,7 +305,7 @@ def _creer_df_display_activites_non_programmees(activites_non_programmees, maj_o
 
 def _creer_df_display_activites_programmees(activites_programmees, maj_options_date=True):
     df_display = activites_programmees.copy()
-    df_display["__jour"] = df_display["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
+    df_display["__jour"] = df_display["Date"].apply(dateint_to_jour)
     df_display["__index"] = df_display.index
     if "__options_date" not in df_display or maj_options_date:
         df_display["__options_date"] = _calculer_options_date_activites_programmees(df_display) 
@@ -379,6 +387,22 @@ def maj_activites_programmees(maj_options_date=True):
     st.session_state.activites_programmees_df_display = df_display
     st.session_state.activites_programmees_df_display_copy = df_display.copy()
 
+# Met à jour les variables d'état relatives aux activités non programmées
+# @chrono
+def maj_activites_non_programmees(maj_options_date=True):
+    if st.session_state.get("df", None) is None:
+        return
+    activites_non_programmees = get_activites_non_programmees(st.session_state.df)
+    st.session_state.activites_non_programmees = activites_non_programmees
+    df_display = _creer_df_display_activites_non_programmees(activites_non_programmees, maj_options_date)
+    st.session_state.activites_non_programmees_df_display = df_display
+    st.session_state.activites_non_programmees_df_display_copy = df_display.copy()
+
+def maj_ca_display():
+    if st.session_state.get("ca", None) is None:
+        return
+    st.session_state.ca_display = st.session_state.ca.copy()
+
 # Met à jour le contexte complet (activités programmées, non programmées et créneaux disponibles)
 def maj_contexte(maj_donnees_calculees=True, maj_options_date=True):
     st.session_state.setdefault("bd_maj_contexte_cmd", {"maj_donnees_calculees": maj_donnees_calculees, "maj_options_date": maj_options_date})
@@ -388,6 +412,7 @@ def maj_contexte(maj_donnees_calculees=True, maj_options_date=True):
     maj_activites_programmees(maj_options_date) # pour mise à jour menus options date
     maj_activites_non_programmees(maj_options_date) # pour mise à jour menus options date
     maj_creneaux_disponibles()
+    maj_ca_display()
     tracer.log(f"Fin", types=["gen"])
     del st.session_state["bd_maj_contexte_cmd"]
 
@@ -466,17 +491,6 @@ def maj_donnees_calculees_df():
     except:
         pass        
 
-# Met à jour les variables d'état relatives aux activités non programmées
-# @chrono
-def maj_activites_non_programmees(maj_options_date=True):
-    if st.session_state.get("df", None) is None:
-        return
-    activites_non_programmees = get_activites_non_programmees(st.session_state.df)
-    st.session_state.activites_non_programmees = activites_non_programmees
-    df_display = _creer_df_display_activites_non_programmees(activites_non_programmees, maj_options_date)
-    st.session_state.activites_non_programmees_df_display = df_display
-    st.session_state.activites_non_programmees_df_display_copy = df_display.copy()
-
 def modifier_cellule(idx, col, val, section_critique=False):
 
     if section_critique:
@@ -511,7 +525,7 @@ def modifier_cellule(idx, col, val, section_critique=False):
         elif est_activite_programmee(df.loc[idx]):
             modifier_df_cell(st.session_state.activites_programmees, idx, col, val)
             modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, df_display_col_nom(col), str(val))
-            modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, "__jour", int(val) if safe_int(val) is not None else None)
+            modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, "__jour", dateint_to_jour(val) if safe_int(val) is not None else None)
             st.session_state.activites_programmees = st.session_state.activites_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
             st.session_state.activites_programmees_df_display = st.session_state.activites_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
 
@@ -524,56 +538,75 @@ def modifier_cellule(idx, col, val, section_critique=False):
             maj_creneaux_disponibles()
     
     else:
+        # Affectation de df_activite et df_display (ainsi que de l'id correspondant) selon que l'on traite une activité programmée ou non programmée
+        activite_programmee = est_activite_programmee(df.loc[idx])
+        df_activite = st.session_state.activites_programmees if activite_programmee else st.session_state.activites_non_programmees
+        df_display = st.session_state.activites_programmees_df_display if activite_programmee else st.session_state.activites_non_programmees_df_display
+        uuid = df.at[idx, "__uuid"]
+        idd = get_index_from_uuid(df_display, uuid)
+        if idd is None:
+            print(f"Erreur de recherche d'uuid dans modifier_cellule: {uuid}")
+            return
         
-        if col == "Activite":
+        # Maj de la colonne modifiée sur df_activite et df_display
+        modifier_df_cell(df_activite, idx, col, val)
+        modifier_df_cell(df_display, idd, df_display_col_nom(col), val)
+
+        # Maj des données calculées sur df, df_activite et df_display
+        if col in ["Debut", "Duree"]: 
+            _maj_donnees_calculees_row(idx)
+
+        # Maj des colonnes hyperlien et adresse
+        if col == "Activite": 
             lnk = df.loc[idx, "Hyperlien"]
             if isinstance(lnk, str) and isinstance(oldval, str) and isinstance(val, str):
                 ancien_nom_dans_lnk = oldval.replace(' ', '+')
                 if ancien_nom_dans_lnk in lnk:
                     lnk = lnk.replace(ancien_nom_dans_lnk, val.replace(' ', '+'))
                     modifier_df_cell(df, idx, "Hyperlien", lnk)
-                    if est_activite_programmee(df.loc[idx]):
-                        modifier_df_cell(st.session_state.activites_programmees, idx, "Hyperlien", lnk)
-                        modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, "Hyperlien", lnk)
-                    elif est_activite_non_programmee(df.loc[idx]):
-                        modifier_df_cell(st.session_state.activites_non_programmees, idx, "Hyperlien", lnk)
-                        modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, "Hyperlien", lnk)
+                    modifier_df_cell(df_activite, idx, "Hyperlien", lnk)
+                    modifier_df_cell(df_display, idd, "Hyperlien", lnk)
         elif col == "Lieu":
-            if est_activite_programmee(df.loc[idx]):
-                _set_addr_cols(st.session_state.activites_programmees_df_display, idx, val)
-            elif est_activite_non_programmee(df.loc[idx]):
-                _set_addr_cols(st.session_state.activites_non_programmees_df_display, idx, val)
+            _set_addr_cols(df_display, idd, val)
     
-        if est_activite_programmee(df.loc[idx]):
-            modifier_df_cell(st.session_state.activites_programmees, idx, col, val)
-            modifier_df_display_cell(st.session_state.activites_programmees_df_display, idx, df_display_col_nom(col), val)
-            if col == "Debut":
-                st.session_state.activites_programmees = st.session_state.activites_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
-                st.session_state.activites_programmees_df_display = st.session_state.activites_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
-            elif col == "Reserve":
-                if st.session_state.activites_programmees_df_display.loc[idx]["__index"] == idx:
-                    non_reserve = str(st.session_state.activites_programmees_df_display.loc[idx][df_display_col_nom("Reserve")].strip().lower()) != "oui"
-                    modifier_df_cell(st.session_state.activites_programmees_df_display, idx, "__non_reserve", non_reserve)
-                else:
-                    st.session_state.activites_programmees_df_display["__non_reserve"] = st.session_state.activites_programmees_df_display["Reserve"].astype(str).str.strip().str.lower() != "oui"
-            st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
-        
-        elif est_activite_non_programmee(df.loc[idx]):
-            modifier_df_cell(st.session_state.activites_non_programmees, idx, col, val)
-            modifier_df_display_cell(st.session_state.activites_non_programmees_df_display, idx, df_display_col_nom(col), val)
-            if col == "Debut":
-                st.session_state.activites_non_programmees = st.session_state.activites_non_programmees.sort_values(by=["Date", "Debut"], ascending=[True, True])
-                st.session_state.activites_non_programmees_df_display = st.session_state.activites_non_programmees_df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
-            st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
-        
-        if col in ["Debut", "Duree"]:
-            _maj_donnees_calculees_row(idx)
-        
-        if col in ["Debut", "Duree", "Relache"] or est_activite_programmee(df.loc[idx]) and col == "Reserve":
-            if pd.notna(df.loc[idx]["Date"]):
+        # Maj spécifiques aux activités programmées
+        if activite_programmee:
+
+            if col == "Debut": # Retri du df_activité et du df_display
+                st.session_state.activites_programmees = df_activite.sort_values(by=["Date", "Debut"], ascending=[True, True])
+                st.session_state.activites_programmees_df_display = df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
+
+            elif col == "Reserve": # Maj des colonnes "__non_reserve" et "__options_date" sur le df_display
+                # Maj "__non_reserve"
+                non_reserve = str(df_display.loc[idd][df_display_col_nom("Reserve")].strip().lower()) != "oui"
+                modifier_df_cell(df_display, idd, "__non_reserve", non_reserve)
+                # Maj "__options_date"
+                row = df_display.loc[idd]
+                options_date = safe_json_dump(get_jours_possibles_from_activite_programmee(row))
+                modifier_df_cell(df_display, idd, "__options_date", options_date)
+
+            if col in ["Debut", "Duree", "Relache"]: # Maj des "__options_date" sur les deux df_display pour le jour considéré
                 jour = df.loc[idx]["Date"]
                 _maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_programmees_df_display, jour)
                 _maj_options_date(df, st.session_state.activites_programmees, st.session_state.activites_non_programmees_df_display, jour)
+
+            # Maj de la copie du df_display
+            st.session_state.activites_programmees_df_display_copy = st.session_state.activites_programmees_df_display.copy()
+
+        # Maj spécifiques aux activités non programmées
+        else:
+
+            if col == "Debut": # Retri du df_activité et du df_display
+                st.session_state.activites_non_programmees = df_activite.sort_values(by=["Date", "Debut"], ascending=[True, True])
+                st.session_state.activites_non_programmees_df_display = df_display.sort_values(by=["Date", "Début"], ascending=[True, True])
+        
+            if col in ["Debut", "Duree", "Relache"]: # Maj "__options_date" 
+                row = df_display.loc[idd]
+                options_date = safe_json_dump(get_jours_possibles_from_activite_non_programmee(row))
+                modifier_df_cell(df_display, idd, "__options_date", options_date)
+
+            # Maj de la copie du df_display
+            st.session_state.activites_non_programmees_df_display_copy = st.session_state.activites_non_programmees_df_display.copy()
 
         maj_creneaux_disponibles()
 
@@ -610,7 +643,7 @@ def _programmer(idx, jour=None):
 
         row = st.session_state.activites_non_programmees_df_display.loc[[idx]]
         row.at[idx, "Date"] = str(jour)
-        row["__jour"] = row["Date"].apply(lambda x: int(str(int(float(x)))[-2:]) if pd.notna(x) else None)
+        row["__jour"] = row["Date"].apply(dateint_to_jour)
         row["__non_reserve"] = row["Réservé"].astype(str).str.strip().str.lower() != "oui"
         st.session_state.activites_non_programmees_df_display.drop(index=idx, inplace=True)
         st.session_state.activites_programmees_df_display = pd.concat([st.session_state.activites_programmees_df_display, row]).sort_values(by=["Date", "Début"], ascending=[True, True])
@@ -655,10 +688,8 @@ def _ensure_addr_cols(df):
 def _set_addr_cols(df, idx, lieu):
     carnet = st.session_state.get("ca")
     city_default = st.session_state.get("city_default", "")
-    matches = df[df["__index"].astype(str) == str(idx)]
-    if not matches.empty:
-        addr_h, addr_enc = resolve_address_fast(lieu, carnet, city_default=city_default)
-        df.at[matches.index[0], "__addr_enc"] = addr_enc
+    addr_h, addr_enc = resolve_address_fast(lieu, carnet, city_default=city_default)
+    df.at[idx, "__addr_enc"] = addr_enc
 
 def _calculer_options_date_activites_programmees(df_display):
     # Hash non pertinent en l'état car cette fonction n'est appelée par maj_activites_non_programmees que si les données d'entrée on changé
@@ -709,7 +740,7 @@ def _maj_options_date(df, activites_programmees, df_display, jour):
     if jour is None or pd.isna(jour):
         return
 
-    jour = str(jour)
+    jour_str = str(jour)
 
     changed_idx = []
 
@@ -726,7 +757,7 @@ def _maj_options_date(df, activites_programmees, df_display, jour):
         row = df_display.loc[i]
 
         # S'il s'agit d'une activité programmée au jour dit...
-        if row["Date"] == jour:
+        if row["Date"] == jour_str:
             # S'il s'agit d'une activité réservée on vérifie que le menu est vide. Si ce n'est pas le cas on le vide.
             if est_activite_reserve(df.loc[i]):
                 if opts != set():
@@ -746,32 +777,25 @@ def _maj_options_date(df, activites_programmees, df_display, jour):
 
             # si le jour n'était pas présent ET que la règle ne le concerne pas, on peut sauter
             # (mais on doit tout de même appeler la règle si tu veux ajouter quand c'est possible)
-            allowed = est_jour_possible(df, activites_programmees, i, int(jour))
+            allowed = est_jour_possible(df, activites_programmees, i, jour)
 
             # remove si plus possible
-            if not allowed and jour in opts:
-                opts.remove(jour)
+            if not allowed and jour_str in opts:
+                opts.remove(jour_str)
                 if len(opts) == 1 and '' in opts:
                     opts = set() # un menu ne doit pas avoir un seul élément vide
                 df_display.at[i, "__options_date"] = dump_options_date(opts)
                 changed_idx.append(i)
 
             # add si maintenant possible
-            elif allowed and jour not in opts:
-                opts.add(jour)
+            elif allowed and jour_str not in opts:
+                opts.add(jour_str)
                 if len(opts) == 1:
                     opts.add('') # il faut un item vide dans un menu avec des jours valides pour permettre la déprogrammation
                 df_display.at[i, "__options_date"] = dump_options_date(opts)
                 changed_idx.append(i)
 
     return changed_idx
-
-# Renvoie un descripteur d'activité à partir d'une date et d'une ligne du df
-def _get_descripteur_activite(date, row):
-    titre = f"{date} - [{row['Debut'].strip()} - {row['Fin'].strip()}] - {row['Activite']}"
-    if not (pd.isna(row["Lieu"]) or str(row["Lieu"]).strip() == ""):
-        titre = titre + f"( {row['Lieu']}) - P{formatter_cellule_int(row['Priorite'])}"
-    return titre
 
 # Affichage de la période à programmer
 def initialiser_periode_programmation(df):
@@ -792,8 +816,7 @@ def initialiser_periode_programmation(df):
 
         if not dates_valides.empty:
             # Conversion en datetime
-            base_date = datetime.date(datetime.date.today().year, 7, 1)
-            dates_datetime = dates_valides.apply(lambda j: datetime.datetime.combine(base_date, datetime.datetime.min.time()) + datetime.timedelta(days=j - 1))
+            dates_datetime = dates_valides.apply(dateint_to_date)
             if not dates_datetime.empty:
                 periode_a_programmer_debut = dates_datetime.min()
                 periode_a_programmer_fin = dates_datetime.max()
@@ -1070,7 +1093,7 @@ def valider_valeur(df, colonne, nouvelle_valeur):
     elif colonne == "Duree" and not est_duree_valide(nouvelle_valeur):
         erreur = "⛔ Format attendu : HhMM (ex : 1h00 ou 0h30)"
     elif colonne == "Relache" and not est_relache_valide(nouvelle_valeur):
-        erreur = "⛔ Format attendu : 1, 10, pair, impair"
+        erreur = "⛔ Format attendu : voir A propos / Format des données"
     elif colonne == "Reserve" and not est_reserve_valide(nouvelle_valeur):
         erreur = "⛔ Format attendu : Oui, Non"
     elif ptypes.is_numeric_dtype(df[colonne]) and not ptypes.is_numeric_dtype(nouvelle_valeur):
@@ -1157,55 +1180,347 @@ def affecter_valeur_row(row, colonne, nouvelle_valeur):
 def est_reserve_valide(val):
     return str(val).strip().lower() in ["oui", "non", ""]
 
-# Vérifie qu'une valeur contient bien NaN ou "" ou quelque chose du type "1", "1,10", "1, 10", "1, pair", "12, impair"
-def est_relache_valide(val):
+# token = liste de jours (1 ou plusieurs séparés par -),
+# éventuellement suivis de /mois et éventuellement /année (2 ou 4 chiffres)
+_TOKEN = r"(?:\d{1,2}(?:\s*-\s*\d{1,2})*)(?:/\d{1,2}(?:/\d{2,4})?)?"
+_MOTIF_RELACHE = re.compile(
+    rf"^\s*(?:{_TOKEN}|pair|impair)(\s*,\s*(?:{_TOKEN}|pair|impair))*\s*$",
+    re.IGNORECASE
+)
 
-    # Cas val vide ou NaN
-    if pd.isna(val) or str(val).strip() == "":
-        return True
-
-    val_str = str(val).strip().lower()
-
-    # Autorise : chiffres ou mots-clés (pair, impair) séparés par virgules
-    # Exemples valides : "1", "1, 10", "1, impair", "2, pair"
-    # Regex : liste d'éléments séparés par des virgules, chaque élément est un entier ou 'pair'/'impair'
-    motif = r"^\s*(\d+|pair|impair)(\s*,\s*(\d+|pair|impair))*\s*$"
-
-    return re.fullmatch(motif, val_str) is not None
-
-# Vérifie si une date de référence est compatible avec la valeur de la colonne Relache qui donne les jours de relache pour une activité donnée
-def est_hors_relache(relache_val, date_val):
-    if pd.isna(relache_val) or pd.isna(date_val):
-        return True  # Aucune relâche spécifiée ou date absente
-
-    if not est_relache_valide(relache_val):
-        return True
-    
+# ---------- parsing ----------
+def _valid_date(y: int, m: int, d: int) -> bool:
     try:
-        date_int = int(float(date_val))
-    except (ValueError, TypeError):
-        return True  # Si la date n'est pas exploitable, on la considère programmable
-
-    # Normaliser le champ Relache en chaîne
-    if isinstance(relache_val, (int, float)):
-        relache_str = str(int(relache_val))
-    else:
-        relache_str = str(relache_val).strip().lower()
-
-    # Cas particulier : pair / impair
-    if "pair" in relache_str and date_int % 2 == 0:
-        return False
-    if "impair" in relache_str and date_int % 2 != 0:
-        return False
-
-    # Cas général : liste explicite de jours (ex : "20,21")
-    try:
-        jours = [int(float(x.strip())) for x in relache_str.split(",")]
-        if date_int in jours:
-            return False
+        datetime.date(y, m, d)
+        return True
     except ValueError:
-        pass  # ignorer s'il ne s'agit pas d'une liste de jours
+        return False
 
+def _y2k(yy: int) -> int:
+    return 2000 + yy if yy < 100 else yy
+
+def _mk_dateint(y: int, m: int, d: int) -> Optional[int]:
+    try:
+        datetime.date(y, m, d)
+        return y*10000 + m*100 + d
+    except ValueError:
+        return None
+
+def _tokenize_specs(s: str) -> List[str]:
+    """
+    Découpe par virgules de haut niveau (on ne coupe pas à l'intérieur des parenthèses).
+    """
+    if not isinstance(s, str):
+        return []
+    out, cur, depth = [], [], 0
+    for ch in s:
+        if ch == '(':
+            depth += 1
+            cur.append(ch)
+        elif ch == ')':
+            depth = max(0, depth-1)
+            cur.append(ch)
+        elif ch == ',' and depth == 0:
+            tok = ''.join(cur).strip()
+            if tok:
+                out.append(tok)
+            cur = []
+        else:
+            cur.append(ch)
+    tok = ''.join(cur).strip()
+    if tok:
+        out.append(tok)
+    return out
+
+def _parse_one_token(tok: str, default_year: int, default_month: int) -> dict:
+    """
+    Retourne un dict décrivant la règle, ou {} si le token est invalide.
+    Types possibles:
+      - interval  : bornes d1-d2, avec délimiteurs
+                    [d1-d2]  (intervalle fermé = relâche)
+                    <d1-d2>  (fenêtre de jeu = hors relâche)
+                    option: /mm(/yyyy) traînant -> mois/année implicites pour d1 et d2
+      - list      : (a,b,c)/mm(/yyyy) -> jours de relâche explicites
+      - days      : 8,25(/mm(/yyyy))  -> jours de relâche explicites
+      - parity    : "jours pairs" | "jours impairs"
+    """
+    t = tok.strip().lower()
+
+    # --- 1) Intervalle avec crochets (relâche) OU chevrons (fenêtre de jeu) ---
+    # [d1-d2]  ou  <d1-d2>  + option /mm(/yyyy)
+    m = re.fullmatch(
+        r"(?P<L>\[|<)\s*(?P<d1>\d{1,2})\s*-\s*(?P<d2>\d{1,2})\s*(?P<R>\]|>)\s*(?:/\s*(?P<mm>\d{1,2})(?:/\s*(?P<yyyy>\d{2,4}))?)?",
+        t
+    )
+    if m:
+        d1 = int(m.group("d1")); d2 = int(m.group("d2"))
+        mm = int(m.group("mm")) if m.group("mm") else default_month
+        yy = _y2k(int(m.group("yyyy"))) if m.group("yyyy") else default_year
+
+        if not (_valid_date(yy, mm, d1) and _valid_date(yy, mm, d2)):
+            return {}
+
+        is_window = (m.group("L") == "<" and m.group("R") == ">")   # <d1-d2>  = fenêtre de jeu
+        return {
+            "type": "interval",
+            "y": yy, "m": mm, "d1": d1, "d2": d2,
+            "mode": "window" if is_window else "closed"  # "closed" = relâche
+        }
+
+    # --- 2) Regroupement par mois: (a,b,c)/mm(/yyyy) -> relâches ciblées ---
+    m = re.fullmatch(r"\(\s*([\d\s,]+)\s*\)\s*/\s*(\d{1,2})(?:/\s*(\d{2,4}))?", t)
+    if m:
+        days_part, mm, yyyy = m.groups()
+        mm = int(mm)
+        yy = _y2k(int(yyyy)) if yyyy else default_year
+        days = [int(x) for x in re.findall(r"\d{1,2}", days_part)]
+        if not days: 
+            return {}
+        # valide toutes les dates
+        for d in days:
+            if not _valid_date(yy, mm, d):
+                return {}
+        return {"type": "list", "y": yy, "m": mm, "days": days}
+
+    # --- 3) Parité (relâche) ---
+    if re.fullmatch(r"(jours?\s+)?pairs?", t):
+        return {"type": "parity", "parity": "pairs"}
+    if re.fullmatch(r"(jours?\s+)?impairs?", t):
+        return {"type": "parity", "parity": "impairs"}
+
+
+    # --- 4) Jours simples (relâche) : "8,25", ou "8,25/07", ou "8,25/07/2025"
+    m = re.fullmatch(r"([\d\s,]+)(?:/\s*(\d{1,2})(?:/\s*(\d{2,4}))?)?", t)
+    if m:
+        days_part, mm, yyyy = m.groups()
+        days = [int(x) for x in re.findall(r"\d{1,2}", days_part)]
+        if not days:
+            return {}
+        mm = int(mm) if mm else default_month
+        yy = _y2k(int(yyyy)) if yyyy else default_year
+        for d in days:
+            if not _valid_date(yy, mm, d):
+                return {}
+        return {"type": "days", "y": yy, "m": mm, "days": days}
+
+    # rien de reconnu
+    return {}
+
+def _parse_relache(relache_val: str, *, default_year: Optional[int], default_month: Optional[int]) -> List[Dict[str, Any]]:
+    if not relache_val or str(relache_val).strip() == "":
+        return []  # aucune relâche => hors relâche partout
+    tokens = _tokenize_specs(relache_val)
+    # Défauts si manquants (utilise mois/année “courants” du contexte)
+    if default_year is None or default_month is None:
+        today = datetime.date.today()
+        default_year  = today.year
+        default_month = today.month
+
+    rules: List[Dict[str, Any]] = []
+    for tok in tokens:
+        rule = _parse_one_token(tok, default_year, default_month)
+        if rule:
+            rules.append(rule)
+
+    # Attache “jours pairs/impairs” au dernier intervalle sans parité si le token
+    # de parité est juste après.
+    attached: List[Dict[str, Any]] = []
+    i = 0
+    while i < len(rules):
+        r = rules[i]
+        if r["type"] == "interval" and i+1 < len(rules) and rules[i+1]["type"] == "parity" and (r.get("parity") is None):
+            r = {**r, "parity": rules[i+1]["parity"]}
+            attached.append(r)
+            i += 2
+        else:
+            attached.append(r)
+            i += 1
+    return attached
+
+def _parse_day_maybe_dmY(token: str, def_y: int, def_m: int) -> Tuple[Optional[int], Optional[int], Optional[int]]:
+    """
+    Parse 'd' | 'd/m' | 'd/m/yy' | 'd/m/yyyy' -> (Y,M,D), avec défauts (def_y, def_m).
+    """
+    t = token.strip()
+    m = re.fullmatch(r"(\d{1,2})(?:/(\d{1,2})(?:/(\d{2,4}))?)?", t)
+    if not m:
+        return (None, None, None)
+    d = int(m.group(1))
+    mm = int(m.group(2)) if m.group(2) else def_m
+    if m.group(3):
+        yy = int(m.group(3))
+        yy = _y2k(yy) if yy < 100 else yy
+    else:
+        yy = def_y
+    if _mk_dateint(yy, mm, d) is None:
+        return (None, None, None)
+    return (yy, mm, d)
+
+# ---------- API demandée ----------
+def est_relache_valide(val: object, *, default_year: int | None = None, default_month: int | None = None) -> bool:
+    """
+    Valide la chaîne :
+      - vide/NaN => True
+      - sinon, TOUS les tokens doivent être valides (pas seulement un).
+    """
+    s = "" if val is None else str(val).strip()
+    if s == "":
+        return True
+
+    tokens = _tokenize_specs(s)  # ta fonction existante de découpage par virgules de haut niveau
+    if not tokens:
+        return False
+
+    if default_year is None or default_month is None:
+        today = datetime.date.today()
+        default_year, default_month = today.year, today.month
+
+    # ❗️On exige que chaque token passe _parse_one_token
+    for tok in tokens:
+        rule = _parse_one_token(tok, default_year, default_month)
+        if not rule:
+            return False
+    return True
+
+def est_hors_relache(relache_val: Optional[str], date_val: Optional[int], today: Optional[datetime.date] = None) -> bool:
+    """
+    True  = jour jouable (hors relâche)
+    False = jour de relâche
+
+    relache_val peut contenir, séparés par des virgules :
+      - Intervalles de relâche             : [5-26], [05-10]/07, [25/07-01/08]
+      - Fenêtres de jeu                    : <5-26>, <05-10>/07, <25/07-01/08>
+      - Regroupements de jours de relâche  : (8,25), (9,16,23)/07
+      - Relâche jours pairs ou impairs     : "jours pairs" / "jours impairs"
+
+    Règles de décision :
+      1) Si la date matche un bloc de RELÂCHE (intervalle / regroupement / parité) -> False
+      2) Sinon, s'il existe des fenêtres de JEU (<...>) :
+            - si la date est DANS AU MOINS l'une d'entre elles (bornes incluses) -> True
+            - sinon -> False
+      3) Sinon (aucune fenêtre et pas de relâche) -> True
+    """
+    if relache_val is None or str(relache_val).strip() == "" or date_val is None:
+        return True
+
+    try:
+        dv = int(date_val)
+    except Exception:
+        return True
+
+    dy = dv // 10000
+    dm = (dv // 100) % 100
+    dd = dv % 100
+
+    base = today or datetime.date.today()
+    def_y, def_m = base.year, base.month
+
+    txt = str(relache_val).strip().lower()
+
+    # --- Parité (relâche) ---
+    parite_relache = None  # "pair" | "impair" | None
+    if re.search(r"\brel[aâ]che\s+jours?\s+pairs?\b", txt) or re.search(r"\bjours?\s+pairs?\b", txt):
+        parite_relache = "pair"
+    if re.search(r"\brel[aâ]che\s+jours?\s+impairs?\b", txt) or re.search(r"\bjours?\s+impairs?\b", txt):
+        parite_relache = "impair"
+
+    closed_intervals: List[Tuple[int,int]] = []  # relâche
+    open_intervals:   List[Tuple[int,int]] = []  # JEU
+    regroup_days:     List[int]            = []  # relâche
+
+    # 1) Intervalles fermés [A-B] avec /mm(/yyyy) traînant
+    for m in re.finditer(r"\[\s*([0-9/]+)\s*-\s*([0-9/]+)\s*\]\s*(?:/(\d{1,2})(?:/(\d{2,4}))?)?", txt):
+        a_txt, b_txt, mm_txt, yy_txt = m.groups()
+        mm_def = int(mm_txt) if mm_txt else def_m
+        if yy_txt:
+            yy_def = int(yy_txt); yy_def = _y2k(yy_def) if yy_def < 100 else yy_def
+        else:
+            yy_def = def_y
+
+        Ay, Am, Ad = _parse_day_maybe_dmY(a_txt, yy_def, mm_def)
+        By, Bm, Bd = _parse_day_maybe_dmY(b_txt, yy_def, mm_def)
+        if None not in (Ay, Am, Ad, By, Bm, Bd):
+            a_di = _mk_dateint(Ay, Am, Ad)
+            b_di = _mk_dateint(By, Bm, Bd)
+            if a_di is not None and b_di is not None:
+                lo, hi = (a_di, b_di) if a_di <= b_di else (b_di, a_di)
+                closed_intervals.append((lo, hi))
+
+    # 2) Fenêtres de jeu <A-B> avec /mm(/yyyy) traînant   ⟵ (remplace l'ancien motif ]A-B[)
+    for m in re.finditer(r"<\s*([0-9/]+)\s*-\s*([0-9/]+)\s*>\s*(?:/(\d{1,2})(?:/(\d{2,4}))?)?", txt):
+        a_txt, b_txt, mm_txt, yy_txt = m.groups()
+        mm_def = int(mm_txt) if mm_txt else def_m
+        if yy_txt:
+            yy_def = int(yy_txt); yy_def = _y2k(yy_def) if yy_def < 100 else yy_def
+        else:
+            yy_def = def_y
+
+        Ay, Am, Ad = _parse_day_maybe_dmY(a_txt, yy_def, mm_def)
+        By, Bm, Bd = _parse_day_maybe_dmY(b_txt, yy_def, mm_def)
+        if None not in (Ay, Am, Ad, By, Bm, Bd):
+            a_di = _mk_dateint(Ay, Am, Ad)
+            b_di = _mk_dateint(By, Bm, Bd)
+            if a_di is not None and b_di is not None:
+                lo, hi = (a_di, b_di) if a_di <= b_di else (b_di, a_di)
+                open_intervals.append((lo, hi))
+
+    # 3) Regroupements (a,b,c)/mm(/yyyy)  → relâche
+    for m in re.finditer(r"\(\s*([\d\s,]+)\s*\)\s*(?:/(\d{1,2})(?:/(\d{2,4}))?)?", txt):
+        jours_txt, mm_txt, yy_txt = m.groups()
+        mm_def = int(mm_txt) if mm_txt else def_m
+        if yy_txt:
+            yy_def = int(yy_txt); yy_def = _y2k(yy_def) if yy_def < 100 else yy_def
+        else:
+            yy_def = def_y
+        try:
+            jours = [int(x.strip()) for x in jours_txt.split(",") if x.strip()]
+        except Exception:
+            jours = []
+        for jd in jours:
+            di = _mk_dateint(yy_def, mm_def, jd)
+            if di is not None:
+                regroup_days.append(di)
+
+    # 4) Jours isolés de relâche "22/10" (hors parenthèses), séparés par virgules
+    for part in [p.strip() for p in txt.split(",")]:
+        if not part or "jour" in part:  # ignore parité
+            continue
+        if re.search(r"^\[.*\]$|^<.*>$|^\(.*\)$", part):  # saute si déjà capturé
+            continue
+        mday = re.fullmatch(r"(\d{1,2})(?:/(\d{1,2})(?:/(\d{2,4}))?)?", part)
+        if not mday:
+            continue
+        d = int(mday.group(1))
+        mm = int(mday.group(2)) if mday.group(2) else def_m
+        if mday.group(3):
+            yy = int(mday.group(3)); yy = _y2k(yy) if yy < 100 else yy
+        else:
+            yy = def_y
+        di = _mk_dateint(yy, mm, d)
+        if di is not None:
+            regroup_days.append(di)
+
+    # ----- Décision -----
+
+    # (1) relâche explicite : fermé / regroupements / parité
+    for lo, hi in closed_intervals:
+        if lo <= dv <= hi:
+            return False
+    if dv in set(regroup_days):
+        return False
+    if parite_relache in ("pair", "impair"):
+        is_even = (dd % 2 == 0)
+        if (parite_relache == "pair" and is_even) or (parite_relache == "impair" and not is_even):
+            return False
+
+    # (2) fenêtres de jeu présentes ? -> on ne joue QUE dedans
+    if open_intervals:
+        for lo, hi in open_intervals:
+            if lo <= dv <= hi:
+                return True
+        return False
+
+    # (3) par défaut : joué
     return True
 
 # Création de la liste des créneaux avant/après pour chaque activité programmée 
@@ -1246,7 +1561,7 @@ def get_creneaux(df, activites_programmees, traiter_pauses):
 
         # Traitement des jours libres 
         jours_libres = []
-        for jour in range(st.session_state.periode_a_programmer_debut.day, st.session_state.periode_a_programmer_fin.day + 1):
+        for jour in range(date_to_dateint(st.session_state.periode_a_programmer_debut), date_to_dateint(st.session_state.periode_a_programmer_fin) + 1):
             if jour not in activites_programmees["Date"].values:
                 jours_libres.append(jour)
         for jour in jours_libres:
@@ -1298,8 +1613,6 @@ def get_creneaux(df, activites_programmees, traiter_pauses):
 def get_creneau_bounds_avant(activites_programmees, ligne_ref):
     date_ref = ligne_ref["Date"]
     debut_ref = ligne_ref["Debut_dt"] if pd.notnull(ligne_ref["Debut_dt"]) else datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
-    duree_ref = ligne_ref["Duree_dt"] if pd.notnull(ligne_ref["Duree_dt"]) else datetime.timedelta(0)
-    fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
 
     # Chercher l'activité programmée précédente sur le même jour
     programmes_jour_ref = activites_programmees[activites_programmees["Date"] == date_ref]
@@ -1326,10 +1639,12 @@ def get_creneau_bounds_apres(activites_programmees, ligne_ref):
     duree_ref = ligne_ref["Duree_dt"] if pd.notnull(ligne_ref["Duree_dt"]) else datetime.timedelta(0)
     fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else debut_ref    
 
-
-    # Ajuster la date de référence si le jour a changé
+    # Ajuster la date_ref au jour de fin si le jour de fin n'est pas le jour de début
     if fin_ref.day != debut_ref.day:
-        date_ref = date_ref + fin_ref.day - debut_ref.day  
+        date_reelle = dateint_to_date(ligne_ref["Date"])
+        date_debut_reelle = debut_ref.replace(year=date_reelle.year, month=date_reelle.month, day=date_reelle.day)
+        date_fin_reelle = date_debut_reelle + duree_ref 
+        date_ref = date_to_int(date_fin_reelle.year, date_fin_reelle.month, date_fin_reelle.day)
 
     # Chercher l'activité programmée suivante sur le même jour de référence
     programmes_jour_ref = activites_programmees[activites_programmees["Date"] == date_ref]
@@ -1350,9 +1665,6 @@ def get_creneau_bounds_apres(activites_programmees, ligne_ref):
 # Renvoie la liste des activités programmables avant une activité donnée par son descripteur ligne_ref
 def get_activites_programmables_avant(df, activites_programmees, ligne_ref, traiter_pauses=True):
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Debut_dt"] if pd.notnull(ligne_ref["Debut_dt"]) else datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
-    duree_ref = ligne_ref["Duree_dt"] if pd.notnull(ligne_ref["Duree_dt"]) else datetime.timedelta(0)
-    fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None
 
     proposables = [] 
 
@@ -1556,14 +1868,7 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
                         proposables.append(nouvelle_ligne)
 
     date_ref = ligne_ref["Date"]
-    debut_ref = ligne_ref["Debut_dt"] if pd.notnull(ligne_ref["Debut_dt"]) else datetime.datetime.combine(BASE_DATE, datetime.time(0, 0))
-    duree_ref = ligne_ref["Duree_dt"] if pd.notnull(ligne_ref["Duree_dt"]) else datetime.timedelta(0)
-    fin_ref = debut_ref + duree_ref if pd.notnull(debut_ref) and pd.notnull(duree_ref) else None    
 
-    def desc(h, duree, nom):
-        # return f"{int(date_ref)} de {h.strftime('%Hh%M')} à {(h + duree).time().strftime('%Hh%M')} ({formatter_timedelta(duree)}) - {nom}"
-        return f"{int(date_ref)} - {h.strftime('%Hh%M')} - {nom}"
-    
     # Récupération des bornes du créneau
     if type_creneau == "Avant":
         debut_min, fin_max, _ = get_creneau_bounds_avant(activites_programmees, ligne_ref)
@@ -1581,94 +1886,180 @@ def ajouter_pauses(proposables, activites_programmees, ligne_ref, type_creneau):
     # Pause café
     ajouter_pause_cafe(proposables, debut_min, fin_max)
 
-def sauvegarder_contexte(df_hash=None):
+def serialiser_contexte(df, ca=None):
+    """
+    Écrit df_sorted dans la feuille openpyxl ws ou à défaut dans un buffer, en alignant par nom de 
+    colonne (désaccentué/minuscule). Crée les colonnes manquantes à la fin si create_missing=True.
+    La colonne 'Hyperlien' n’est pas écrite mais sert à poser un lien sur la colonne Activité.
+    """
+    def _norm(s: str) -> str:
+        if s is None:
+            return ""
+        s = str(s).strip()
+        s = unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode("ascii")
+        s = re.sub(r"\s+", " ", s).lower()
+        return s
 
-    def serialiser_contexte(df):
-        # Réindexer proprement pour éviter les trous
-        df_sorted = df.copy()
-        df_sorted = df_sorted.sort_values(by=["Date", "Debut_dt"])
-        df_sorted = df_sorted.reset_index(drop=True)
-        df_sorted = df_sorted.drop(columns=["Debut_dt", "Duree_dt", "__uuid"], errors='ignore')
+    def _to_excel_value(v):
+        if pd.isna(v):
+            return None
+        try:
+            iv = int(v)
+            if str(iv) == str(v).strip():
+                return iv
+        except Exception:
+            pass
+        return v
 
-        # Récupération de la worksheet à traiter
-        wb = st.session_state.get("wb")
+    # Réindexer proprement pour éviter les trous
+    df_sorted = df.copy()
+    df_sorted = df_sorted.sort_values(by=["Date", "Debut_dt"])
+    df_sorted = df_sorted.reset_index(drop=True)
+    hyperliens = df_sorted["Hyperlien"] if "Hyperlien" in df_sorted.columns else None
+    df_sorted = df_sorted.drop(columns=["Hyperlien", "Debut_dt", "Duree_dt", "__options_date", "__uuid"], errors='ignore')
+    df_sorted["Date"] = df_sorted["Date"].apply(lambda v: dateint_to_str(v) if pd.notna(v) else "")
 
-        if wb is not None:
+    # Récupération de la worksheet à traiter
+    wb = st.session_state.get("wb")
+
+    if wb is not None:
+        try:
             ws = wb.worksheets[0]
 
             # Effacer le contenu de la feuille Excel existante
-            for row in ws.iter_rows(min_row=2, max_row=ws.max_row, max_col=ws.max_column):
-                for cell in row:
-                    cell.value = None  # on garde le style, on efface juste la valeur
-                    cell.hyperlink = None
+            if ws.max_row > 1:
+                ws.delete_rows(2, ws.max_row - 1)
 
             # Réinjecter les données du df dans la feuille Excel
-            from copy import copy
-
             col_activite = None
             for cell in ws[1]:
                 if cell.value and str(cell.value).strip().lower() in ["activité"]:
                     col_activite = cell.column
             source_font = ws.cell(row=1, column=1).font
 
-            # Réécriture sans saut de ligne
-            for i, (_, row) in enumerate(df_sorted.iterrows()):
-                row_idx = i + 2  # ligne Excel (1-indexée + entête)
-                for col_idx, value in enumerate(row, start=1):
-                    cell = ws.cell(row=row_idx, column=col_idx)
+            # Normalise les entêtes existants dans la feuille
+            ws_headers = [cell.value for cell in ws[1]]
+            header_map = { _norm(h): j for j, h in enumerate(ws_headers, start=1) if h }
 
-                    if pd.isna(value):
-                        cell.value = None
+            # Liste des colonnes du DF à écrire (on exclut Hyperlien)
+            write_cols = [c for c in df_sorted.columns if _norm(c) != "hyperlien"]
+
+            # Associer chaque colonne du DF à un index de colonne Excel (création si nécessaire)
+            col_to_ws_idx = {}
+            next_col_idx = len(ws_headers) + 1
+            for col in write_cols:
+                key = _norm(col)
+                col_idx = header_map.get(key)
+                if col_idx is None:
+                    col_idx = next_col_idx
+                    ws.cell(row=1, column=col_idx).value = col
+                    header_map[key] = col_idx
+                    next_col_idx += 1
+                col_to_ws_idx[col] = col_idx  # peut rester None si on ne crée pas
+
+            # Colonne Activité dans la feuille
+            ACTIVITE_KEYS = {"activite"}
+            activite_ws_col = None
+            for k, j in header_map.items():
+                if k in ACTIVITE_KEYS:
+                    activite_ws_col = j
+                    break
+            if activite_ws_col is None:
+                for col in write_cols:
+                    if _norm(col) in ACTIVITE_KEYS and col_to_ws_idx.get(col):
+                        activite_ws_col = col_to_ws_idx[col]
+                        break
+
+            # Écriture des lignes
+            for i, (_, row) in enumerate(df_sorted.iterrows(), start=2):
+                # 1) valeurs normales
+                for col in write_cols:
+                    col_idx = col_to_ws_idx.get(col)
+                    if not col_idx:
+                        continue
+                    cell = ws.cell(row=i, column=col_idx)
+                    cell.value = _to_excel_value(row[col])
+
+                # 2) hyperlien si présent
+                if activite_ws_col and "Hyperlien" in df_sorted.columns:
+                    url = row.get("Hyperlien")
+                    c = ws.cell(row=i, column=activite_ws_col)
+                    if isinstance(url, str) and url.strip():
+                        c.hyperlink = url
+                        c.font = Font(color="0000EE", underline="single")
                     else:
-                        try:
-                            # Conserve les entiers réels, sinon cast en string
-                            v = int(value)
-                            if str(v) == str(value).strip():
-                                cell.value = v
-                            else:
-                                cell.value = value
-                        except (ValueError, TypeError):
-                            cell.value = value
+                        c.hyperlink = None
+                        c.font = copy(source_font)  # réinitialisation du style
 
-                        # Ajout d'hyperliens pour la colonne Activite
-                        if col_activite is not None:
-                            if col_idx == col_activite and "Hyperlien" in df.columns:
-                                lien = row["Hyperlien"]
-                                if lien:
-                                    cell.hyperlink = lien
-                                    cell.font = Font(color="0000EE", underline="single")
-                                else:
-                                    cell.hyperlink = None
-                                    cell.font = copy(source_font)   
+            # -------- Sheet 1 : adrs (nouveau) --------
+            # crée/attrape la feuille 1
+            if len(wb.worksheets) > 1:
+                ws_adrs = wb.worksheets[1]
+                ws_adrs.title = "adrs"
+            else:
+                ws_adrs = wb.create_sheet(title="adrs", index=1)
 
-            # Sauvegarde dans un buffer mémoire
+            # Clear la feuille adrs
+            if ws_adrs.max_row > 0:
+                ws_adrs.delete_rows(1, ws_adrs.max_row)
+
+            # Écrire le DataFrame ca s'il existe, sinon laisser vide avec entête vide
+            if isinstance(ca, pd.DataFrame) and not ca.empty:
+                # écrire entêtes + lignes
+                ca_clean = ca.drop(columns=["__uuid"], errors='ignore')
+                for r in dataframe_to_rows(ca_clean, index=False, header=True):
+                    ws_adrs.append(r)
+            else:
+                # on laisse la feuille vide (ou ajoute juste l'en-tête si tu préfères)
+                pass
+
+            # Sauvegarde dans buffer mémoire
             buffer = io.BytesIO()
             wb.save(buffer)
-        else:
-            # Sauvegarde dans un buffer mémoire
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                    df_sorted.to_excel(writer, index=False)
 
-        # Revenir au début du buffer pour le téléchargement
-        buffer.seek(0)
-        return buffer
+            # Revenir au début du buffer pour le téléchargement
+            buffer.seek(0)
+            return buffer
+        
+        except Exception as e:
+            print(f"Erreur dans serialiser_contexte via Dropbox: {e}")
+
+    # Sauvegarde simple dans buffer mémoire en cas d'échec avec workbook Dropbox
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df_sorted.to_excel(writer, sheet_name="data", index=False)
+        if isinstance(ca, pd.DataFrame) and not ca.empty:
+            ca.to_excel(writer, sheet_name="adrs", index=False)
+        else:
+            # crée quand même la feuille "adrs" vide
+            pd.DataFrame().to_excel(writer, sheet_name="adrs", index=False)
+
+    # Revenir au début du buffer pour le téléchargement
+    buffer.seek(0)
+    return buffer
+
+def sauvegarder_contexte(df_hash=None):
+
 
     # Version modale
     @st.dialog("Sauvegarder données")
-    def show_dialog_sauvegarder_contexte(df, nom_fichier, df_hash=None):
+    def show_dialog_sauvegarder_contexte(nom_fichier, df_hash=None, ca_hash=None):
         st.markdown("Voulez-vous sauvegarder les données ?")
         col1, col2 = st.columns([1, 1])
         with col1:
+            df = st.session_state.get("df")
+            ca = st.session_state.get("ca")
             if df_hash is None:
-                df_hash = hash_df(st.session_state.df, colonnes_a_enlever=["Debut_dt", "Duree_dt", "__uuid"])
-            prev_hash = st.session_state.get("__contexte_hash")
+                df_hash = hash_df(df, colonnes_a_enlever=["Debut_dt", "Duree_dt", "__options_date", "__uuid"])
+            ca_hash = hash_df(ca)
+
+            combo_hash = (df_hash, ca_hash)
+            combo_hash_prev = st.session_state.get("__contexte_combo_hash")
             buffer = st.session_state.get("__contexte_buffer")
 
-            if df_hash != prev_hash or buffer is None:
-                # Le df a changé, on régénère le buffer
-                buffer = serialiser_contexte(st.session_state.df)
-                st.session_state["__contexte_hash"] = df_hash
+            if (combo_hash != combo_hash_prev or buffer is None) and est_contexte_valide():
+                buffer = serialiser_contexte(df, ca)
+                st.session_state["__contexte_combo_hash"] = combo_hash
                 st.session_state["__contexte_buffer"] = buffer
 
             # Bouton de téléchargement
@@ -1684,29 +2075,40 @@ def sauvegarder_contexte(df_hash=None):
             if st.button(LABEL_BOUTON_ANNULER, use_container_width=CENTRER_BOUTONS):
                 st.rerun()
 
-    # Version Non Modale
     nom_fichier = st.session_state.get("fn", "planning_avignon.xlsx")
-    
-    if df_hash is None:
-        df_hash = hash_df(st.session_state.get("df"), colonnes_a_enlever=["Debut_dt", "Duree_dt", "__uuid"])
-    prev_hash = st.session_state.get("__contexte_hash")
-    buffer = st.session_state.get("__contexte_buffer")
-
-    if (df_hash != prev_hash or buffer is None) and est_contexte_valide():
-        # Le df a changé, on régénère le buffer
-        buffer = serialiser_contexte(st.session_state.df)
-        st.session_state["__contexte_hash"] = df_hash
-        st.session_state["__contexte_buffer"] = buffer
-
-    # Bouton de téléchargement
-    st.download_button(
+    if st.button(
         label=LABEL_BOUTON_SAUVEGARDER,
-        data=st.session_state.get("__contexte_buffer", ""),
-        file_name=nom_fichier,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=CENTRER_BOUTONS,
-        disabled=not est_contexte_valide()
-    )
+        disabled=not est_contexte_valide()):
+        show_dialog_sauvegarder_contexte(nom_fichier)
+
+    # Version Non Modale
+    # nom_fichier = st.session_state.get("fn", "planning_avignon.xlsx")
+    # df = st.session_state.get("df")
+    # ca = st.session_state.get("ca")
+    
+    # if df_hash is None:
+    #     df_hash = hash_df(df, colonnes_a_enlever=["Debut_dt", "Duree_dt", "__options_date", "__uuid"])
+    # ca_hash = hash_df(ca)
+
+    # combo_hash = (df_hash, ca_hash)
+    # combo_hash_prev = st.session_state.get("__contexte_combo_hash")
+    # buffer = st.session_state.get("__contexte_buffer")
+
+    # if (combo_hash != combo_hash_prev or buffer is None) and est_contexte_valide():
+    #     buffer = serialiser_contexte(df, ca)
+    #     st.session_state["__contexte_combo_hash"] = combo_hash
+    #     st.session_state["__contexte_buffer"] = buffer
+
+    # # Bouton de téléchargement
+    # st.download_button(
+    #     label=LABEL_BOUTON_SAUVEGARDER,
+    #     data=st.session_state.get("__contexte_buffer", ""),
+    #     file_name=nom_fichier,
+    #     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    #     use_container_width=CENTRER_BOUTONS,
+    #     disabled=not est_contexte_valide()
+    # )
 
 # Programme une activité non programmée à une date donnée
 def programmer_activite_non_programmee(date_ref, activite):
@@ -1754,7 +2156,7 @@ def programmer_activite_non_programmee(date_ref, activite):
     demander_selection("activites_programmees", index, deselect="activites_non_programmees")
     demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.creneaux_disponibles, activite)[0])
     st.session_state["activites_programmables_selected_row"] = None
-    forcer_reaffichage_df("creneaux_disponibles")
+    # forcer_reaffichage_df("creneaux_disponibles")
     sql.sauvegarder_row(index)
     st.rerun()
 
@@ -1773,7 +2175,7 @@ def get_jours_possibles(df, activites_programmees, idx_activite):
         fin = ligne_a_considerer["Debut_dt"] + ligne_a_considerer["Duree_dt"]
 
         if activites_programmees is not None:
-            for jour in range(st.session_state.periode_a_programmer_debut.day, st.session_state.periode_a_programmer_fin.day + 1):
+            for jour in range(date_to_dateint(st.session_state.periode_a_programmer_debut), date_to_dateint(st.session_state.periode_a_programmer_fin) + 1):
                 
                 if not est_hors_relache(ligne_a_considerer["Relache"], jour):
                     continue
@@ -1785,14 +2187,14 @@ def get_jours_possibles(df, activites_programmees, idx_activite):
                     premiere_activite_du_jour = activites_programmes_du_jour.iloc[0]
                     borne_inf = datetime.datetime.combine(BASE_DATE, datetime.time.min)  # 00h00
                     borne_sup = premiere_activite_du_jour["Debut_dt"]
-                    if debut > borne_inf and fin < borne_sup - st.session_state.MARGE:
+                    if debut >= borne_inf and fin <= borne_sup - st.session_state.MARGE:
                         jours_possibles.append(jour)
                         continue  # on prend le premier créneau dispo du jour
 
                     # Ensuite, créneaux entre chaque activité programmée
                     for _, ligne in activites_programmes_du_jour.iterrows():
                         borne_inf, borne_sup, _ = get_creneau_bounds_apres(activites_programmes_du_jour, ligne)
-                        if debut > borne_inf + st.session_state.MARGE and (borne_sup is None or fin < borne_sup - st.session_state.MARGE):
+                        if debut >= borne_inf + st.session_state.MARGE and (borne_sup is None or fin <= borne_sup - st.session_state.MARGE):
                             jours_possibles.append(jour)
                             break  # jour validé, on passe au suivant
                 else: # jour libre
@@ -1801,7 +2203,7 @@ def get_jours_possibles(df, activites_programmees, idx_activite):
         print(f"Erreur in get_jours_possibles : {e}")
     return jours_possibles
 
-# Renvoie les jours possibles pour programmer une activité donnée par son idx
+# Indique si un jour donné est possible pour programmer une activité donnée par son idx
 def est_jour_possible(df, activites_programmees, idx_activite, jour):
     try:
         # Retour si index non valide
@@ -1825,22 +2227,22 @@ def est_jour_possible(df, activites_programmees, idx_activite, jour):
                 premiere_activite_du_jour = activites_programmes_du_jour.iloc[0]
                 borne_inf = datetime.datetime.combine(BASE_DATE, datetime.time.min)  # 00h00
                 borne_sup = premiere_activite_du_jour["Debut_dt"]
-                if debut > borne_inf + st.session_state.MARGE and fin < borne_sup - st.session_state.MARGE:
+                if debut >= borne_inf + st.session_state.MARGE and fin <= borne_sup - st.session_state.MARGE:
                     return True
 
                 # Ensuite, créneaux entre chaque activité programmée
                 for _, ligne in activites_programmes_du_jour.iterrows():
                     borne_inf, borne_sup, _ = get_creneau_bounds_apres(activites_programmes_du_jour, ligne)
-                    if debut > borne_inf + st.session_state.MARGE and (borne_sup is None or fin < borne_sup - st.session_state.MARGE):
+                    if debut >= borne_inf + st.session_state.MARGE and (borne_sup is None or fin <= borne_sup - st.session_state.MARGE):
                         return True
             else: # jour libre
                 return True
     except Exception as e:
-        print(f"Erreur in get_jours_possibles : {e}")
+        print(f"Erreur in est_jour_possible : {e}")
     return False
 
 # idem get_jours_possibles avec en paramètre une row d'activité programmée contenant en colonne __index l'index du df de base
-# Les paramètres df et activites_programmees de get_jours_possibles sont supposés etre stockés dans st.session_state
+# Les paramètres df et activites_programmees sont supposés etre stockés dans st.session_state
 def get_jours_possibles_from_activite_programmee(row: pd.Series):
     jours = get_jours_possibles(st.session_state.df, st.session_state.activites_programmees, row["__index"])
     jour_courant = int(row["Date"]) if pd.notna(row["Date"]) and row["Date"] is not None else row["Date"]
@@ -1852,10 +2254,10 @@ def get_jours_possibles_from_activite_programmee(row: pd.Series):
     return sorted([str(j) for j in jours]) if isinstance(jours, list) else []
 
 # idem get_jours_possibles avec en paramètre une row d'activité non programmée contenant en colonne __index l'index du df de base
-# Les paramètres df et activites_programmees de get_jours_possibles sont supposés etre stockés dans st.session_state
+# Les paramètres df et activites_programmees sont supposés etre stockés dans st.session_state
 def get_jours_possibles_from_activite_non_programmee(row: pd.Series):
     jours = get_jours_possibles(st.session_state.df, st.session_state.activites_programmees, row["__index"])
-    jours = [""] + jours if jours != [] else jours
+    jours = [""] + jours if jours != [] else []
     return [str(j) for j in jours] if isinstance(jours, list) else []
 
 # Calcule les options des dates pour les activiés programmées
@@ -1886,14 +2288,14 @@ def programmer_activite_par_choix_activite():
 
         # Déterminer les jours disponibles 
         jours_possibles = get_jours_possibles(df, activites_programmees, idx_choisi)
-        jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
+        jours_label = [dateint_to_str(x) for x in jours_possibles]
 
         jour_selection = st.selectbox("Choix du jour :", jours_label)
 
         # Bouton pour confirmer
         if jour_selection:
             if st.button(LABEL_BOUTON_PROGRAMMER, key="AjouterAuPlanningParChoixActivite"):
-                jour_choisi = int(jour_selection.split()[-1])
+                jour_choisi = date_to_dateint(jour_selection)
 
                 # On peut maintenant modifier le df
                 df.at[idx_choisi, "Date"] = jour_choisi
@@ -2093,7 +2495,7 @@ def initialiser_etat_contexte(df, wb, fn, fp, ca):
     st.session_state.creneaux_disponibles_sel_request = copy.deepcopy(SEL_REQUEST_DEFAUT)
     st.session_state.activites_programmables_sel_request =copy.deepcopy(SEL_REQUEST_DEFAUT)
 
-    forcer_reaffichage_df("creneaux_disponibles")
+    # forcer_reaffichage_df("creneaux_disponibles")
 
 # Charge le fichier Excel contenant les activités à programmer
 def charger_contexte_depuis_fichier():
@@ -2114,6 +2516,7 @@ def charger_contexte_depuis_fichier():
                 st.session_state.contexte_invalide = True
                 curseur_attente()
                 df = pd.read_excel(fd)
+                df["Date"] = df["Date"].apply(lambda v: date_to_dateint(v, datetime.date.today().year, datetime.date.today().month))
                 wb = load_workbook(fd)
                 lnk = get_liens_activites(wb)
                 sheetnames = wb.sheetnames
@@ -2123,6 +2526,7 @@ def charger_contexte_depuis_fichier():
                 if "contexte_invalide" not in st.session_state:
                     df = add_persistent_uuid(df)
                     df = add_hyperliens(df, lnk)
+                    ca = add_persistent_uuid(ca)
                     fn = fd.name if fd is not None else ""
                     fp = dp.upload_excel_to_dropbox(fd.getvalue(), fd.name) if fd is not None else ""
                     undo.save()
@@ -2179,6 +2583,7 @@ def initialiser_nouveau_contexte():
     fn = "planning_avignon.xlsx"
     fp = ""
     ca = pd.DataFrame(columns=COLONNES_ATTENDUES_CARNET_ADRESSES)
+    ca = add_persistent_uuid(ca)
     
     initialiser_etat_contexte(df, wb, fn, fp, ca)
     initialiser_periode_programmation(df)
@@ -2196,4 +2601,163 @@ def creer_nouveau_contexte():
 # Indique si le contexte est vlide pour traitement
 def est_contexte_valide():
     return "df" in st.session_state and isinstance(st.session_state.df, pd.DataFrame) and "contexte_invalide" not in st.session_state
+
+# Section critique pour la déprogrammation d'une activité programmée.
+# Section critique car la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
+def activites_programmees_deprogrammer(idx):
+    
+    st.session_state.setdefault("activites_programmees_deprogrammer_cmd", 
+        {
+            "idx": idx,
+            "step": 0,
+        }
+    )
+
+    tracer.log(f"Début {idx}")
+
+    st.session_state.forcer_menu_activites_non_programmees = True
+    deprogrammer_activite_programmee(idx)
+
+    # Workaround pour forcer le réaffichage de la grille.
+    # Sinon figeage grille après modification de cellule.
+    forcer_reaffichage_activites_programmees() 
+
+    # forcer_reaffichage_df("creneaux_disponibles")
+    sql.sauvegarder_row(idx)
+
+    tracer.log(f"Fin {idx}")
+    del st.session_state["activites_programmees_deprogrammer_cmd"]
+
+# Section critique pour la reprogrammation d'une activité programmée.
+# Section critique car la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
+def activites_programmees_reprogrammer(idx, jour):
+    
+    st.session_state.setdefault("activites_programmees_reprogrammer_cmd", 
+        {
+            "idx": idx,
+            "jour": jour,
+            "step": 0,
+        }
+    )
+
+    tracer.log(f"Début {idx} {jour}")
+
+    modifier_cellule(idx, "Date", jour)
+
+    # Workaround pour forcer le réaffichage de la grille.
+    # Sinon figeage grille après modification de cellule.
+    forcer_reaffichage_activites_programmees() 
+
+    sql.sauvegarder_row(idx)
+
+    tracer.log(f"Fin {idx} {jour}")
+    del st.session_state["activites_programmees_reprogrammer_cmd"]
+
+# Section critique pour la modification de cellules d'une activité programmée.
+# Section critique car la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
+def activites_programmees_modifier_cellule(idx, col, val):
+    
+    st.session_state.setdefault("activites_programmees_modifier_cellule_cmd", 
+        {
+            "idx": idx,
+            "col": col,
+            "val": val,
+            "step": 0,
+        }
+    )
+
+    tracer.log(f"Début {idx} {col} {val}")
+
+    erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
+
+    # Workaround pour forcer le réaffichage de la grille.
+    # Sinon figeage grille après modification de cellule.
+    forcer_reaffichage_activites_programmees() 
+
+    if not erreur:
+        if col in ["Debut", "Duree", "Activité"]:
+            # forcer_reaffichage_df("creneaux_disponibles")
+            pass
+    else:
+        st.session_state.aggrid_activites_programmees_erreur = erreur
+
+    tracer.log(f"Fin {idx} {col} {val}")
+    del st.session_state["activites_programmees_modifier_cellule_cmd"]
+
+# Section critique pour la programmation d'une activité non programmée.
+# Section critique car la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
+def activites_non_programmees_programmer(idx, jour):
+    
+    st.session_state.setdefault("activites_non_programmees_programmer_cmd", 
+        {
+            "idx": idx,
+            "jour": jour,
+            "step": 0,
+        }
+    )
+
+    tracer.log(f"Début {idx} {jour}")
+
+    st.session_state.forcer_menu_activites_programmees = True
+    modifier_cellule(idx, "Date", int(jour))
+
+    # Workaround pour forcer le réaffichage de la grille.
+    # Sinon figeage grille après modification de cellule.
+    forcer_reaffichage_activites_non_programmees() 
+
+    # forcer_reaffichage_df("creneaux_disponibles")
+    sql.sauvegarder_row(idx)
+
+    tracer.log(f"Fin {idx} {jour}")
+    del st.session_state["activites_non_programmees_programmer_cmd"]
+
+# Section critique pour la modification de cellules d'une activité non programmée.
+# Section critique car la modification de cellule depuis la grille est validée par un click row 
+# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
+# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
+# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
+# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
+def activites_non_programmees_modifier_cellule(idx, col, val):
+    
+    st.session_state.setdefault("activites_non_programmees_modifier_cellule_cmd", 
+        {
+            "idx": idx,
+            "col": col,
+            "val": val,
+            "step": 0,
+        }
+    )
+
+    tracer.log(f"Début {idx} {col} {val}")
+
+    erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_non_programmees_modifier_cellule_cmd)
+
+    # Workaround pour forcer le réaffichage de la grille.
+    # Sinon figeage grille après modification de cellule.
+    forcer_reaffichage_activites_non_programmees() 
+    
+    if not erreur:
+        # forcer_reaffichage_df("activites_programmables")
+        pass
+    else:
+        st.session_state.aggrid_activites_non_programmees_erreur = erreur
+
+    tracer.log(f"Fin {idx} {col} {val}")
+    del st.session_state["activites_non_programmees_modifier_cellule_cmd"]
 
