@@ -178,7 +178,7 @@ def sauvegarder_contexte():
             set_with_dataframe(worksheet, st.session_state.ca)
 
         except Exception as e:
-            print(f"Erreur gs_sauvegarder_contexte : {e}")
+            print(f"Erreur gsheets.sauvegarder_contexte : {e}")
 
 # 📤 Sauvegarde le DataFrame dans la Google Sheet
 def sauvegarder_df():
@@ -189,7 +189,7 @@ def sauvegarder_df():
             worksheet.clear()
             set_with_dataframe(worksheet, st.session_state.df)
         except Exception as e:
-            print(f"Erreur gs_sauvegarder_df : {e}")
+            print(f"Erreur gsheets.sauvegarder_df : {e}")
 
 # Sauvegarde une ligne dans la Google Sheet
 def sauvegarder_row(index_df):
@@ -213,7 +213,7 @@ def sauvegarder_row(index_df):
                 )
 
         except Exception as e:
-            print(f"Erreur gs_sauvegarder_row : {e}")
+            print(f"Erreur gsheets.sauvegarder_row : {e}")
 
 # 📤 Sauvegarde des params dans la Google Sheet
 def sauvegarder_param(param):
@@ -240,6 +240,15 @@ def sauvegarder_param(param):
                 worksheet.update_acell("J2", to_iso_date(st.session_state.periode_a_programmer_fin))
 
         except Exception as e:
-            print(f"Erreur gs_sauvegarder_param : {e}")
+            print(f"Erreur gsheets.sauvegarder_param : {e}")
 
-
+# 📤 Sauvegarde le carnet d'adresses dans la Google Sheet
+def sauvegarder_ca():
+    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
+        try:
+            gsheets = st.session_state.gsheets
+            worksheet = gsheets["adrs"]
+            worksheet.clear()
+            set_with_dataframe(worksheet, st.session_state.ca)
+        except Exception as e:
+            print(f"Erreur gsheets.sauvegarder_ca : {e}")
