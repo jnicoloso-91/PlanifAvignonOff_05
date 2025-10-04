@@ -1,0 +1,21 @@
+Notes de version
+----------------
+
+- V57 2025-09-24
+	- Ajout Cold start gsheet
+	- Mise au point Hot start SQLite
+	- Save/Load des métadonnées par ligne sur gsheet
+	- Modularisation
+	- Recherche web et itinéraire stabilisée -> sur IOS on reste sur version icône pour éviter les figeages au retour des pages web
+	- Résolution du pb de tokens à durée de vie courte de Dropbox
+	- Ajout Undo sur chargement fichier, paramètres et période de prog
+- V58 2025-10-04
+	- Passage aux dates absolues dans le champ Date
+	- Modification du format des relâches pour tenir compte des dates absolues
+	- Ajour de la grille carnet d'adresses et menu correspondant
+	- Sauvegardes : ajout du carnet d'adresses, prise en compte de l'ordre des colonnes, suppression des colonnes techniques
+	- Ajout du clipboard pour la création contextuelle des activités et la récupération d'infos web
+	- Reconstruction des options_date au chargement
+	- Utilisation des options_date de grille dans les menus pour éviter de les reconstruire
+	- Remaniement et correction de bugs dans modifier_cellule
+	- Mise à jour aide
