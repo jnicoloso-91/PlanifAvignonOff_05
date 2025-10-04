@@ -9,20 +9,17 @@ import inspect
 TRACER_MODE = True
 TRACE_TYPES = [
     "main", 
-    #"event", 
-    # "demander_selection", 
-    # "demander_deselection", 
-    # "afficher_activites_programmees",
-    # "afficher_activites_non_programmees",
-    # "afficher_df",
-    # "sel_source",
-    # "bd_maj_contexte",
     "app_boot",
     "_gs_push_full",
     "_gs_push_df",
     "_gs_push_row",
     "_gs_push_param",
     "wk",
+    # "afficher_df",
+    # "afficher_ca",
+    # "afficher_activites_programmees",
+    # "afficher_activites_non_programmees",
+    # "all",
     ]  # "all" ou liste des types de trace / noms de fonctions à afficher
 
 def get_logger(nom):
