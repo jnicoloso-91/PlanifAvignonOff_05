@@ -902,56 +902,6 @@ JS_IOS_SOFT_REVIVE = JsCode("""
     }
     """)
 
-# # Value parser des colonnes "Date"
-# JS_DATE_VALUE_PARSER = JsCode("""
-#       function(p){
-#         const v = (p.newValue??'').toString().trim();
-#         if (v==='') return null;
-
-#         // déjà yyyymmdd ?
-#         if (/^\\d{8}$/.test(v)) return parseInt(v,10);
-
-#         const by=(p.context&&p.context.baseYear)||new Date().getFullYear();
-#         const bm=(p.context&&p.context.baseMonth)||(new Date().getMonth()+1);
-
-#         // dd/mm or dd-mm or dd/mm/yyyy
-#         const m = v.match(/^(\\d{1,2})[\\/\\-](\\d{1,2})(?:[\\/\\-](\\d{2,4}))?$/);
-#         if (m){
-#           let d=+m[1], mo=+m[2], y=m[3]?+m[3]:by;
-#           if (y<100) y += (y>=70?1900:2000);
-#           const dt = new Date(y, mo-1, d);
-#           if (dt.getFullYear()===y && dt.getMonth()===mo-1 && dt.getDate()===d){
-#             return y*10000 + mo*100 + d;
-#           }
-#         }
-
-#         // entier jour du mois
-#         const n = Number(v);
-#         if (!Number.isNaN(n) && n>=1 && n<=31){
-#           const y=by, mo=bm, d=n;
-#           const dt=new Date(y,mo-1,d);
-#           if (dt.getFullYear()===y && dt.getMonth()===mo-1 && dt.getDate()===d){
-#             return y*10000 + mo*100 + d;
-#           }
-#         }
-
-#         // invalide: garder la valeur précédente
-#         return p.oldValue;
-#       }
-#     """)
-
-# # Value formatter des colonnes "Date"
-# JS_DATE_VALUE_FORMATTER = JsCode("""
-#       function(p){
-#         const v=p.value;
-#         if (v==null) return '';
-#         const n=Number(v);
-#         if (!Number.isFinite(n) || String(n).length!==8) return String(v??'');
-#         const y=Math.floor(n/10000), mo=Math.floor((n%10000)/100), d=n%100;
-#         return (''+d).padStart(2,'0')+'/'+(''+mo).padStart(2,'0');
-#       }
-#     """)
-
 # CellEditorParams des colonnes "Date"
 JS_DATE_CELL_EDITOR_PARAMS = JsCode(r"""
 function(params){
@@ -1027,6 +977,104 @@ function(p){
 }
 """)
 
+JS_TEL_ICON_RENDERER = JsCode("""
+class TelIconRenderer {
+  init(params){
+    const e = document.createElement('div');
+    e.style.display='flex'; e.style.alignItems='center'; e.style.gap='0.5rem';
+    e.style.width='100%'; e.style.overflow='hidden';
+
+    const raw = (params.value ?? '').toString().trim();
+
+    // Texte (numéro affiché)
+    const txt = document.createElement('span');
+    txt.style.flex='1 1 auto';
+    txt.style.overflow='hidden';
+    txt.style.textOverflow='ellipsis';
+    txt.textContent = raw;
+    e.appendChild(txt);
+
+    // Normalisation tel:+...
+    function normalizeTel(s){
+      if (!s) return "";
+      s = s.trim();
+      // garde un éventuel "+" en tête, enlève tout le reste non-chiffres
+      let plus = s.startsWith("+");
+      let digits = s.replace(/[^0-9]/g,"");
+      if (!digits) return "";
+      return (plus ? "tel:+"+digits : "tel:"+digits);
+    }
+
+    const href = normalizeTel(raw) || "#";
+
+    // Bouton 📞
+    const a = document.createElement('a');
+    a.textContent = '📞';
+    a.href = href;
+    a.title = 'Appeler';
+    a.style.textDecoration='none';
+    a.style.userSelect='none';
+    a.style.flex='0 0 auto';
+    // éviter de casser la sélection de la ligne
+    a.addEventListener('click', ev => ev.stopPropagation());
+    e.appendChild(a);
+
+    this.eGui = e;
+  }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
+}
+""")
+
+JS_WEB_ICON_RENDERER = JsCode("""
+class WebIconRenderer {
+  init(params) {
+    const e = document.createElement('div');
+    e.style.display = 'flex';
+    e.style.alignItems = 'center';
+    e.style.justifyContent = 'center';
+    e.style.width = '100%';
+    e.style.cursor = 'pointer';
+
+    const url = (params.value || '').trim();
+    if (!url) {
+      this.eGui = document.createTextNode('');
+      return;
+    }
+
+    const a = document.createElement('a');
+    a.href = url.startsWith('http') ? url : 'https://' + url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = 'Ouvrir le site';
+
+    const icon = document.createElement('span');
+    icon.textContent = '🌐';
+    icon.style.fontSize = '1.1rem';
+    icon.style.userSelect = 'none';
+    a.appendChild(icon);
+
+    // --- comportement iOS / Safari (ouvrir dans même onglet si nécessaire) ---
+    a.addEventListener('click', (ev) => {
+      try {
+        if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+          ev.preventDefault();
+          window.top.location.href = a.href;
+        }
+      } catch (e) {}
+    });
+
+    e.appendChild(a);
+    this.eGui = e;
+  }
+
+  getGui() {
+    return this.eGui;
+  }
+
+  refresh() { return false; }
+}
+""")
 
 def reprogrammation_request_set(idx, jour):
     st.session_state.setdefault("reprogrammation_request", 
@@ -1059,7 +1107,19 @@ def row_modification_request_del():
         del st.session_state["row_modification_request"]
 
 # Affichage d'un dataframe
-def afficher_df(label, df, hide=[], editable=[], fixed_columns={}, header_names={}, key="affichage_df", colorisation=False, hide_label=False, background_color=None):
+def afficher_df(
+        label, 
+        df, 
+        hide=[], 
+        editable=[], 
+        fixed_columns={}, 
+        header_names={}, 
+        key="affichage_df", 
+        colorisation=False, 
+        hide_label=False, 
+        background_color=None, 
+        cell_renderers=None,
+        ):
 
     # Calcul de la hauteur de l'aggrid
     nb_lignes = len(df)
@@ -1149,6 +1209,14 @@ def afficher_df(label, df, hide=[], editable=[], fixed_columns={}, header_names=
             }}
             """)
         )
+
+    # Cell renderers
+    if cell_renderers is not None:
+        for item in cell_renderers:
+            col = item.get("col")
+            renderer = item.get("renderer")
+            if col in df.columns and renderer is not None:
+                gb.configure_column(col, cellRenderer=renderer)
 
     # Configuration de la sélection
     gb.configure_selection(selection_mode="single", use_checkbox=False) #, pre_selected_rows=[current_selected_row_pos]) 
@@ -1373,8 +1441,9 @@ def afficher_aide():
                 Un bouton Programmer permet de programmer l'activité programmable sélectionnée au jour dit du créneau sélectionné. 
                 la couleur de fond est fonction du jour pour les créneaux disponibles et les activités programmables.</p>
             
-            <p>Enfin un dernier tableau présente le carnet d'adresses. Les Noms et Adresses peuvent être édités et le menu correspondant de la 
-                barre latérale escamotable permet d'ajouter / supprimer des entrées.</p>
+            <p>Enfin un dernier tableau présente le carnet d'adresses. Les champs Nom / Adresse / Numéro de Téléphone / Adresse Web de chaque entrée peuvent être édités 
+                et le menu correspondant de la barre latérale escamotable permet d'ajouter / supprimer des entrées. Dans les colonnes Tel (Numéro de Téléphone) et Web 
+                (Adresse Web) des boutons permettent d'appeler le numéro de téléphone ou aller sur le site Web correspondant.</p>
             
             <p style="margin-bottom: 0.2em">Les menus sont regroupés dans une barre latérale escamotable:</p>
             <ul style="margin-top: 0em">
@@ -1442,8 +1511,14 @@ def afficher_aide():
                 sauf le 04/07/2025, les 8 et 10 juillet de l'année en cours, entre le 20 et le 22 juillet de l'année en cours et les jours pairs.</li>
             </ul>
                         
-            <p>En feuille 2 peut figurer un carnet d'adresses des lieux d'activités, utilisé pour la recherche d'itinéraire. 
-            Il doit comprendre au moins une colonne Nom et une colonne Adresse.</p>
+            <p style="margin-bottom: 0.2em">En feuille 2 peut figurer un carnet d'adresses des lieux d'activités, utilisé pour la recherche d'itinéraire. 
+            Il doit comprendre les colonnes suivantes:</p>
+            <ul style="margin-top: 0em; margin-bottom: 2em">
+                <li>Nom : nom devant figurer dans la colonne Lieu des tableaux d'activités pour que l'adresse associée soit utilisée dans la recherche d'itinéraire</li>
+                <li>Adresse : adresse utilisée pour la recherche d'itinéraire</li>
+                <li>Tel : numéro de téléphone</li>
+                <li>Web : adresse du site Web</li>
+            </ul>
 
             <p>📥Un modèle Excel est disponible <a href="https://github.com/jnicoloso-91/PlanifAvignon-05/raw/main/Mod%C3%A8le%20Excel.xlsx" download>
             ici
@@ -3224,23 +3299,27 @@ def afficher_ca():
                 "Carnet d'adresses", 
                 ca_display, 
                 hide=["__uuid"], 
-                editable=["Nom", "Adresse"],
+                editable=["Nom", "Adresse", "Tel", "Web"],
                 key="carnet_adresses", 
                 hide_label=True,
+                cell_renderers = [
+                    {"col": "Tel", "renderer": JS_TEL_ICON_RENDERER},
+                    {"col": "Web", "renderer": JS_WEB_ICON_RENDERER},
+                ],
             )
 
             tracer.log(f"idx_modifie: {idx_modifie}")
 
+            grid_has_changed = idx_modifie is not None
             st.session_state.ca_adresse_selectionnee = adresse_selectionnee
 
-            if idx_modifie and isinstance(adresse_selectionnee, pd.Series):
+            if grid_has_changed and isinstance(adresse_selectionnee, pd.Series):
                 idx_ca = get_index_from_uuid(ca, adresse_selectionnee["__uuid"])
                 if idx_ca is not None:
                     ancienne_valeur = ca.loc[idx_ca]
                     if diff_cols_between_rows(ancienne_valeur, adresse_selectionnee):
                         undo.save()
-                        st.session_state.ca.at[idx_ca, "Nom"] = adresse_selectionnee["Nom"]
-                        st.session_state.ca.at[idx_ca, "Adresse"] = adresse_selectionnee["Adresse"]
+                        st.session_state.ca.loc[idx_ca, st.session_state.ca.columns] = adresse_selectionnee[st.session_state.ca.columns]
                         sql.sauvegarder_ca()
                         st.rerun()
 
