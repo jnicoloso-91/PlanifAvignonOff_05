@@ -17,7 +17,7 @@ import gsheet_api as gs
 import sync_worker as wk
 
 # Trace le début d'un rerun
-def tracer_rerun():
+def rerun_trace():
     st.session_state.setdefault("main_counter", 0)
     st.session_state.main_counter += 1
     tracer.log(f"____________MAIN {st.session_state.main_counter}______________", types=["gen","main"])
@@ -54,7 +54,7 @@ def main():
     # st.write("Version streamlit-aggrid :", version)
 
     # Trace le début d'un rerun
-    tracer_rerun()
+    rerun_trace()
   
     # Connexion à la Google Sheet et lancement du GS Worker chargé de la sauvegarde Google Sheet en temps masqué (seulement si WITH_GOOGLE_SHEET est True)
     if WITH_GOOGLE_SHEET:
@@ -95,8 +95,17 @@ def main():
         # Affichage des créneaux disponibles et des activités programmables
         afficher_creneaux_disponibles()      
 
-        # # Affichage du menu activité de la sidebar
+        # Affichage du carnet d'adresses
+        afficher_ca()      
+
+        # Affichage du menu activité de la sidebar
         afficher_menu_activite()
+
+        # Affichage du menu carnet d'adresse de la sidebar
+        afficher_menu_ca()
+    
+        # Affichage du statut du GS worker thread
+        afficher_worker_status_discret()
     else:
         message = st.session_state.get("contexte_invalide_message")
         if message is not None:
