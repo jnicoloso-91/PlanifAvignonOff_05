@@ -3031,6 +3031,9 @@ def afficher_creneaux_disponibles():
                     key="activites_programmables", 
                     hide_label=True, 
                     colorisation=True,
+                    cell_renderers = [
+                        {"col": "Activite", "renderer": JS_ACTIVITE_RENDERER}, 
+                    ],
                 )
 
                 st.markdown(f"{activite["Activite"]} le {activite["Date"]} à {activite["Debut"]}" if activite is not None else "Aucune activité sélectionnée")
