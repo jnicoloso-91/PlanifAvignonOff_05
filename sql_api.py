@@ -41,7 +41,7 @@ CORE_COLS = list(CORE_COLS_DICO.keys())
 
 # Colonnes non persistées
 VOLATILE_COLS = {
-    # ajoute ici toute autre colonne strictement "df_display"
+    # ajouter ici toute autre colonne strictement "df_display"
 }
 
 META_COLS_DICO = {
@@ -94,6 +94,7 @@ def init_db():
       id TEXT PRIMARY KEY,
       Nom TEXT,
       Adresse TEXT,
+      __uuid TEXT,
       extras_json TEXT NOT NULL DEFAULT '{{}}'
     );
     """
@@ -357,3 +358,29 @@ def sauvegarder_param(param: str):
     except Exception as e:
         print(f"Erreur sqlite_sauvegarder_param : {e}")
 
+def sauvegarder_ca():
+    carnet = _strip_display_cols(st.session_state.get("ca"))
+    if not isinstance(carnet, pd.DataFrame):
+        wk.enqueue_save_ca(pd.DataFrame())  # vide côté GSheets aussi
+        return 0
+
+    # NaN -> None
+    carnet_sql = carnet.where(pd.notna(carnet), None)
+
+    # Écriture atomique
+    with _conn_rw() as con:
+        try:
+            con.execute("PRAGMA busy_timeout=30000")
+        except Exception:
+            pass
+        con.execute("BEGIN IMMEDIATE")
+        con.execute("DELETE FROM carnet")
+        if not carnet_sql.empty:
+            con.executemany(
+                f"INSERT INTO carnet ({','.join(carnet_sql.columns)}) VALUES ({','.join(['?']*len(carnet_sql.columns))})",
+                carnet_sql.itertuples(index=False, name=None)
+            )
+        # commit via contextmanager
+
+    # Push au worker (copie défensive)
+    wk.enqueue_save_ca(carnet_sql.copy())
