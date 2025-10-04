@@ -1,6 +1,6 @@
-####################
-# Core application #
-####################
+########
+# Main #
+########
 
 import streamlit as st
 # import pkg_resources
