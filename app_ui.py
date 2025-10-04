@@ -31,7 +31,7 @@ import undo
 # __desel_id = id de la ligne devant rester visible lors de la déselection (None si aucune contrainte de visibilité lors de la désélection).
 # __desel_ver = version de la demande de désélection (doit être incrémentée à chaque demande).
 # __sel_source = information renvoyée par le DOM (event.source exposé par onRowSelected) indiquant si la source de selection est "user" ou "api" selon que la demande de sélection provient d'un click utilisateur ou d'une requête python via JsCode.
-# __df_push_ver = permet au JsCode de déclencher un selectionChanged "api" lorsqu'il détecte une incrémentation de la première ligne sur cette colonne, ce qui permet à Streamlit de renvoyer la data mise à jour dans response["data"] sans attendre un clic utilisateur. 
+# __df_push_ver = permet au JsCode de déclencher un selectionChanged lorsqu'il détecte une incrémentation de la première ligne sur cette colonne, ce qui permet à Streamlit de renvoyer la modification via response["data"], sans attendre de clic utilisateur. 
 # Ces colonnes sont configurées par les fonctions utilisateur demander_selection(), demander_deselection() et signaler_df_push()
 # L'information de retour __sel_source est exploitée par le mecanisme de flip flop entre grilles "activites_programmees" et "activites_non_programmees" via le response["data"] de l'aggrid,
 # ceci afin de ne déclencher le changement d'activité sélectionnée que sur clic user (cf. fonction afficher_activites_programmees() et afficher_activites_non_programmees()).
@@ -251,9 +251,6 @@ class ActiviteRenderer {
 }
 """)
 
-    # a.addEventListener('click', ev=>ev.stopPropagation());
-
-
 # JS Code chargé de lancer la recherche d'itinéraire sur la colonne Lieu via l'icône épingle
 JS_LIEU_ICON_RENDERER = JsCode("""
 class LieuRenderer {
@@ -318,9 +315,6 @@ class LieuRenderer {
   refresh(){ return false; }
 }
 """)
-
-    # a.addEventListener('click', ev=>ev.stopPropagation()); // ne pas sélectionner la ligne
-
 
 # JS Code chargé de lancer la recherche Web sur la colonne Activité via appui long (mais figeage d'interface sur IOS au retour de la page Web)
 JS_ACTIVITE_LONGPRESS_RENDERER = JsCode("""
@@ -658,7 +652,6 @@ class LieuRenderer {
   refresh(){ return false; }
 }
 """)
-        # if (plat === "iOS")          url = "comgooglemaps://?daddr=" + addrEnc; # l'ouverture directe de l'appli depuis le cellRenderer ne marche pas sur IOS -> fallback sur GoogleMaps Web
 
 # JS Code chargé de lancer la recherche Web sur la colonne Activité via icône sur IOS et appui long sur autres plateformes
 JS_ACTIVITE_RENDERER = JsCode("""
@@ -868,8 +861,10 @@ class LieuRenderer {
 }
 """)
 
-# JS Code permettant de régler le probleme de blocage de l'UI au retour d'une page Web sur IOS en complément des inject_ios_xxx_revive (soft, hard, always)
-# Essai infructueux
+# JS Code censé permettre en complément des inject_ios_xxx_revive (soft, hard, always) de régler le probleme de blocage de l'UI au retour d'une page Web sur IOS 
+# lorsque l'on utilise les long press renderers JS_ACTIVITE_LONGPRESS_RENDERER et JS_LIEU_LONGPRESS_RENDERER. Ce mécanisme n'étant pas fonctionnel à 100%, il a 
+# été abandonné au profit des JS_ACTIVITE_RENDERER et JS_LIEU_RENDERER qui utilisent un appel de pages web externes via icônes sur IOS (lequel est fiable) et 
+# long press sinon.
 JS_IOS_SOFT_REVIVE = JsCode("""
     function(params){
     try { params.api.sizeColumnsToFit(); } catch(e){}
@@ -907,6 +902,132 @@ JS_IOS_SOFT_REVIVE = JsCode("""
     }
     """)
 
+# # Value parser des colonnes "Date"
+# JS_DATE_VALUE_PARSER = JsCode("""
+#       function(p){
+#         const v = (p.newValue??'').toString().trim();
+#         if (v==='') return null;
+
+#         // déjà yyyymmdd ?
+#         if (/^\\d{8}$/.test(v)) return parseInt(v,10);
+
+#         const by=(p.context&&p.context.baseYear)||new Date().getFullYear();
+#         const bm=(p.context&&p.context.baseMonth)||(new Date().getMonth()+1);
+
+#         // dd/mm or dd-mm or dd/mm/yyyy
+#         const m = v.match(/^(\\d{1,2})[\\/\\-](\\d{1,2})(?:[\\/\\-](\\d{2,4}))?$/);
+#         if (m){
+#           let d=+m[1], mo=+m[2], y=m[3]?+m[3]:by;
+#           if (y<100) y += (y>=70?1900:2000);
+#           const dt = new Date(y, mo-1, d);
+#           if (dt.getFullYear()===y && dt.getMonth()===mo-1 && dt.getDate()===d){
+#             return y*10000 + mo*100 + d;
+#           }
+#         }
+
+#         // entier jour du mois
+#         const n = Number(v);
+#         if (!Number.isNaN(n) && n>=1 && n<=31){
+#           const y=by, mo=bm, d=n;
+#           const dt=new Date(y,mo-1,d);
+#           if (dt.getFullYear()===y && dt.getMonth()===mo-1 && dt.getDate()===d){
+#             return y*10000 + mo*100 + d;
+#           }
+#         }
+
+#         // invalide: garder la valeur précédente
+#         return p.oldValue;
+#       }
+#     """)
+
+# # Value formatter des colonnes "Date"
+# JS_DATE_VALUE_FORMATTER = JsCode("""
+#       function(p){
+#         const v=p.value;
+#         if (v==null) return '';
+#         const n=Number(v);
+#         if (!Number.isFinite(n) || String(n).length!==8) return String(v??'');
+#         const y=Math.floor(n/10000), mo=Math.floor((n%10000)/100), d=n%100;
+#         return (''+d).padStart(2,'0')+'/'+(''+mo).padStart(2,'0');
+#       }
+#     """)
+
+# CellEditorParams des colonnes "Date"
+JS_DATE_CELL_EDITOR_PARAMS = JsCode(r"""
+function(params){
+  function intStrToPretty(s){
+    if (s == null) return '';
+    s = String(s).trim();
+    if (s === '') return '';
+    if (!/^\d{8}$/.test(s)) return s;
+    var y = parseInt(s.slice(0,4),10),
+        m = parseInt(s.slice(4,6),10),
+        d = parseInt(s.slice(6,8),10);
+    var now = new Date();
+    if (y === now.getFullYear()){
+      return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`;   // dd/mm
+    }
+    return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${String(y).slice(-2)}`;  // dd/mm/yy
+  }
+
+  let raw = params.data ? params.data.__options_date : null;
+  let values = [];
+
+  try{
+    const arr = Array.isArray(raw) ? raw : (raw ? JSON.parse(raw) : []);
+    values = (arr||[]).map(v => (v==null ? '' : String(v).trim()));
+  }catch(e){
+    if (typeof raw === 'string'){
+      values = raw.split(',').map(s=>s.trim());
+    }else{
+      values = [];
+    }
+  }
+
+  const cur = (params.value==null)? '' : String(params.value).trim();
+  if (cur !== '' && !values.includes(cur)) values.unshift(cur);
+
+  values = Array.from(new Set(values));
+
+  return {
+    values: values,
+    formatValue: function(v){ return intStrToPretty(v); }
+  };
+}
+""")
+
+# ValueParser des colonnes "Date"
+JS_DATE_VALUE_PARSER = JsCode(r"""
+function(params){
+  var s = (params.newValue==null) ? '' : String(params.newValue).trim();
+  if (s === '') return '';
+  if (/^\d{8}$/.test(s)) return s;   // déjà un yyyymmdd en str
+  return (params.oldValue==null) ? '' : String(params.oldValue).trim();
+}
+""")
+
+# ValueFormatter des colonnes "Date"
+JS_DATE_VALUE_FORMATTER = JsCode(r"""
+function(p){
+  function intStrToPretty(s){
+    if (s == null) return '';
+    s = String(s).trim();
+    if (s === '') return '';
+    if (!/^\d{8}$/.test(s)) return s;
+    var y = parseInt(s.slice(0,4),10),
+        m = parseInt(s.slice(4,6),10),
+        d = parseInt(s.slice(6,8),10);
+    var now = new Date();
+    if (y === now.getFullYear()){
+      return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`;
+    }
+    return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${String(y).slice(-2)}`;
+  }
+  return intStrToPretty(p.value);
+}
+""")
+
+
 def reprogrammation_request_set(idx, jour):
     st.session_state.setdefault("reprogrammation_request", 
         {
@@ -938,7 +1059,7 @@ def row_modification_request_del():
         del st.session_state["row_modification_request"]
 
 # Affichage d'un dataframe
-def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affichage_df", colorisation=False, hide_label=False, background_color=None):
+def afficher_df(label, df, hide=[], editable=[], fixed_columns={}, header_names={}, key="affichage_df", colorisation=False, hide_label=False, background_color=None):
 
     # Calcul de la hauteur de l'aggrid
     nb_lignes = len(df)
@@ -946,13 +1067,13 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
     max_height = 250 #150
     height = min(nb_lignes * ligne_px + 50, max_height)
 
-    # Initialisation du compteur qui permet de forcer le réaffichage de l'aggrid après une suppression de ligne 
+    # Initialisation du compteur qui permet de forcer le réaffichage complet de l'aggrid
     session_state_key_counter = key + "_key_counter"
     st.session_state.setdefault(session_state_key_counter, 0)
     
-    # Initialisation du flag indiquant si l'on est en mode réaffichage complet de l'aggrid
-    session_state_forcer_reaffichage = key + "_forcer_reaffichage"
-    st.session_state.setdefault(session_state_forcer_reaffichage, )
+    # # Initialisation du flag indiquant si l'on est en mode réaffichage complet de l'aggrid
+    # session_state_forcer_reaffichage = key + "_forcer_reaffichage"
+    # st.session_state.setdefault(session_state_forcer_reaffichage, )
        
     # Initialisation de la variable d'état contenant la requête de selection / déselection
     session_state_sel_request = key + "_sel_request"
@@ -985,17 +1106,24 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
                 headerName=name
             )
 
-    # Epinglage de la colonne Date
+    # Configuration de la colonne Date
     if "Date" in df.columns:
         gb.configure_column(
             "Date",
-            pinned=JsCode("'left'")
+            pinned=JsCode("'left'"),
+        valueParser=JS_DATE_VALUE_PARSER,
+        valueFormatter=JS_DATE_VALUE_FORMATTER,
         )
 
     #Colonnes cachées
     for col in hide:
         if col in df.columns:
             gb.configure_column(col, hide=True)
+
+    #Colonnes editables
+    for col in editable:
+        if col in df.columns:
+            gb.configure_column(col, editable=True)
 
     # Colorisation
     if colorisation:
@@ -1076,6 +1204,11 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
         onGridReady=JS_SELECT_DESELECT_ONCE,
     )
     
+    # Ajout de la colonne __uuid si elle n'existe pas
+    add_persistent_uuid(df)
+    if "__uuid" not in hide:
+        gb.configure_column("__uuid", hide=True)
+
     # Mise en page de la grille
     gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
         function(params) {{
@@ -1096,6 +1229,9 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
     if not hide_label:
         st.markdown(f"##### {label}")
 
+    grid_key = f"_{key} {st.session_state.get(session_state_key_counter)}"
+    tracer.log(f"Grid_key: {grid_key}")
+
     response = AgGrid(
         df,
         gridOptions=grid_options,
@@ -1104,7 +1240,7 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
         reload_data=True,
         data_return_mode=DataReturnMode.AS_INPUT,
         update_mode=GridUpdateMode.MODEL_CHANGED | GridUpdateMode.SELECTION_CHANGED,
-        key=f"_{key}",
+        key=grid_key,
     )
 
     event_data = response.get("event_data")
@@ -1115,7 +1251,11 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
     # Cette information est passée à la valeur "user" par le JsCode JS_SELECT_DESELECT_ONCE si le cellValueChanged provient d'un click utilisateur.
     # Elle permet de n'effectuer les traitements de cellValueChanged que sur les seuls évènements utilisateurs et de bypasser ceux provenant d'une
     # demande de sélection programmée via demander_selection().
-    df_dom = pd.DataFrame(response["data"])
+    try:
+        df_dom = pd.DataFrame(response["data"]) if "data" in response and isinstance(response["data"], pd.DataFrame) else pd.DataFrame()  
+    except:
+        df_dom = pd.DataFrame()
+        
     if not df_dom.empty:
         first_row = df_dom.iloc[0]
         sel_source = (first_row.get("__sel_source") or "api") # 'user' ou 'api'
@@ -1138,7 +1278,21 @@ def afficher_df(label, df, hide=[], fixed_columns={}, header_names={}, key="affi
 
     st.session_state[sel_request_key]["sel"]["id"] = get_index_from_uuid(df, row["__uuid"]) if row is not None else None
     st.session_state[selected_row_key] = row
-    return row
+
+    idx = None
+    if editable and event_type == "cellValueChanged":
+        forcer_reaffichage_df(key)
+        try:
+            df_dom = pd.DataFrame(response["data"]) if "data" in response and isinstance(response["data"], pd.DataFrame) else pd.DataFrame()  
+        except:
+            df_dom = pd.DataFrame() 
+        
+        if not df_dom.empty:
+            i, idx = get_ligne_modifiee_uuid(df_dom, df, columns_to_drop=["__uuid", "__desel_ver", "__desel_id", "__sel_ver", "__sel_id", "__sel_source"])
+            if i is not None:
+                df.loc[idx] = df_dom.loc[i]
+
+    return row, idx
 
 # Affiche le titre de la page de l'application
 def afficher_titre(title):
@@ -1219,6 +1373,9 @@ def afficher_aide():
                 Un bouton Programmer permet de programmer l'activité programmable sélectionnée au jour dit du créneau sélectionné. 
                 la couleur de fond est fonction du jour pour les créneaux disponibles et les activités programmables.</p>
             
+            <p>Enfin un dernier tableau présente le carnet d'adresses. Les Noms et Adresses peuvent être édités et le menu correspondant de la 
+                barre latérale escamotable permet d'ajouter / supprimer des entrées.</p>
+            
             <p style="margin-bottom: 0.2em">Les menus sont regroupés dans une barre latérale escamotable:</p>
             <ul style="margin-top: 0em">
                 <li>Menu Fichier: permet de charger un contexte à partir d'un fichier, initialiser un nouveau contexte, sauvegarder le contexte courant dans un fichier téléchargeable.</li>
@@ -1231,8 +1388,10 @@ def afficher_aide():
                         <li>déprogrammer l'activité (si elle est déjà programmée sans être réservée),</li>
                         <li>programmer / reprogrammer l'activité (si elle n'est pas réservée et que d'autres dates de programmation sont possibles)</li>
                         <li>éditer les propriétés l'activité.</li>
+                        <li>ajouter une activité. Le champ 'Clipbord' situé sous le bouton d'ajout d'activité permet de coller un texte provenant d'une source exterieure et dans lequel 
+                            la fonction d'ajout recherchera les informations à utiliser pour créer la nouvelle activité: Nom, Début, Durée, Lieu, Périodes de relâche.</li>
                         </ul>
-                </li>
+                <li>Menu Carnet d'adresses: permet d'ajouter / supprimer des entrées dans le carnet d'adresses.</li>
             </ul>
                         
             <p style="margin-bottom: 0.2em">En haut de la page principale une rubrique escamotable 'Infos' présente:</p>
@@ -1262,17 +1421,28 @@ def afficher_aide():
             <div style='font-size: 14px;'>
             <p style="margin-bottom: 0.2em">Le fichier Excel d'entrée doit contenir en feuille 1 les colonnes suivantes:</p>
             <ul style="margin-top: 0em; margin-bottom: 2em">
-            <li>Date : Date de l'activité (entier)</li>
-            <li>Début : Heure de début de l'activité (format HHhMM)</li>
-            <li>Fin : Heure de fin de l'activité (format HHhMM)</li>
-            <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
-            <li>Activité : Nom de l'activité (nom de spectacle, pause, visite, ...)</li>
-            <li>Lieu : Lieu de l'activité</li>
-            <li>Relâche : Jours de relâche pour l'activité (liste d'entiers, peut être vide)</li>
-            <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
+                <li>Date : Date de l'activité (entier)</li>
+                <li>Début : Heure de début de l'activité (format HHhMM)</li>
+                <li>Fin : Heure de fin de l'activité (format HHhMM)</li>
+                <li>Durée : Durée de l'activité (format HHhMM ou HHh)</li>
+                <li>Activité : Nom de l'activité (nom de spectacle, pause, visite, ...)</li>
+                <li>Lieu : Lieu de l'activité</li>
+                <li>Relâche : Jours / périodes de relâche ou de validité de l'activité (voir ci-dessous les formats acceptés)</li>
+                <li>Réservé : Indique si l'activité est réservée (Oui/Non, vide interpété comme Non)</li>
             </ul>
 
-            <p>En feuille 2 peut être fourni un carnet d'adresses des lieux d'activités utilisé pour la recherche d'itinéraire. 
+            <p style="margin-bottom: 0.2em">Les jours / périodes de relâche ou de validité de l'activité sont une suite séparée par des virgules de spécifications répondant aux règles suivantes:</p>
+            <ul style="margin-top: 0em; margin-bottom: 2em">
+                <li>Suite de dates de relâche de type jour ou jour/mois ou jour/mois/année, séparées par des virgules (mois ou année omis -> mois et année en cours implicites) </li>
+                <li>Regroupement de jours de relâche : (j1, j2, ...)/mois ou (j1, j2, ...)/mois/année</li>
+                <li>Intervalle de dates de relâche: [dmin-dmax] ou [jmin-jmax]/mois ou /mois/année</li>
+                <li>Intervalle de dates de validité: <dmin-dmax> ou ![jmin-jmax]/mois ou /mois/année</li>
+                <li>Spécification de jours pairs ou impairs: 'pair(s)' / 'impair(s)'</li>
+                <li>Exemple: '<5-26>/07, 04/07/25, (8,10)/07, [20-22]/07, jours pairs' -> activité disponible du 5 au 26 juillet de l'année en cours,
+                sauf le 04/07/2025, les 8 et 10 juillet de l'année en cours, entre le 20 et le 22 juillet de l'année en cours et les jours pairs.</li>
+            </ul>
+                        
+            <p>En feuille 2 peut figurer un carnet d'adresses des lieux d'activités, utilisé pour la recherche d'itinéraire. 
             Il doit comprendre au moins une colonne Nom et une colonne Adresse.</p>
 
             <p>📥Un modèle Excel est disponible <a href="https://github.com/jnicoloso-91/PlanifAvignon-05/raw/main/Mod%C3%A8le%20Excel.xlsx" download>
@@ -1324,15 +1494,15 @@ def afficher_periode_programmation():
             if isinstance(date_min, int):
                 try:
                     if date_min is not None:
-                        deb_kwargs["max_value"] = base_deb.replace(day=date_min)
+                        deb_kwargs["max_value"] = base_deb.replace(day=int(str(date_min)[-2:]))
                 except ValueError as e:
-                    print(e)
+                    print(f"Erreur dans afficher_periode_programmation: {e}")
             if isinstance(date_max, int):
                 try:
                     if date_max is not None:
-                        fin_kwargs["min_value"] = base_fin.replace(day=date_max)
+                        fin_kwargs["min_value"] = base_fin.replace(day=int(str(date_max)[-2:]))
                 except ValueError as e:
-                    print(e)
+                    print(f"Erreur dans afficher_periode_programmation: {e}")
 
             try:
                 col1, col2 = st.columns(2)
@@ -1365,7 +1535,7 @@ def afficher_periode_programmation():
             if need_maj_contexte:
                 undo.save_finalize()
                 maj_contexte(maj_donnees_calculees=False)
-                forcer_reaffichage_df("creneaux_disponibles")
+                # forcer_reaffichage_df("creneaux_disponibles")
 
             # Sauvegarde en batch (une seule fois)
             if changed_keys:
@@ -1619,11 +1789,20 @@ def afficher_bouton_nouvelle_activite(disabled=False, key="ajouter_activite"):
         st.session_state.compteur_activite = 0
 
     # Bouton Ajouter
-    if st.button(LABEL_BOUTON_AJOUTER, use_container_width=CENTRER_BOUTONS, disabled=disabled, key=key):
+    if st.button(LABEL_BOUTON_NOUVELLE_ACTIVITE, use_container_width=CENTRER_BOUTONS, disabled=disabled, key=key):
 
         undo.save()
+
+        infos_collage = parse_listing_text(st.session_state.zone_collage or "")
         
-        new_idx = ajouter_activite()
+        new_idx = ajouter_activite(
+            debut=infos_collage["Debut"], 
+            duree=infos_collage["Duree"], 
+            nom=infos_collage["Activite"], 
+            lieu=infos_collage["Lieu"], 
+            relache=infos_collage["Relache"],
+            hyperlien=infos_collage["Hyperlien"],
+        )
 
         demander_selection("activites_non_programmees", new_idx, deselect="activites_programmees")
         st.session_state.editeur_activite_idx = new_idx
@@ -1634,7 +1813,7 @@ def afficher_bouton_nouvelle_activite(disabled=False, key="ajouter_activite"):
             "index_df": new_idx
         }
 
-        forcer_reaffichage_df("activites_programmables")
+        # forcer_reaffichage_df("activites_programmables")
         sql.sauvegarder_row(new_idx)
         st.rerun()
 
@@ -1650,7 +1829,7 @@ def show_dialog_supprimer_activite(df, index_df, df_display):
                 demander_selection("activites_programmees", ligne_voisine_index(df_display, index_df), deselect="activites_non_programmees")
             else:
                 demander_selection("activites_non_programmees", ligne_voisine_index(df_display, index_df), deselect="activites_programmees")
-            forcer_reaffichage_df("creneaux_disponibles")
+            # forcer_reaffichage_df("creneaux_disponibles")
             supprimer_activite(index_df)
             sql.sauvegarder_row(index_df)
             st.rerun()
@@ -1660,11 +1839,12 @@ def show_dialog_supprimer_activite(df, index_df, df_display):
 
 # DialogBox de reprogrammation d'activité programmée
 @st.dialog("Reprogrammation activité")
-def show_dialog_reprogrammer_activite_programmee(df, activites_programmees, index_df, df_display, jours_possibles):
+def show_dialog_reprogrammer_activite_programmee(df, activites_programmees, index_df):
     jour_escape = "Aucune" # escape pour déprogrammer l'activité
-    jours_possibles = get_jours_possibles(df, activites_programmees, index_df) + [jour_escape]
-    jours_label = [f"{int(jour):02d}" for jour in jours_possibles[:-1]] + [jours_possibles[-1]]
-    jour_selection = st.selectbox("Choisissez une nouvelle date pour cette activité :", jours_label, key = "ChoixJourReprogrammationActiviteProgrammee")
+    jours_possibles = get_jours_possibles(df, activites_programmees, index_df)
+    jours_label = [dateint_to_str(x) for x in jours_possibles] + [jour_escape]
+    selection = st.selectbox("Choisissez une nouvelle date pour cette activité :", jours_label, key = "ChoixJourReprogrammationActiviteProgrammee")
+    jour_selection = date_to_dateint(selection)
     col1, col2 = st.columns([1, 1])
     with col1:
         if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS):
@@ -1673,12 +1853,12 @@ def show_dialog_reprogrammer_activite_programmee(df, activites_programmees, inde
                 undo.save()
                 demander_selection("activites_non_programmees", index_df, deselect="activites_programmees")
                 deprogrammer_activite_programmee(index_df)
-                forcer_reaffichage_df("creneaux_disponibles")
+                # forcer_reaffichage_df("creneaux_disponibles")
                 sql.sauvegarder_row(index_df)
                 st.rerun()
             else:
                 # Reprogrammation 
-                jour_choisi = int(jour_selection) 
+                jour_choisi = jour_selection
                 undo.save()
                 demander_selection("activites_programmees", index_df, deselect="activites_non_programmees")
                 df.at[index_df, "Date"] = jour_choisi
@@ -1690,18 +1870,20 @@ def show_dialog_reprogrammer_activite_programmee(df, activites_programmees, inde
 
 # DialogBox de programmation d'activité non programmée
 @st.dialog("Programmation activité")
-def show_dialog_programmer_activite_non_programmee(df, index_df, df_display, jours_possibles):
-    jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
-    jour_selection = st.selectbox("Choisissez une date pour cette activité :", jours_label, key = "ChoixJourProgrammationActiviteNonProgrammee")
+def show_dialog_programmer_activite_non_programmee(df, activites_programmees, index_df):
+    jours_possibles = get_jours_possibles(df, activites_programmees, index_df)
+    jours_label = [dateint_to_str(x) for x in jours_possibles]
+    selection = st.selectbox("Choisissez une date pour cette activité :", jours_label, key = "ChoixJourProgrammationActiviteNonProgrammee")
+    jour_selection = date_to_dateint(selection)
     col1, col2 = st.columns([1, 1])
     with col1:
         if st.button(LABEL_BOUTON_VALIDER, use_container_width=CENTRER_BOUTONS):
             # Programmation à la date choisie
-            jour_choisi = int(jour_selection.split()[-1])
+            jour_choisi = jour_selection
             undo.save()
             demander_selection("activites_programmees", index_df, deselect="activites_non_programmees")
             df.at[index_df, "Date"] = jour_choisi
-            forcer_reaffichage_df("creneaux_disponibles")
+            # forcer_reaffichage_df("creneaux_disponibles")
             sql.sauvegarder_row(index_df)
             st.rerun()
     with col2:
@@ -1756,25 +1938,35 @@ def init_activites_programmees_grid_options(df_display):
         editable=JsCode("function(params) { return params.data.__non_reserve; }")
     )
 
-    # Configuration des menus de la colonne 
+    # Configuration de la colonne "Date"
+    # gb.configure_column(
+    #     "Date",
+    #     editable=True,
+    #     cellEditor="agSelectCellEditor",
+    #     cellEditorParams=JsCode("""
+    #         function(params) {
+    #             let raw = params.data.__options_date;
+    #             let values = [];
+
+    #             try {
+    #                 values = JSON.parse(raw);
+    #             } catch (e) {
+    #                 values = [];
+    #             }
+
+    #             return { values: values };
+    #         }
+    #     """),
+    #     # valueParser=JS_DATE_VALUE_PARSER,
+    #     # valueFormatter=JS_DATE_VALUE_FORMATTER,
+    # )
     gb.configure_column(
         "Date",
         editable=True,
         cellEditor="agSelectCellEditor",
-        cellEditorParams=JsCode("""
-            function(params) {
-                let raw = params.data.__options_date;
-                let values = [];
-
-                try {
-                    values = JSON.parse(raw);
-                } catch (e) {
-                    values = [];
-                }
-
-                return { values: values };
-            }
-        """)
+        cellEditorParams=JS_DATE_CELL_EDITOR_PARAMS,
+        valueParser=JS_DATE_VALUE_PARSER,
+        valueFormatter=JS_DATE_VALUE_FORMATTER,
     )
 
     # Configuration de l'appui long pour la recherche Web et la recherche d'itinéraire
@@ -1808,10 +2000,9 @@ def init_activites_programmees_grid_options(df_display):
         getRowId=JsCode("function(p){ return String(p.data.__uuid); }"),
         columnTypes={"textColumn": {}},  # évite l'erreur #36
         onGridReady=JS_SELECT_DESELECT_ONCE,
-        # onFirstDataRendered=JS_IOS_SOFT_REVIVE,
     )
 
-    # Mise en page de la grille (repris dans JS_IOS_SOFT_REVIVE)
+    # Mise en page de la grille 
     gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
         function(params) {{
             params.api.sizeColumnsToFit();
@@ -1854,7 +2045,7 @@ def afficher_activites_programmees():
     max_height = 250
     height = min(nb_lignes * ligne_px + 50, max_height)
 
-    # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
+    # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage complet de l'aggrid  
     st.session_state.setdefault("activites_programmees_key_counter", 0)
 
     # Initialisation de la variable d'état indiquant s'il convient de bypasser la section d'édition de cellule 
@@ -1999,7 +2190,9 @@ def afficher_activites_programmees():
             # 1. Mettre en place un mécanisme de requête de modification qui bypasse la modification de cellule tant que le DOM n'a pas enregistré les 
             #    modifications demandées via le df_display (voir reprogrammation_request et row_modification_request).
             # 2. S'assurer que le DOM renvoie bien via response["data"] les modifications enregistrées. Ceci est réalisé par l'incrémentation de la 
-            #    colonne de travail __df_push_ver qui via le JsCode 
+            #    colonne de travail __df_push_ver qui permet au JsCode de déclencher un selectionChanged lorsqu'il détecte une incrémentation de la 
+            #    première ligne sur cette colonne. Streamlit renvoie ainsi dans response["data"] la modification, sans attendre de clic utilisateur. 
+
             if not df_dom.empty:
             # if isinstance(response["data"], pd.DataFrame):
 
@@ -2053,7 +2246,7 @@ def afficher_activites_programmees():
                                         st.rerun()
                                     elif pd.isna(df.at[idx, "Date"]) or df_dom.at[i, col] != str(int(df.at[idx, "Date"])):
                                         # Reprogrammation de l'activité à la date choisie
-                                        jour_choisi = int(df_dom.at[i, col])
+                                        jour_choisi = date_to_dateint(df_dom.at[i, col])
                                         undo.save()
                                         demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
                                         activites_programmees_reprogrammer(idx, jour_choisi)
@@ -2066,99 +2259,6 @@ def afficher_activites_programmees():
                                         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[idx])[0])
                                         st.rerun()
 
-# Section critique pour la déprogrammation d'une activité programmée.
-# Section critique car la modification de cellule depuis la grille est validée par un click row 
-# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
-# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
-# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
-# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
-def activites_programmees_deprogrammer(idx):
-    
-    st.session_state.setdefault("activites_programmees_deprogrammer_cmd", 
-        {
-            "idx": idx,
-            "step": 0,
-        }
-    )
-
-    tracer.log(f"Début {idx}")
-
-    st.session_state.forcer_menu_activites_non_programmees = True
-    deprogrammer_activite_programmee(idx)
-
-    # Workaround pour forcer le réaffichage de la grille.
-    # Sinon figeage grille après modification de cellule.
-    forcer_reaffichage_activites_programmees() 
-
-    forcer_reaffichage_df("creneaux_disponibles")
-    sql.sauvegarder_row(idx)
-
-    tracer.log(f"Fin {idx}")
-    del st.session_state["activites_programmees_deprogrammer_cmd"]
-
-# Section critique pour la reprogrammation d'une activité programmée.
-# Section critique car la modification de cellule depuis la grille est validée par un click row 
-# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
-# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
-# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
-# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
-def activites_programmees_reprogrammer(idx, jour):
-    
-    st.session_state.setdefault("activites_programmees_reprogrammer_cmd", 
-        {
-            "idx": idx,
-            "jour": jour,
-            "step": 0,
-        }
-    )
-
-    tracer.log(f"Début {idx} {jour}")
-
-    modifier_cellule(idx, "Date", jour)
-
-    # Workaround pour forcer le réaffichage de la grille.
-    # Sinon figeage grille après modification de cellule.
-    forcer_reaffichage_activites_programmees() 
-
-    sql.sauvegarder_row(idx)
-
-    tracer.log(f"Fin {idx} {jour}")
-    del st.session_state["activites_programmees_reprogrammer_cmd"]
-
-# Section critique pour la modification de cellules d'une activité programmée.
-# Section critique car la modification de cellule depuis la grille est validée par un click row 
-# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
-# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
-# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
-# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
-def activites_programmees_modifier_cellule(idx, col, val):
-    
-    st.session_state.setdefault("activites_programmees_modifier_cellule_cmd", 
-        {
-            "idx": idx,
-            "col": col,
-            "val": val,
-            "step": 0,
-        }
-    )
-
-    tracer.log(f"Début {idx} {col} {val}")
-
-    erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_programmees_modifier_cellule_cmd)
-
-    # Workaround pour forcer le réaffichage de la grille.
-    # Sinon figeage grille après modification de cellule.
-    forcer_reaffichage_activites_programmees() 
-
-    if not erreur:
-        if col in ["Debut", "Duree", "Activité"]:
-            forcer_reaffichage_df("creneaux_disponibles")
-    else:
-        st.session_state.aggrid_activites_programmees_erreur = erreur
-
-    tracer.log(f"Fin {idx} {col} {val}")
-    del st.session_state["activites_programmees_modifier_cellule_cmd"]
-
 # Menu activité à afficher dans la sidebar si click dans aggrid d'activités programmées         }
 def menu_activites_programmees(index_df):
 
@@ -2169,7 +2269,8 @@ def menu_activites_programmees(index_df):
 
     boutons_disabled = nom_activite == "" or pd.isna(index_df) or not isinstance(df, pd.DataFrame) or (isinstance(df, pd.DataFrame) and len(df) == 0)
     activite_reservee = est_activite_reserve(df.loc[index_df]) if pd.notna(index_df) else True 
-    jours_possibles = get_jours_possibles(df, st.session_state.activites_programmees, index_df)
+    # jours_possibles = get_jours_possibles(df, st.session_state.activites_programmees, index_df)
+    jours_possibles = sorted(parse_options_date(df_display.at[index_df,"__options_date"]) - {"", df_display.at[index_df, "Date"]}, key=lambda d: date_to_dateint(d)) if index_df in df_display.index else {} 
 
     # Affichage du label d'activité
     afficher_nom_activite(df, index_df, nom_activite)
@@ -2187,7 +2288,7 @@ def menu_activites_programmees(index_df):
         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
         st.session_state.forcer_maj_menu_activites_programmees = True
         supprimer_activite(index_df)
-        forcer_reaffichage_df("creneaux_disponibles")
+        # forcer_reaffichage_df("creneaux_disponibles")
         sql.sauvegarder_row(index_df)
         st.rerun()
 
@@ -2199,7 +2300,7 @@ def menu_activites_programmees(index_df):
         deprogrammer_activite_programmee(index_df)
         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
         st.session_state["activites_programmables_selected_row"] = df.loc[index_df]
-        forcer_reaffichage_df("creneaux_disponibles")
+        # forcer_reaffichage_df("creneaux_disponibles")
         sql.sauvegarder_row(index_df)
         st.rerun()
 
@@ -2216,10 +2317,11 @@ def menu_activites_programmees(index_df):
             st.rerun()
     
     # Affichage Liste des jours possibles
-    jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
+    jours_label = [dateint_to_str(int(x)) for x in jours_possibles] # [dateint_to_str(x) for x in jours_possibles]
     if jours_label and (not st.session_state.get("menu_activite_choix_jour_programmation") or st.session_state.menu_activite_choix_jour_programmation not in jours_label):
             st.session_state.menu_activite_choix_jour_programmation = jours_label[0]
-    st.session_state.activites_programmees_jour_choisi = st.selectbox("Jours possibles", jours_label, label_visibility="visible", disabled=boutons_disabled or activite_reservee or not jours_possibles, key = "menu_activite_choix_jour_programmation") 
+    choix = st.selectbox("Jours possibles", jours_label, label_visibility="visible", disabled=boutons_disabled or activite_reservee or not jours_possibles, key = "menu_activite_choix_jour_programmation") 
+    st.session_state.activites_programmees_jour_choisi = date_to_dateint(choix)
         
     # Affichage de l'éditeur d'activité
     if st.button(LABEL_BOUTON_EDITER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled, key="menu_activite_bouton_editer"):
@@ -2268,25 +2370,35 @@ def init_activites_non_programmees_grid_options(df_display):
     for col in df_display.columns:
         gb.configure_column(col, editable=(col not in non_editable_cols))
 
-    # Configuration des menus de la colonne Date
+    # Configuration de la colonne "Date"
+    # gb.configure_column(
+    #     "Date",
+    #     editable=True,
+    #     cellEditor="agSelectCellEditor",
+    #     cellEditorParams=JsCode("""
+    #         function(params) {
+    #             let raw = params.data.__options_date;
+    #             let values = [];
+
+    #             try {
+    #                 values = JSON.parse(raw);
+    #             } catch (e) {
+    #                 values = [];
+    #             }
+
+    #             return { values: values };
+    #         }
+    #     """),
+    #     # valueParser=JS_DATE_VALUE_PARSER,
+    #     # valueFormatter=JS_DATE_VALUE_FORMATTER,
+    # )
     gb.configure_column(
         "Date",
         editable=True,
         cellEditor="agSelectCellEditor",
-        cellEditorParams=JsCode("""
-            function(params) {
-                let raw = params.data.__options_date;
-                let values = [];
-
-                try {
-                    values = JSON.parse(raw);
-                } catch (e) {
-                    values = [];
-                }
-
-                return { values: values };
-            }
-        """)
+        cellEditorParams=JS_DATE_CELL_EDITOR_PARAMS,
+        valueParser=JS_DATE_VALUE_PARSER,
+        valueFormatter=JS_DATE_VALUE_FORMATTER,
     )
 
     # Configuration de l'appui long pour la recherche Web et la recherche d'itinéraire
@@ -2313,10 +2425,9 @@ def init_activites_non_programmees_grid_options(df_display):
         getRowId=JsCode("function(p){ return String(p.data.__uuid); }"),
         columnTypes={"textColumn": {}},  # évite l'erreur #36
         onGridReady=JS_SELECT_DESELECT_ONCE,
-        # onFirstDataRendered=JS_IOS_SOFT_REVIVE,
     )
 
-    # Mise en page de la grille (repris dans JS_IOS_SOFT_REVIVE)
+    # Mise en page de la grille 
     gb.configure_grid_options(onFirstDataRendered=JsCode(f"""
         function(params) {{
             params.api.sizeColumnsToFit();
@@ -2359,7 +2470,7 @@ def afficher_activites_non_programmees():
     max_height = 250
     height = min(nb_lignes * ligne_px + 50, max_height)
 
-    # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage de l'aggrid après une suppression de ligne 
+    # Initialisation du compteur qui permet de savoir si l'on doit forcer le réaffichage complet de l'aggrid
     st.session_state.setdefault("activites_non_programmees_key_counter", 0)
     
     # Initialisation de la variable d'état indiquant s'il convient de bypasser la section d'édition de cellule 
@@ -2507,7 +2618,8 @@ def afficher_activites_non_programmees():
             # 1. Mettre en place un mécanisme de requête de modification qui bypasse la modification de cellule tant que le DOM n'a pas enregistré les 
             #    modifications demandées via le df_display (voir reprogrammation_request et row_modification_request).
             # 2. S'assurer que le DOM renvoie bien via response["data"] les modifications enregistrées. Ceci est réalisé par l'incrémentation de la 
-            #    colonne de travail __df_push_ver qui via le JsCode 
+            #    colonne de travail __df_push_ver qui permet au JsCode de déclencher un selectionChanged lorsqu'il détecte une incrémentation de la 
+            #    première ligne sur cette colonne. Streamlit renvoie ainsi dans response["data"] la modification, sans attendre de clic utilisateur. 
             if not df_dom.empty:
             # if isinstance(response["data"], pd.DataFrame):
 
@@ -2540,7 +2652,7 @@ def afficher_activites_non_programmees():
                                 if col == "Date":
                                     if df_dom.at[i, col] != "":
                                         # Programmation de l'activité à la date choisie
-                                        jour_choisi = int(df_dom.at[i, col])
+                                        jour_choisi = date_to_dateint(df_dom.at[i, col])
                                         undo.save()
                                         demander_selection("activites_programmees", idx, deselect="activites_non_programmees")
                                         activites_non_programmees_programmer(idx, jour_choisi)
@@ -2560,70 +2672,6 @@ def afficher_activites_non_programmees():
                     "index_df": None
                 }
 
-# Section critique pour la programmation d'une activité non programmée.
-# Section critique car la modification de cellule depuis la grille est validée par un click row 
-# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
-# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
-# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
-# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
-def activites_non_programmees_programmer(idx, jour):
-    
-    st.session_state.setdefault("activites_non_programmees_programmer_cmd", 
-        {
-            "idx": idx,
-            "jour": jour,
-            "step": 0,
-        }
-    )
-
-    tracer.log(f"Début {idx} {jour}")
-
-    st.session_state.forcer_menu_activites_programmees = True
-    modifier_cellule(idx, "Date", int(jour))
-
-    # Workaround pour forcer le réaffichage de la grille.
-    # Sinon figeage grille après modification de cellule.
-    forcer_reaffichage_activites_non_programmees() 
-
-    forcer_reaffichage_df("creneaux_disponibles")
-    sql.sauvegarder_row(idx)
-
-    tracer.log(f"Fin {idx} {jour}")
-    del st.session_state["activites_non_programmees_programmer_cmd"]
-
-# Section critique pour la modification de cellules d'une activité non programmée.
-# Section critique car la modification de cellule depuis la grille est validée par un click row 
-# qui peut entraîner une interruption du script python et donc une incohérence de contexte.
-# Le mécanisme de section critique permet une relance automatique du traitement jusqu'à complétion 
-# en cas d'interruption par un rerun Streamlit : une commande est enregistrée dans st.session_state 
-# et est automatiquement relancée en début de rerun tant qu'elle n'est pas terminée.
-def activites_non_programmees_modifier_cellule(idx, col, val):
-    
-    st.session_state.setdefault("activites_non_programmees_modifier_cellule_cmd", 
-        {
-            "idx": idx,
-            "col": col,
-            "val": val,
-            "step": 0,
-        }
-    )
-
-    tracer.log(f"Début {idx} {col} {val}")
-
-    erreur = affecter_valeur_df(idx, col, val, section_critique=st.session_state.activites_non_programmees_modifier_cellule_cmd)
-
-    # Workaround pour forcer le réaffichage de la grille.
-    # Sinon figeage grille après modification de cellule.
-    forcer_reaffichage_activites_non_programmees() 
-    
-    if not erreur:
-        forcer_reaffichage_df("activites_programmables")
-    else:
-        st.session_state.aggrid_activites_non_programmees_erreur = erreur
-
-    tracer.log(f"Fin {idx} {col} {val}")
-    del st.session_state["activites_non_programmees_modifier_cellule_cmd"]
-
 # Menu activité à afficher dans la sidebar si click dans aggrid d'activités non programmées         }
 def menu_activites_non_programmees(index_df):
 
@@ -2633,7 +2681,8 @@ def menu_activites_non_programmees(index_df):
     nom_activite = nom_activite.strip() if pd.notna(nom_activite) else ""
 
     boutons_disabled = nom_activite == "" or pd.isna(index_df) or not isinstance(df, pd.DataFrame) or (isinstance(df, pd.DataFrame) and len(df) == 0)
-    jours_possibles = get_jours_possibles(df, st.session_state.activites_programmees, index_df)
+    # jours_possibles = get_jours_possibles(df, st.session_state.activites_programmees, index_df)
+    jours_possibles = sorted(parse_options_date(df_display.at[index_df,"__options_date"]) - {"", df_display.at[index_df, "Date"]}, key=lambda d: date_to_dateint(d)) if index_df in df_display.index else {} 
 
     # Affichage du label d'activité
     afficher_nom_activite(df, index_df, nom_activite)
@@ -2651,7 +2700,7 @@ def menu_activites_non_programmees(index_df):
         demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
         st.session_state.forcer_maj_menu_activites_non_programmees = True
         supprimer_activite(index_df)
-        forcer_reaffichage_df("activites_programmable_dans_creneau_selectionne")
+        # forcer_reaffichage_df("activites_programmable_dans_creneau_selectionne")
         sql.sauvegarder_row(index_df)
         st.rerun()
 
@@ -2667,15 +2716,16 @@ def menu_activites_non_programmees(index_df):
             demander_selection("activites_programmees", index_df, deselect="activites_non_programmees")
             modifier_cellule(index_df, "Date", int(jour_choisi))
             demander_selection("creneaux_disponibles", get_creneau_proche(st.session_state.get("creneaux_disponibles"), df.loc[index_df])[0])
-            forcer_reaffichage_df("creneaux_disponibles")
+            # forcer_reaffichage_df("creneaux_disponibles")
             sql.sauvegarder_row(index_df)
             st.rerun()
 
     # Affichage Liste des jours possibles
-    jours_label = [f"{int(jour):02d}" for jour in jours_possibles]
+    jours_label = [dateint_to_str(int(x)) for x in jours_possibles] # [dateint_to_str(x) for x in jours_possibles]
     if jours_label and (not st.session_state.get("menu_activite_choix_jour_programmation") or st.session_state.menu_activite_choix_jour_programmation not in jours_label):
             st.session_state.menu_activite_choix_jour_programmation = jours_label[0]
-    st.session_state.activites_non_programmees_jour_choisi = st.selectbox("Jours possibles", jours_label, label_visibility="visible", disabled=boutons_disabled or not jours_possibles, key = "menu_activite_choix_jour_programmation") # , width=90
+    choix = st.selectbox("Jours possibles", jours_label, label_visibility="visible", disabled=boutons_disabled or not jours_possibles, key = "menu_activite_choix_jour_programmation") # , width=90
+    st.session_state.activites_non_programmees_jour_choisi = date_to_dateint(choix)
         
     # Affichage de l'éditeur d'activité
     if st.button(LABEL_BOUTON_EDITER, use_container_width=CENTRER_BOUTONS, disabled=boutons_disabled,  key="menu_activite_bouton_editer"):
@@ -2707,7 +2757,9 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
             else:
                 try:
                     if  colonne_df != "Lien Web":
-                        if ptypes.is_numeric_dtype(df[colonne_df]) and not ptypes.is_numeric_dtype(row[colonne_df]):
+                        if colonne_df == "Date":
+                            row[colonne_df] = date_to_dateint(row[colonne_df])
+                        elif ptypes.is_numeric_dtype(df[colonne_df]) and not ptypes.is_numeric_dtype(row[colonne_df]):
                             if "." not in row[colonne_df] and "," not in row[colonne_df] and "e" not in row[colonne_df].lower():
                                 row[colonne_df] = int(row[colonne_df])
                             else:
@@ -2721,11 +2773,9 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
                     else:
                         st.session_state.editeur_activite_etat["col_modif"].append(colonne_df)
                         if est_activite_programmee(row):
-                            # st.session_state.editeur_activite_etat["forcer_reaffichage_activites_non_programmees"] = True -> remplacé par __df_push_ver
                             if colonne_df in ["Debut", "Duree", "Activité"]:
                                 st.session_state.editeur_activite_etat["forcer_reaffichage_creneaux_disponibles"] = True
                         elif est_activite_non_programmee(row):
-                            # st.session_state.editeur_activite_etat["forcer_reaffichage_activites_non_programmees"] = True -> remplacé par __df_push_ver
                             st.session_state.editeur_activite_etat["forcer_reaffichage_activites_programmables"] = True
         return erreur
                 
@@ -2775,8 +2825,10 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
         if colonne_rerun_pred is None or  colonne_rerun_pred != colonne_df:
             st.session_state.editeur_activite_etat["colonne_courante"] = colonne_df
 
-
-        valeur_courante = row[colonne_df]
+        if colonne_df == "Date":
+            valeur_courante = dateint_to_str(row[colonne_df])
+        else:
+            valeur_courante = row[colonne_df]
 
         st.session_state.editeur_activite_etat["nouvelle_valeur"] = st.text_input(f"✏️ Valeur", "" if pd.isna(valeur_courante) else str(valeur_courante), key=key+str(input_text_key_counter)) 
         erreur = enregistrer_modification_dans_row(df, row, colonne_df, row[colonne_df], st.session_state.editeur_activite_etat.get("nouvelle_valeur"))
@@ -2797,9 +2849,11 @@ def afficher_editeur_activite(df, index_df=None, key="editeur_activite"):
                             forcer_reaffichage_activites_non_programmees()
                             
                         if st.session_state.editeur_activite_etat["forcer_reaffichage_creneaux_disponibles"]:
-                            forcer_reaffichage_df("creneaux_disponibles")
+                            # forcer_reaffichage_df("creneaux_disponibles")
+                            pass
                         if st.session_state.editeur_activite_etat["forcer_reaffichage_activites_programmables"]:
-                            forcer_reaffichage_df("activites_programmables")
+                            # forcer_reaffichage_df("activites_programmables")
+                            pass
 
                         # Mise en attente du code de traitement des cellValueChanged utilisateur tant que le DOM n'a pas pris en compte les modifs
                         row_modification_request_set(index_df, cols)
@@ -2849,7 +2903,7 @@ def afficher_creneaux_disponibles():
         choix_creneau_pred = st.session_state["creneaux_disponibles_selected_row"] if "creneaux_disponibles_selected_row" in st.session_state else None
 
         # Affichage de la grille des créneaux disponibles
-        choix_creneau = afficher_df(
+        choix_creneau, *_ = afficher_df(
             "Créneaux disponibles", 
             creneaux_disponibles, 
             header_names={"Debut": "Début"},
@@ -2867,7 +2921,8 @@ def afficher_creneaux_disponibles():
                 "activites_programmables" not in st.session_state:
 
                 if choix_creneau_pred is not None and choix_creneau_pred["__uuid"] != choix_creneau["__uuid"]:
-                    forcer_reaffichage_df("activites_programmables")
+                    # forcer_reaffichage_df("activites_programmables")
+                    pass
             
                 proposables = get_proposables(choix_creneau, traiter_pauses)
 
@@ -2892,12 +2947,12 @@ def afficher_creneaux_disponibles():
                 date_ref = int(choix_creneau["Date"]) # date_ref doit être en int !
                 st.markdown(f"Sur le créneau du {int(date_ref)} de {choix_creneau["Debut"]} à {choix_creneau["Fin"]}")
 
-                activite = afficher_df(
+                activite, *_ = afficher_df(
                     "Activités programmables", 
                     proposables, 
                     header_names={"Debut": "Début", "Duree": "Durée", "Activite": "Activité", "Relache": "Relâche", "Priorite": "Prio", "Reserve": "Réservé"},
                     fixed_columns={"Date": 55, "Debut": 55, "Fin": 55, "Duree": 55}, 
-                    hide=["__type_activite", "__index", "__uuid"], 
+                    hide=["__type_activite", "__index", "__options_date", "__uuid"], 
                     key="activites_programmables", 
                     hide_label=True, 
                     colorisation=True,
@@ -2962,7 +3017,7 @@ def afficher_nom_activite(df, index_df, nom_activite=None, afficher_label=True):
         if nom_activite == None:
             nom_activite = row["Activite"].strip()
         if est_activite_programmee(row):
-            label_activite = f"Le {int(row["Date"])} de {row["Debut"]} à {row["Fin"]}"
+            label_activite = f"Le {dateint_to_str(row["Date"])} de {row["Debut"]} à {row["Fin"]}"
             if est_activite_reserve(row):
                 st_info_avec_label(label_activite, nom_activite, afficher_label=afficher_label, color="red")
             else:
@@ -3122,6 +3177,9 @@ def afficher_sidebar():
 # Affichage du menu activité de la sidebar
 def afficher_menu_activite():
 
+    def clipboard_on_change():
+        st.session_state.zone_collage = st.session_state["clipboard"]
+
     df = st.session_state.get("df")
     if df is None:
         return
@@ -3138,14 +3196,104 @@ def afficher_menu_activite():
                     menu_activites_non_programmees(
                         st.session_state.menu_activites["index_df"]
                     )
-        
+
+                # Ajout de la zone de collage
+                st.session_state.zone_collage = st.text_area(
+                    "Clipboard", 
+                    height=120, 
+                    width="stretch", 
+                    key="clipboard", 
+                    placeholder="Collez ici le texte à utiliser pour créer une nouvelle activité",
+                    on_change=clipboard_on_change,
+                )
+
         # Désactivation des flags de forçage de menu activités
         if st.session_state.forcer_menu_activites_programmees and st.session_state.menu_activites["menu"] == "menu_activites_programmees":
             st.session_state.forcer_menu_activites_programmees = False
         if st.session_state.forcer_menu_activites_non_programmees and st.session_state.menu_activites["menu"] == "menu_activites_non_programmees":
             st.session_state.forcer_menu_activites_non_programmees = False
-    
-    afficher_worker_status_discret()
+
+# Affichage du carnet d'adresses
+def afficher_ca():
+    ca = st.session_state.get("ca")
+    if ca is not None:
+        with st.expander("**Carnet d'adresses**", expanded=True):
+            st.session_state.setdefault("ca_display", ca.copy())
+            ca_display = st.session_state.get("ca_display")
+            adresse_selectionnee, idx_modifie = afficher_df(
+                "Carnet d'adresses", 
+                ca_display, 
+                hide=["__uuid"], 
+                editable=["Nom", "Adresse"],
+                key="carnet_adresses", 
+                hide_label=True,
+            )
+
+            tracer.log(f"idx_modifie: {idx_modifie}")
+
+            st.session_state.ca_adresse_selectionnee = adresse_selectionnee
+
+            if idx_modifie and isinstance(adresse_selectionnee, pd.Series):
+                idx_ca = get_index_from_uuid(ca, adresse_selectionnee["__uuid"])
+                if idx_ca is not None:
+                    ancienne_valeur = ca.loc[idx_ca]
+                    if diff_cols_between_rows(ancienne_valeur, adresse_selectionnee):
+                        undo.save()
+                        st.session_state.ca.at[idx_ca, "Nom"] = adresse_selectionnee["Nom"]
+                        st.session_state.ca.at[idx_ca, "Adresse"] = adresse_selectionnee["Adresse"]
+                        sql.sauvegarder_ca()
+                        st.rerun()
+
+# Affichage du menu carnet d'adresses
+def afficher_menu_ca():
+    def get_nouveau_nom(ca):
+        noms_existants = ca["Nom"].dropna().astype(str).str.strip().tolist()
+        compteur = 0
+        while True:
+            compteur += 1
+            nom_candidat = f"Nom {compteur}"
+            if nom_candidat not in noms_existants:
+                return nom_candidat
+
+    ca = st.session_state.get("ca")
+    if ca is not None and est_contexte_valide():
+        with st.sidebar.expander("Carnet d'adresses", expanded=True):
+            
+            adresse_selectionnee = st.session_state.ca_adresse_selectionnee
+            lieu_selectionne = adresse_selectionnee["Nom"] if isinstance(adresse_selectionnee, pd.Series) else "..."
+
+            st_info_avec_label(None, lieu_selectionne, afficher_label=False)
+
+            if st.button(LABEL_BOUTON_SUPPRIMER, use_container_width=True, disabled=not isinstance(adresse_selectionnee, pd.Series), key="supprimer_addr"):
+
+                undo.save()
+                st.session_state.ca = ca[ca["__uuid"] != adresse_selectionnee["__uuid"]]
+                sql.sauvegarder_ca()
+
+                ca_display = st.session_state.get("ca_display")
+                if isinstance(ca_display, pd.DataFrame):
+                    st.session_state.ca_display = ca_display[ca_display["__uuid"] != adresse_selectionnee["__uuid"]]
+                    demander_selection("carnet_adresses", ligne_voisine_uuid(ca_display, adresse_selectionnee["__uuid"]))
+                    st.rerun()
+
+            if st.button(LABEL_BOUTON_NOUVELLE_ADRESSE, use_container_width=True, key="ajouter_addr"):
+
+                undo.save()
+                new_uuid = str(uuid.uuid4())
+                new_name = get_nouveau_nom(ca)
+                new_row = {"Nom": new_name, "Adresse": None, "__uuid": new_uuid}
+                st.session_state.ca = pd.concat([ca, pd.DataFrame([new_row])], ignore_index=True)
+                sql.sauvegarder_ca()
+
+                ca_display = st.session_state.get("ca_display")
+                if isinstance(ca_display, pd.DataFrame):
+                    new_row = {col: None for col in ca_display.columns}
+                    new_row["Nom"] = new_name
+                    new_row["__uuid"] = new_uuid
+                    st.session_state.ca_display = pd.concat([ca_display, pd.DataFrame([new_row])], ignore_index=True)
+                    new_idx = get_index_from_uuid(st.session_state.ca_display, new_uuid)
+                    demander_selection("carnet_adresses", new_idx)
+                    st.rerun()
 
 # Essai infructueux pour éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
 @st.cache_resource
@@ -3394,5 +3542,4 @@ def initialiser_page():
 
     # Coller ici les essais pour éviter le blocage de l'UI au retour d'appel d'une page web dans le meme onglet (same tab) sur IOS
     pass
-
 
