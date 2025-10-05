@@ -1279,29 +1279,25 @@ def parse_listing_text(text: str) -> dict:
 #     return st.session_state["user_id"]
 
 def get_user_id():
-    # déjà initialisé ? on ne refait rien
+    # Déjà initialisé ? on ne refait rien
     if st.session_state.get("_uid_init_done"):
         return st.session_state["user_id"]
 
-    # 1) source de vérité au premier run : la query (remplie grâce au <script> # -> ?)
     uid = st.query_params.get("user_id")
     if uid:
         st.session_state["user_id"] = uid
         st.session_state["_uid_init_done"] = True
         return uid
 
-    # 2) pas d'uid dans la query : écran "Créer ma session privée"
+    # Sinon: écran de création
     st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
     st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
-    new_user_id = st.session_state["new_user_id"]
+    new_uid = st.session_state["new_user_id"]
 
     if st.button("Créer ma session privée"):
-        st.session_state["user_id"] = new_user_id
-        st.session_state["_uid_init_done"] = True
-        st.query_params.update(user_id=new_user_id)
+        st.query_params.update(user_id=new_uid)
+        # Après update, on relance pour repartir avec la query
         st.rerun()
-
-    show_user_link(new_user_id)  
 
     st.stop()
 
