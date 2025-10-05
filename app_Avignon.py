@@ -28,18 +28,26 @@ def rerun_trace():
 def promote_hash_user_id_for_webapp_mode():
     st.markdown("""
     <script>
-    (function(){
+    (function () {
     try {
-        const FLAG = "hash_promoted_v2";
-        if (!window.location.hash || sessionStorage.getItem(FLAG)) return;
+        // Pas de hash ? Rien à faire
+        if (!location.hash) return;
 
-        const url = new URL(window.location.href);
-        const hp = new URLSearchParams(window.location.hash.substring(1));
-        const q  = url.searchParams;
-        let changed = false;
-        hp.forEach((v,k)=>{ if(!q.has(k)){ q.set(k,v); changed = true; } });
-        if (changed) { url.hash=""; sessionStorage.setItem(FLAG,"1"); window.location.replace(url.toString()); }
-    } catch(e){}
+        const url = new URL(location.href);
+        const q   = url.searchParams;
+        const hp  = new URLSearchParams(location.hash.substring(1));
+        const uid = hp.get("user_id");
+
+        // On ne fait la promotion que si user_id est dans le hash ET pas déjà dans la query
+        if (uid && !q.get("user_id")) {
+        q.set("user_id", uid);
+        // (Optionnel) Si tu utilises aussi #session_id, fais pareil ici :
+        // const sid = hp.get("session_id"); if (sid && !q.get("session_id")) q.set("session_id", sid);
+
+        url.hash = "";                  // on vide le hash
+        location.replace(url.toString()); // reload unique avec la query
+        }
+    } catch (e) {}
     })();
     </script>
     """, unsafe_allow_html=True)
