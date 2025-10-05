@@ -1282,12 +1282,13 @@ def get_user_id():
     if "user_id" not in st.session_state: # Garde pour le code à n'exécuter qu'un seule fois
         params = st.query_params
         user_id_from_url = params.get("user_id", [None])
+        tracer.log(f"user_id_from_url: {user_id_from_url}", types=["main"])
 
         if user_id_from_url[0]:
             st.session_state["user_id"] = user_id_from_url
             # On mémorise aussi côté client (utile en WebApp iOS)
             components.html(f"<script>localStorage.setItem('user_id','{user_id_from_url}');</script>", height=0)
-            tracer.log(f"user_id_from_url: {user_id_from_url}", types=["main"])
+            tracer.log(f"user_id_from_url stocké: {user_id_from_url[0]}", types=["main"])
 
         if "user_id" not in st.session_state:
             st.write("Pour commencer, cliquez ci-dessous pour ouvrir votre espace personnel.")
