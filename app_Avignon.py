@@ -26,31 +26,50 @@ def rerun_trace():
 # Permet de spécifier une URL de connexion utilisant #user_id au lieu de ?user_id pour le bon fonctionnement en mode WebApp sur IOS.
 # En effet en mode WebApp le ?user_id est ecrasé de l'URL et sans ce workaround l'appli ne pourrait pas démarrer avec une spécification de user_id.
 def promote_hash_user_id_for_webapp_mode():
-    st.markdown("""
-    <script>
-    (function () {
-    try {
-        // Pas de hash ? Rien à faire
-        if (!location.hash) return;
+    # --- 1) Si la query a déjà user_id => on laisse la suite du script s'exécuter ---
+    if st.query_params.get("user_id"):
+        pass  # continuer le script normal (appels à get_user_id(), etc.)
 
-        const url = new URL(location.href);
-        const q   = url.searchParams;
-        const hp  = new URLSearchParams(location.hash.substring(1));
-        const uid = hp.get("user_id");
+    # --- 2) Sinon : on affiche une page minimale qui tente d'abord la promotion du hash ---
+    else:
+        st.markdown("""
+        <script>
+        (function () {
+        try {
+            const url = new URL(location.href);
+            const q   = url.searchParams;
+            const hp  = new URLSearchParams(location.hash.substring(1));
+            const uid = hp.get("user_id");
 
-        // On ne fait la promotion que si user_id est dans le hash ET pas déjà dans la query
-        if (uid && !q.get("user_id")) {
-        q.set("user_id", uid);
-        // (Optionnel) Si tu utilises aussi #session_id, fais pareil ici :
-        // const sid = hp.get("session_id"); if (sid && !q.get("session_id")) q.set("session_id", sid);
+            // Si on a #user_id et PAS encore ?user_id -> on promeut et on recharge
+            if (uid && !q.get("user_id")) {
+            q.set("user_id", uid);
+            url.hash = "";
+            location.replace(url.toString());
+            return; // on laisse le rechargement faire le reste
+            }
+        } catch (e) {}
+        })();
+        </script>
+        """, unsafe_allow_html=True)
 
-        url.hash = "";                  // on vide le hash
-        location.replace(url.toString()); // reload unique avec la query
-        }
-    } catch (e) {}
-    })();
-    </script>
-    """, unsafe_allow_html=True)
+        # Si on arrive ici, c'est qu'il n'y avait pas de #user_id à promouvoir.
+        st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
+
+        # Génère un ID une seule fois
+        st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+        new_user_id = st.session_state["new_user_id"]
+
+        # Bouton de création -> écrit ?user_id puis relance
+        if st.button("Créer ma session privée"):
+            st.query_params.update(user_id=new_user_id)
+            st.rerun()
+
+        # Lien direct (optionnel)
+        # st.markdown(f"[Ouvrir avec cet ID](/?user_id={new_user_id})")
+
+        # IMPORTANT : on s'arrête ici pour éviter d'exécuter le reste du script
+        st.stop()
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
