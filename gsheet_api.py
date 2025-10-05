@@ -7,7 +7,7 @@
 # - Mettre True pour debugger en local sous VsCode                                                #
 # - Mettre False avant d'intégrer dans GitHub                                                     #
 ###################################################################################################
-LOCAL = False
+LOCAL = True
 
 import streamlit as st
 import pandas as pd
@@ -17,41 +17,9 @@ from google.oauth2.service_account import Credentials
 import uuid
 
 from app_const import COLONNES_ATTENDUES, COLONNES_ATTENDUES_CARNET_ADRESSES
-from app_utils import curseur_normal, curseur_attente, minutes, to_iso_date, ajouter_options_date, get_meta
+from app_utils import curseur_normal, curseur_attente, minutes, to_iso_date, ajouter_options_date, get_meta, get_user_id
 from sync_worker import gs_set_client_for_worker
 
-def get_user_id():
-    params = st.query_params
-    user_id_from_url = params.get("user_id", [None])
-
-    if user_id_from_url[0]:
-        st.session_state["user_id"] = user_id_from_url
-
-    if "user_id" not in st.session_state:
-        st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
-        if "new_user_id" not in st.session_state:     
-            st.session_state["new_user_id"] = str(uuid.uuid4())[:8]
-        new_user_id = st.session_state.new_user_id
-        if st.button("Créer ma session privée"):
-            st.session_state["user_id"] = new_user_id
-            st.query_params.update(user_id=new_user_id)
-            st.rerun()  # Recharge la page avec le nouveau paramètre
-        show_user_link(new_user_id)
-        st.stop()
-
-    return st.session_state["user_id"]
-
-def show_user_link(user_id):
-    app_url = "https://planifavignon-05-hymtc4ahn5ap3e7pfetzvm.streamlit.app/"  
-    user_link = f"{app_url}/?user_id={user_id}"
-    st.success("Voici ton lien personnel pour revenir plus tard :")
-    st.code(user_link, language="text")
-    st.download_button(
-        label="💾 Télécharger mon lien",
-        data=user_link,
-        file_name=f"lien_{user_id}.txt"
-    )
-    
 def get_gs_client():
     try:
         creds_dict = st.secrets["gcp_service_account"]
@@ -89,11 +57,10 @@ def get_or_create_user_gsheets(user_id, spreadsheet_id):
 
     return gsheets
 
-def connect():
+def connect(user_id):
     if "gsheets" not in st.session_state:
 
         try:
-            user_id = get_user_id()
             curseur_attente()
             gsheets = get_or_create_user_gsheets(user_id, spreadsheet_id="1ytYrefEPzdJGy5w36ZAjW_QQTlvfZ17AH69JkiHQzZY")
             st.session_state.gsheets = gsheets
