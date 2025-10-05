@@ -1279,27 +1279,55 @@ def parse_listing_text(text: str) -> dict:
 #     return st.session_state["user_id"]
 
 def get_user_id():
-    # Déjà initialisé ? on ne refait rien
-    if st.session_state.get("_uid_init_done"):
-        return st.session_state["user_id"]
+    if "user_id" not in st.session_state: # Garde pour le code à n'exécuter qu'un seule fois
+        # 1) source de vérité : la query
+        uid = st.query_params.get("user_id")
+        if uid:
+            st.session_state["user_id"] = uid
+            # On mémorise aussi côté client (utile en WebApp iOS)
+            components.html(f"<script>localStorage.setItem('user_id','{uid}');</script>", height=0)
+            return uid
 
-    uid = st.query_params.get("user_id")
-    if uid:
-        st.session_state["user_id"] = uid
-        st.session_state["_uid_init_done"] = True
-        return uid
+        # 2) si déjà fixé lors d'un run précédent
+        if st.session_state.get("user_id"):
+            return st.session_state["user_id"]
 
-    # Sinon: écran de création
-    st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
-    st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
-    new_uid = st.session_state["new_user_id"]
+        # 3) sinon, on demande un user_id et on le fixe
+        # st.write("Pour commencer, saisis ton *User ID* (environnement) :")
+        st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+        proposed = st.session_state["new_user_id"]
 
-    if st.button("Créer ma session privée"):
-        st.query_params.update(user_id=new_uid)
-        # Après update, on relance pour repartir avec la query
-        st.rerun()
+        col1, col2 = st.columns([3,1])
+        with col1:
+            typed = st.text_input("User ID", value=proposed, label_visibility="collapsed")
+        with col2:
+            go = st.button("OK")
 
-    st.stop()
+        if go and typed:
+            # a) mettre à jour l'URL (source de vérité)
+            st.query_params.update(user_id=typed)
+            # b) mémoriser côté client (marche en WebApp et Safari)
+            components.html(f"<script>localStorage.setItem('user_id','{typed}');</script>", height=0)
+            # c) synchroniser session et relancer proprement
+            st.session_state["user_id"] = typed
+            st.rerun()
+
+        show_user_link(st.session_state["user_id"])
+        # # Info pratique : URL directe pour ton environnement
+        # base = st.query_params.get_url() if hasattr(st.query_params, "get_url") else st.experimental_get_query_params()
+        # # fallback simple : reconstruire l'URL "nue" sans params
+        # import os
+        # base_url = os.environ.get("STREAMLIT_SERVER_BASE_URL", "") or st.get_option("browser.serverAddress") or ""
+        # # si base_url est vide, on affiche un modèle générique :
+        # st.markdown(
+        #     f"🔗 URL à utiliser la prochaine fois : ?user_id={proposed} "
+        #     f"(par ex. **https://tonapp.streamlit.app/?user_id={proposed}**)",
+        #     help="Ajoute ce suffixe à l’URL de l’app pour ouvrir directement ton environnement."
+        # )
+
+        st.stop()
+
+    return st.session_state["user_id"]
 
 def show_user_link(user_id):
     app_url = "https://planifavignon-05-hymtc4ahn5ap3e7pfetzvm.streamlit.app/"  
