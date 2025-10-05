@@ -28,53 +28,24 @@ def rerun_trace():
 # En effet en mode WebApp le ?user_id est ecrasé de l'URL et sans ce workaround l'appli ne pourrait pas démarrer avec une spécification de user_id.
 def promote_hash_user_id_for_webapp_mode():
 
-    # -------- GATE: promouvoir #user_id -> ?user_id AVANT tout le reste --------
-    if not st.query_params.get("user_id"):
-        # Injecte un vrai <script> via components.html (fiable sur Firefox/Streamlit Cloud)
-        components.html(
-            """
-            <script>
-            (function () {
-            try {
-                var url  = new URL(window.location.href);
-                var q    = url.searchParams;
-                var hash = url.hash ? url.hash.substring(1) : "";
-                var hp   = new URLSearchParams(hash);
-                var uid  = hp.get("user_id");
-
-                // Si on a #user_id et PAS ?user_id -> promotion + reload
-                if (uid && !q.get("user_id")) {
-                q.set("user_id", uid);
-                url.hash = "";
-                // Remplace l'URL puis force un reload pour que Python voie la query
-                if (history.replaceState) {
-                    history.replaceState(null, "", url.toString());
-                    window.location.reload();
-                } else {
-                    window.location.replace(url.toString());
-                }
-                return;
-                }
-            } catch (e) {}
-            })();
-            </script>
-            """,
-            height=0,  # pas d'UI
-        )
-
-        # UI de secours si aucun #user_id fourni (première visite)
-        st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
-        if "new_user_id" not in st.session_state:
-            import uuid
-            st.session_state["new_user_id"] = uuid.uuid4().hex[:8]
-        new_uid = st.session_state["new_user_id"]
-
-        if st.button("Créer ma session privée"):
-            st.query_params.update(user_id=new_uid)
-            st.rerun()
-
-        st.stop()  # IMPORTANT: on bloque l'exécution tant que la promo n'a pas eu lieu
-
+    # Si l'URL n'a pas ?user_id, reprendre celui mémorisé localement (WebApp/Safari)
+    components.html("""
+    <script>
+    (function(){
+    try{
+        var url = new URL(window.location.href);
+        if (!url.searchParams.get('user_id')) {
+        var uid = localStorage.getItem('user_id');
+        if (uid) {
+            url.searchParams.set('user_id', uid);
+            history.replaceState(null, '', url.toString());
+            window.location.reload();
+        }
+        }
+    }catch(e){}
+    })();
+    </script>
+    """, height=0)
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
