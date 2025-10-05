@@ -15,6 +15,7 @@ from sections_critiques import traiter_sections_critiques
 import sql_api as sql 
 import gsheet_api as gs
 import sync_worker as wk
+import streamlit.components.v1 as components
 
 # Trace le début d'un rerun
 def rerun_trace():
@@ -26,51 +27,53 @@ def rerun_trace():
 # Permet de spécifier une URL de connexion utilisant #user_id au lieu de ?user_id pour le bon fonctionnement en mode WebApp sur IOS.
 # En effet en mode WebApp le ?user_id est ecrasé de l'URL et sans ce workaround l'appli ne pourrait pas démarrer avec une spécification de user_id.
 def promote_hash_user_id_for_webapp_mode():
-    # -------- GATE À METTRE TOUT EN HAUT DU MAIN --------
+
+    # -------- GATE: promouvoir #user_id -> ?user_id AVANT tout le reste --------
     if not st.query_params.get("user_id"):
-        # 1) Page minimale avec script de promotion #user_id -> ?user_id
-        st.markdown("""
-        <script>
-        (function () {
-        try {
-            // Utiliser la fenêtre courante (évite les soucis d'iframe cross-origin)
-            const url  = new URL(window.location.href);
-            const q    = url.searchParams;
-            const hash = url.hash ? url.hash.substring(1) : "";
-            const hp   = new URLSearchParams(hash);
-            const uid  = hp.get("user_id");
+        # Injecte un vrai <script> via components.html (fiable sur Firefox/Streamlit Cloud)
+        components.html(
+            """
+            <script>
+            (function () {
+            try {
+                var url  = new URL(window.location.href);
+                var q    = url.searchParams;
+                var hash = url.hash ? url.hash.substring(1) : "";
+                var hp   = new URLSearchParams(hash);
+                var uid  = hp.get("user_id");
 
-            // Si on a #user_id et PAS encore ?user_id -> promotion + reload
-            if (uid && !q.get("user_id")) {
-            q.set("user_id", uid);
-            url.hash = "";
-            // Remplace l'URL puis force un reload pour que Python voie la query
-            if (history.replaceState) {
-                history.replaceState(null, "", url.toString());
-                window.location.reload();
-            } else {
-                window.location.replace(url.toString());
-            }
-            return;
-            }
-        } catch (e) { /* no-op */ }
-        })();
-        </script>
-        """, unsafe_allow_html=True)
+                // Si on a #user_id et PAS ?user_id -> promotion + reload
+                if (uid && !q.get("user_id")) {
+                q.set("user_id", uid);
+                url.hash = "";
+                // Remplace l'URL puis force un reload pour que Python voie la query
+                if (history.replaceState) {
+                    history.replaceState(null, "", url.toString());
+                    window.location.reload();
+                } else {
+                    window.location.replace(url.toString());
+                }
+                return;
+                }
+            } catch (e) {}
+            })();
+            </script>
+            """,
+            height=0,  # pas d'UI
+        )
 
-        # 2) UI de secours si aucun #user_id fourni : proposer de créer un ID
-        st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace perso")
-        st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+        # UI de secours si aucun #user_id fourni (première visite)
+        st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
+        if "new_user_id" not in st.session_state:
+            import uuid
+            st.session_state["new_user_id"] = uuid.uuid4().hex[:8]
         new_uid = st.session_state["new_user_id"]
 
         if st.button("Créer ma session privée"):
             st.query_params.update(user_id=new_uid)
             st.rerun()
 
-        # 3) Très important : on STOPPE l'exécution ici.
-        st.stop()
-
-    # -------- À partir d'ici, tu es GARANTI d’avoir ?user_id dans l’URL --------
+        st.stop()  # IMPORTANT: on bloque l'exécution tant que la promo n'a pas eu lieu
 
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
