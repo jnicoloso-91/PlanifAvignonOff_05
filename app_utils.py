@@ -1256,27 +1256,53 @@ def parse_listing_text(text: str) -> dict:
 
     return res
 
+# def get_user_id():
+#     if "user_id" not in st.session_state: # Garde pour le code à n'exécuter qu'un seule fois
+#         params = st.query_params
+#         user_id_from_url = params.get("user_id", [None])
+
+#         if user_id_from_url[0]:
+#             st.session_state["user_id"] = user_id_from_url
+
+#         if "user_id" not in st.session_state:
+#             st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
+#             if "new_user_id" not in st.session_state:     
+#                 st.session_state["new_user_id"] = str(uuid.uuid4())[:8]
+#             new_user_id = st.session_state.new_user_id
+#             if st.button("Créer ma session privée"):
+#                 st.session_state["user_id"] = new_user_id
+#                 st.query_params.update(user_id=new_user_id)
+#                 st.rerun()  # Recharge la page avec le nouveau paramètre
+#             show_user_link(new_user_id)
+#             st.stop()
+
+#     return st.session_state["user_id"]
+
 def get_user_id():
-    if "user_id" not in st.session_state: # Garde pour le code à n'exécuter qu'un seule fois
-        params = st.query_params
-        user_id_from_url = params.get("user_id", [None])
+    # déjà initialisé ? on ne refait rien
+    if st.session_state.get("_uid_init_done"):
+        return st.session_state["user_id"]
 
-        if user_id_from_url[0]:
-            st.session_state["user_id"] = user_id_from_url
+    # 1) source de vérité au premier run : la query (remplie grâce au <script> # -> ?)
+    uid = st.query_params.get("user_id")
+    if uid:
+        st.session_state["user_id"] = uid
+        st.session_state["_uid_init_done"] = True
+        return uid
 
-        if "user_id" not in st.session_state:
-            st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
-            if "new_user_id" not in st.session_state:     
-                st.session_state["new_user_id"] = str(uuid.uuid4())[:8]
-            new_user_id = st.session_state.new_user_id
-            if st.button("Créer ma session privée"):
-                st.session_state["user_id"] = new_user_id
-                st.query_params.update(user_id=new_user_id)
-                st.rerun()  # Recharge la page avec le nouveau paramètre
-            show_user_link(new_user_id)
-            st.stop()
+    # 2) pas d'uid dans la query : écran "Créer ma session privée"
+    st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
+    st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+    new_user_id = st.session_state["new_user_id"]
 
-    return st.session_state["user_id"]
+    if st.button("Créer ma session privée"):
+        st.session_state["user_id"] = new_user_id
+        st.session_state["_uid_init_done"] = True
+        st.query_params.update(user_id=new_user_id)
+        st.rerun()
+
+    # show_user_link(new_user_id)  # si tu veux
+    st.stop()
 
 def show_user_link(user_id):
     app_url = "https://planifavignon-05-hymtc4ahn5ap3e7pfetzvm.streamlit.app/"  
