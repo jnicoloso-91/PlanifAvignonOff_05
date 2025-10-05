@@ -1256,3 +1256,37 @@ def parse_listing_text(text: str) -> dict:
 
     return res
 
+def get_user_id():
+    if "user_id" not in st.session_state: # Garde pour le code à n'exécuter qu'un seule fois
+        params = st.query_params
+        user_id_from_url = params.get("user_id", [None])
+
+        if user_id_from_url[0]:
+            st.session_state["user_id"] = user_id_from_url
+
+        if "user_id" not in st.session_state:
+            st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
+            if "new_user_id" not in st.session_state:     
+                st.session_state["new_user_id"] = str(uuid.uuid4())[:8]
+            new_user_id = st.session_state.new_user_id
+            if st.button("Créer ma session privée"):
+                st.session_state["user_id"] = new_user_id
+                st.query_params.update(user_id=new_user_id)
+                st.rerun()  # Recharge la page avec le nouveau paramètre
+            show_user_link(new_user_id)
+            st.stop()
+
+    return st.session_state["user_id"]
+
+def show_user_link(user_id):
+    app_url = "https://planifavignon-05-hymtc4ahn5ap3e7pfetzvm.streamlit.app/"  
+    user_link = f"{app_url}/?user_id={user_id}"
+    st.success("Voici ton lien personnel pour revenir plus tard :")
+    st.code(user_link, language="text")
+    st.download_button(
+        label="💾 Télécharger mon lien",
+        data=user_link,
+        file_name=f"lien_{user_id}.txt"
+    )
+    
+
