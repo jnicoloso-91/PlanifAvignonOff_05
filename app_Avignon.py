@@ -26,45 +26,52 @@ def rerun_trace():
 # Permet de spécifier une URL de connexion utilisant #user_id au lieu de ?user_id pour le bon fonctionnement en mode WebApp sur IOS.
 # En effet en mode WebApp le ?user_id est ecrasé de l'URL et sans ce workaround l'appli ne pourrait pas démarrer avec une spécification de user_id.
 def promote_hash_user_id_for_webapp_mode():
-    # IMPORTANT: placer ce bloc AVANT tout st.query_params / get_user_id()
-    st.markdown("""
-    <script>
-    (function () {
-    try {
-        // Toujours viser la top window (certains environnements iframent le contenu)
-        const loc = (window.top && window.top.location) ? window.top.location : window.location;
-        const url = new URL(loc.href);
-        const q   = url.searchParams;
-        const hash = url.hash ? url.hash.substring(1) : "";
-        const hp  = new URLSearchParams(hash);
+    # -------- GATE À METTRE TOUT EN HAUT DU MAIN --------
+    if not st.query_params.get("user_id"):
+        # 1) Page minimale avec script de promotion #user_id -> ?user_id
+        st.markdown("""
+        <script>
+        (function () {
+        try {
+            // Utiliser la fenêtre courante (évite les soucis d'iframe cross-origin)
+            const url  = new URL(window.location.href);
+            const q    = url.searchParams;
+            const hash = url.hash ? url.hash.substring(1) : "";
+            const hp   = new URLSearchParams(hash);
+            const uid  = hp.get("user_id");
 
-        // Cas 1: déjà un ?user_id => rien à faire
-        if (q.get("user_id")) return;
+            // Si on a #user_id et PAS encore ?user_id -> promotion + reload
+            if (uid && !q.get("user_id")) {
+            q.set("user_id", uid);
+            url.hash = "";
+            // Remplace l'URL puis force un reload pour que Python voie la query
+            if (history.replaceState) {
+                history.replaceState(null, "", url.toString());
+                window.location.reload();
+            } else {
+                window.location.replace(url.toString());
+            }
+            return;
+            }
+        } catch (e) { /* no-op */ }
+        })();
+        </script>
+        """, unsafe_allow_html=True)
 
-        // Cas 2: promouvoir #user_id => ?user_id
-        const uid = hp.get("user_id");
-        if (uid) {
-        q.set("user_id", uid);
-        url.hash = "";
+        # 2) UI de secours si aucun #user_id fourni : proposer de créer un ID
+        st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
+        st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+        new_uid = st.session_state["new_user_id"]
 
-        // 1) Essaye d'éviter un "full reload" (plus fluide)
-        if (history.replaceState) {
-            history.replaceState(null, "", url.toString());
-            // 2) Mais Streamlit ne relit la query qu'après reload -> forcer un reload immédiat
-            loc.reload();
-        } else {
-            // Fallback: navigation dure
-            loc.replace(url.toString());
-        }
-        }
-    } catch(e) {
-        // no-op
-    }
-    })();
-    </script>
-    """, unsafe_allow_html=True)
+        if st.button("Créer ma session privée"):
+            st.query_params.update(user_id=new_uid)
+            st.rerun()
 
-    st.write("DEBUG query:", dict(st.query_params))
+        # 3) Très important : on STOPPE l'exécution ici.
+        st.stop()
+
+    # -------- À partir d'ici, tu es GARANTI d’avoir ?user_id dans l’URL --------
+
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
@@ -91,7 +98,6 @@ def app_boot():
         sql.sauvegarder_contexte(enqueue=False)
 
 def main():
-    promote_hash_user_id_for_webapp_mode()
 
     # Affichage de la version de streamlit-aggrid
     # import pkg_resources
@@ -102,6 +108,7 @@ def main():
     rerun_trace()
 
     # Récupération du user_id dans l'URL de connexion
+    promote_hash_user_id_for_webapp_mode()
     user_id = get_user_id()
   
     # Connexion à la Google Sheet et lancement du GS Worker chargé de la sauvegarde Google Sheet en temps masqué (seulement si WITH_GOOGLE_SHEET est True)
