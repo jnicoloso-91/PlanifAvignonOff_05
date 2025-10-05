@@ -22,6 +22,28 @@ def rerun_trace():
     st.session_state.main_counter += 1
     tracer.log(f"____________MAIN {st.session_state.main_counter}______________", types=["gen","main"])
 
+# Script de promotion de #user_id/#session_id en ?user_id/?session_id (sans écraser la query existante) dans l'URL de connexion.
+# Permet de spécifier une URL de connexion utilisant #user_id au lieu de ?user_id pour le bon fonctionnement en mode WebApp sur IOS.
+# En effet en mode WebApp le ?user_id est ecrasé de l'URL et sans ce workaround l'appli ne pourrait pas démarrer avec une spécification de user_id.
+def promote_hash_user_id_for_webapp_mode():
+    st.markdown("""
+    <script>
+    (function(){
+    try {
+        const FLAG = "hash_promoted_v2";
+        if (!window.location.hash || sessionStorage.getItem(FLAG)) return;
+
+        const url = new URL(window.location.href);
+        const hp = new URLSearchParams(window.location.hash.substring(1));
+        const q  = url.searchParams;
+        let changed = false;
+        hp.forEach((v,k)=>{ if(!q.has(k)){ q.set(k,v); changed = true; } });
+        if (changed) { url.hash=""; sessionStorage.setItem(FLAG,"1"); window.location.replace(url.toString()); }
+    } catch(e){}
+    })();
+    </script>
+    """, unsafe_allow_html=True)
+
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
 def app_boot():
@@ -55,10 +77,14 @@ def main():
 
     # Trace le début d'un rerun
     rerun_trace()
+
+    # Récupération du user_id dans l'URL de connexion
+    promote_hash_user_id_for_webapp_mode()
+    user_id = get_user_id()
   
     # Connexion à la Google Sheet et lancement du GS Worker chargé de la sauvegarde Google Sheet en temps masqué (seulement si WITH_GOOGLE_SHEET est True)
     if WITH_GOOGLE_SHEET:
-        gs.connect()
+        gs.connect(user_id)
         wk.ensure_worker_alive()
 
     # Opérations à ne faire qu'une seule fois au démarrage appli 
