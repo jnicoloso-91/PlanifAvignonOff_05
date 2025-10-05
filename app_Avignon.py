@@ -50,7 +50,7 @@ def promote_hash_user_id_for_webapp_mode():
     # 1) Si l'URL a déjà ?user_id → on mémorise côté client et on continue
     if st.query_params.get("user_id"):
         uid = st.query_params["user_id"]
-        print(f"st.query_params: {uid}")
+        tracer.log(f"st.query_params: {uid}", types=["main"])
         # mémoriser pour les prochains lancements (WebApp)
         components.html(f"<script>localStorage.setItem('user_id','{uid}');</script>", height=0)
     else:
@@ -72,7 +72,7 @@ def promote_hash_user_id_for_webapp_mode():
 
         # 3) Si on a récupéré un user_id local → on l'applique à l'URL côté Python
         if uid_local:
-            print(f"uid_local: {uid_local}")
+            tracer.log(f"uid_local: {uid_local}", types=["main"])
             st.query_params.update(user_id=uid_local)
             st.rerun()
 
@@ -91,7 +91,7 @@ def promote_hash_user_id_for_webapp_mode():
     # À partir d’ici, on est GARANTI d’avoir ?user_id dans l’URL
     user_id = st.query_params["user_id"]
     st.session_state["user_id"] = user_id
-    print(f"user_id: {user_id}")
+    tracer.log(f"user_id: {user_id}", types=["main"])
 
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
