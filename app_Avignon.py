@@ -48,9 +48,13 @@ def promote_hash_user_id_for_webapp_mode():
     # """, height=0)
 
     # 1) Si l'URL a déjà ?user_id → on mémorise côté client et on continue
-    if st.query_params.get("user_id"):
-        uid = st.query_params["user_id"]
-        tracer.log(f"st.query_params: {uid}", types=["main"])
+    params = st.query_params
+    uid = params.get("user_id", [None])
+    tracer.log(f"st.query_params: {uid}", types=["main"])
+    if uid:
+    # if st.query_params.get("user_id"):
+    #     uid = st.query_params["user_id"]
+    #     tracer.log(f"st.query_params: {uid}", types=["main"])
         # mémoriser pour les prochains lancements (WebApp)
         components.html(f"<script>localStorage.setItem('user_id','{uid}');</script>", height=0)
     else:
@@ -129,7 +133,7 @@ def main():
     rerun_trace()
 
     # Récupération du user_id dans l'URL de connexion
-    promote_hash_user_id_for_webapp_mode()
+    # promote_hash_user_id_for_webapp_mode()
     user_id = get_user_id()
   
     # Connexion à la Google Sheet et lancement du GS Worker chargé de la sauvegarde Google Sheet en temps masqué (seulement si WITH_GOOGLE_SHEET est True)
