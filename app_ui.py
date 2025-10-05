@@ -337,7 +337,11 @@ class ActiviteRenderer {
 
     function openPreferNewTab(u){
     if (!u) return;
-    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const ua = navigator.userAgent || "";
+    const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
     if (isIOS) {
         try {
         // iOS : ouvre un onglet “about:blank” puis redirige (contourne WebKit)
@@ -368,7 +372,11 @@ class ActiviteRenderer {
       var TAP_MS = (opts && opts.tapMs)  != null ? opts.tapMs  : 220;
       var onUrl  = opts && opts.onUrl;
       var onTap  = opts && opts.onTap;
-      var isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const ua = navigator.userAgent || "";
+      const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
 
       var sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
       var hadTouchTs = 0;
@@ -517,7 +525,11 @@ class LieuRenderer {
 
     function openPreferNewTab(u){
     if (!u) return;
-    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const ua = navigator.userAgent || "";
+    const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
     if (isIOS) {
         try {
         // iOS : ouvre un onglet “about:blank” puis redirige (contourne WebKit)
@@ -548,7 +560,11 @@ class LieuRenderer {
       var TAP_MS = (opts && opts.tapMs)  != null ? opts.tapMs  : 220;
       var onUrl  = opts && opts.onUrl;
       var onTap  = opts && opts.onTap;
-      var isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const ua = navigator.userAgent || "";
+      const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
 
       var sx=0, sy=0, moved=false, pressed=false, timer=null, startT=0, firedLong=false;
       var hadTouchTs = 0;
@@ -658,7 +674,11 @@ JS_ACTIVITE_RENDERER = JsCode("""
 class ActiviteRenderer {
   init(params){
     // helpers
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const ua = navigator.userAgent || "";
+    const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
     function tapSelect(el){
       const cell = el.closest ? el.closest('.ag-cell') : null;
       if (!cell) return;
@@ -838,7 +858,11 @@ class LieuRenderer {
     e.appendChild(txt);
 
     // --- icône cliquable (iOS) ou long-press ailleurs ---
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const ua = navigator.userAgent || "";
+    const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
     if (isIOS){
       const icon = document.createElement('a');
       icon.textContent = '📍';
@@ -872,7 +896,11 @@ JS_IOS_SOFT_REVIVE = JsCode("""
     if (window.__iosSoftReviveInstalled) return;
     window.__iosSoftReviveInstalled = true;
 
-    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const ua = navigator.userAgent || "";
+    const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
     function cameFromBackForward(){
         try {
         var nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
@@ -3383,7 +3411,11 @@ def inject_ios_soft_revive():
     st.markdown("""
         <script>
         (function(){
-        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const ua = navigator.userAgent || "";
+        const isIOS =
+            /iPad|iPhone|iPod/.test(ua) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+            (ua.includes("Mac") && "ontouchend" in window);
 
         function cameFromBackForward(){
             try {
@@ -3426,7 +3458,11 @@ def inject_ios_hard_revive():
     <script>
     (function () {
       if (window.__iosHardReviveInstalled) return; window.__iosHardReviveInstalled = true;
-      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent); if (!isIOS) return;
+      const ua = navigator.userAgent || "";
+      const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
 
       function cameFromBackForward(){
         try {
@@ -3492,7 +3528,11 @@ def inject_ios_always_reload_on_return():
     (function () {
       if (window.__iosAlwaysReloadInstalled) return; window.__iosAlwaysReloadInstalled = true;
 
-      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const ua = navigator.userAgent || "";
+      const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
       if (!isIOS) return;
 
       function guardReload() {
@@ -3529,7 +3569,11 @@ def inject_ios_watchdog_reload():
     <script>
     (function () {
       if (window.__iosWatchdogInstalled) return; window.__iosWatchdogInstalled = true;
-      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const ua = navigator.userAgent || "";
+      const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
       if (!isIOS) return;
 
       var lastBeat = Date.now();
@@ -3587,7 +3631,11 @@ def inject_ios_disable_bfcache():
     <script>
     (function () {
       if (window.__iosNoBFCacheInstalled) return; window.__iosNoBFCacheInstalled = true;
-      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const ua = navigator.userAgent || "";
+      const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+        (ua.includes("Mac") && "ontouchend" in window);
       if (!isIOS) return;
 
       // 1) Désactive le Back/Forward Cache sur iOS :
