@@ -1287,6 +1287,7 @@ def get_user_id():
             st.session_state["user_id"] = user_id_from_url
             # On mémorise aussi côté client (utile en WebApp iOS)
             components.html(f"<script>localStorage.setItem('user_id','{user_id_from_url}');</script>", height=0)
+            tracer.log(f"user_id_from_url: {user_id_from_url}", types=["main"])
 
         if "user_id" not in st.session_state:
             st.write("Pour commencer, cliquez ci-dessous pour ouvrir votre espace personnel.")
