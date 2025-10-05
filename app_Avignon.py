@@ -91,6 +91,7 @@ def app_boot():
         sql.sauvegarder_contexte(enqueue=False)
 
 def main():
+    promote_hash_user_id_for_webapp_mode()
 
     # Affichage de la version de streamlit-aggrid
     # import pkg_resources
@@ -101,7 +102,6 @@ def main():
     rerun_trace()
 
     # Récupération du user_id dans l'URL de connexion
-    promote_hash_user_id_for_webapp_mode()
     user_id = get_user_id()
   
     # Connexion à la Google Sheet et lancement du GS Worker chargé de la sauvegarde Google Sheet en temps masqué (seulement si WITH_GOOGLE_SHEET est True)
