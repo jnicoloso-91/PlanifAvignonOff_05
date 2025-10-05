@@ -59,7 +59,7 @@ def promote_hash_user_id_for_webapp_mode():
         """, unsafe_allow_html=True)
 
         # 2) UI de secours si aucun #user_id fourni : proposer de créer un ID
-        st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace personnel.")
+        st.write("Pour commencer, clique ci-dessous pour ouvrir ton espace perso")
         st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
         new_uid = st.session_state["new_user_id"]
 
