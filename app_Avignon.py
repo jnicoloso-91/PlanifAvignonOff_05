@@ -47,56 +47,112 @@ def promote_hash_user_id_for_webapp_mode():
     # </script>
     # """, height=0)
 
-    # 1) Si l'URL a déjà ?user_id → on mémorise côté client et on continue
-    uid = st.query_params.get("user_id", None)
-    tracer.log(f"st.query_params: {uid} {type(uid)}", types=["main"])
-    if uid:
-    # if st.query_params.get("user_id"):
-    #     uid = st.query_params["user_id"]
-    #     tracer.log(f"st.query_params: {uid}", types=["main"])
-        # mémoriser pour les prochains lancements (WebApp)
-        tracer.log(f"uid vrai", types=["main"])
-        components.html(f"<script>localStorage.setItem('user_id','{uid}');</script>", height=0)
-    else:
-        # 2) Sinon: on tente de LIRE le localStorage et de renvoyer la valeur à Python
-        uid_local = components.html(
-            """
-            <script>
-            (function(){
-            try{
-                const uid = localStorage.getItem('user_id') || "";
-                // Renvoie la valeur à Streamlit (sans rediriger la page)
-                Streamlit.setComponentValue(uid);
-            }catch(e){ Streamlit.setComponentValue(""); }
-            })();
-            </script>
-            """,
-            height=0,
-        )
+    # # 1) Si l'URL a déjà ?user_id → on mémorise côté client et on continue
+    # uid = st.query_params.get("user_id", None)
+    # tracer.log(f"st.query_params: {uid} {type(uid)}", types=["main"])
+    # if uid:
+    # # if st.query_params.get("user_id"):
+    # #     uid = st.query_params["user_id"]
+    # #     tracer.log(f"st.query_params: {uid}", types=["main"])
+    #     # mémoriser pour les prochains lancements (WebApp)
+    #     tracer.log(f"uid vrai", types=["main"])
+    #     components.html(f"<script>localStorage.setItem('user_id','{uid}');</script>", height=0)
+    # else:
+    #     # 2) Sinon: on tente de LIRE le localStorage et de renvoyer la valeur à Python
+    #     uid_local = components.html(
+    #         """
+    #         <script>
+    #         (function(){
+    #         try{
+    #             const uid = localStorage.getItem('user_id') || "";
+    #             // Renvoie la valeur à Streamlit (sans rediriger la page)
+    #             Streamlit.setComponentValue(uid);
+    #         }catch(e){ Streamlit.setComponentValue(""); }
+    #         })();
+    #         </script>
+    #         """,
+    #         height=0,
+    #     )
 
-        # 3) Si on a récupéré un user_id local → on l'applique à l'URL côté Python
-        if uid_local:
-            tracer.log(f"uid_local: {uid_local}", types=["main"])
-            st.query_params.update(user_id=uid_local)
-            st.rerun()
+    #     # 3) Si on a récupéré un user_id local → on l'applique à l'URL côté Python
+    #     if uid_local:
+    #         tracer.log(f"uid_local: {uid_local}", types=["main"])
+    #         st.query_params.update(user_id=uid_local)
+    #         st.rerun()
 
-        # 4) Fallback: on demande à l'utilisateur
+    #     # 4) Fallback: on demande à l'utilisateur
+    #     st.write("Pour commencer, saisis ton *User ID* (environnement) :")
+    #     st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+    #     typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
+    #     if st.button("OK") and typed:
+    #         # a) URL source de vérité
+    #         st.query_params.update(user_id=typed)
+    #         # b) stocker pour les prochains lancements (WebApp)
+    #         components.html(f"<script>localStorage.setItem('user_id','{typed}');</script>", height=0)
+    #         st.rerun()
+    #     st.stop()
+
+    # # À partir d’ici, on est GARANTI d’avoir ?user_id dans l’URL
+    # user_id = st.query_params.get("user_id", [None])
+    # st.session_state["user_id"] = user_id
+    # tracer.log(f"user_id: {user_id}", types=["main"])
+
+    if not st.query_params.get("user_id"):
+        components.html("""
+        <!doctype html>
+        <meta charset="utf-8">
+        <script>
+        (function () {
+        try {
+            var url = new URL(window.location.href);
+            if (!url.searchParams.get('user_id')) {
+            var uid = localStorage.getItem('user_id') || "";
+            if (uid) {
+                // 1) Essai JS direct
+                url.searchParams.set('user_id', uid);
+                // On tente d'abord replaceState + reload (plus “doux”)
+                try {
+                history.replaceState(null, "", url.toString());
+                window.location.reload();
+                return;
+                } catch(e) {}
+
+                // 2) Fallback: navigation dure
+                try {
+                window.location.replace(url.toString());
+                return;
+                } catch(e) {}
+
+                // 3) Fallback ultime: meta refresh (bypass CSP/iframe parfois)
+                document.write('<meta http-equiv="refresh" content="0; url='
+                + url.toString().replace(/&/g,'&amp;') + '">');
+                return;
+            }
+            }
+        } catch(e) {}
+        // Si on arrive ici: pas d'user_id en localStorage -> laissons Python afficher le fallback
+        })();
+        </script>
+        """, height=0)
+
+        # Pas d'user_id en URL ni en localStorage -> on demande à l'utilisateur
         st.write("Pour commencer, saisis ton *User ID* (environnement) :")
         st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
-        typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
-        if st.button("OK") and typed:
-            # a) URL source de vérité
-            st.query_params.update(user_id=typed)
-            # b) stocker pour les prochains lancements (WebApp)
-            components.html(f"<script>localStorage.setItem('user_id','{typed}');</script>", height=0)
+        uid = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
+        if st.button("OK") and uid:
+            # On mémorise pour les prochains lancements (WebApp incluse)
+            components.html(f"<script>localStorage.setItem('user_id','{uid}');</script>", height=0)
+            # On met la query (source de vérité) puis on relance
+            st.query_params.update(user_id=uid)
             st.rerun()
+
         st.stop()
 
-    # À partir d’ici, on est GARANTI d’avoir ?user_id dans l’URL
-    user_id = st.query_params.get("user_id", [None])
+    # ---------- À partir d'ici, on a ?user_id dans l'URL ----------
+    user_id = st.query_params["user_id"]
     st.session_state["user_id"] = user_id
-    tracer.log(f"user_id: {user_id}", types=["main"])
-
+    # (Optionnel) resynchroniser localStorage si on arrive via une URL signée
+    components.html(f"<script>localStorage.setItem('user_id','{user_id}');</script>", height=0)
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
