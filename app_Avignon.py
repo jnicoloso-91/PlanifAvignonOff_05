@@ -49,12 +49,13 @@ def promote_hash_user_id_for_webapp_mode():
 
     # 1) Si l'URL a déjà ?user_id → on mémorise côté client et on continue
     uid = st.query_params.get("user_id", [None])
-    tracer.log(f"st.query_params: {uid}", types=["main"])
+    tracer.log(f"st.query_params: {uid} {type(uid)}", types=["main"])
     if uid:
     # if st.query_params.get("user_id"):
     #     uid = st.query_params["user_id"]
     #     tracer.log(f"st.query_params: {uid}", types=["main"])
         # mémoriser pour les prochains lancements (WebApp)
+        tracer.log(f"uid vrai", types=["main"])
         components.html(f"<script>localStorage.setItem('user_id','{uid}');</script>", height=0)
     else:
         # 2) Sinon: on tente de LIRE le localStorage et de renvoyer la valeur à Python
