@@ -1339,20 +1339,20 @@ def get_user_id():
         st.session_state["user_id"] = typed
         st.rerun()
 
-    # Info pratique : URL directe pour ton environnement
-    base = st.query_params.get_url() if hasattr(st.query_params, "get_url") else st.experimental_get_query_params()
-    # fallback simple : reconstruire l'URL "nue" sans params
-    import os
-    base_url = os.environ.get("STREAMLIT_SERVER_BASE_URL", "") or st.get_option("browser.serverAddress") or ""
-    # si base_url est vide, on affiche un modèle générique :
-    st.markdown(
-        f"🔗 URL à utiliser la prochaine fois : ?user_id={proposed} "
-        f"(par ex. **https://tonapp.streamlit.app/?user_id={proposed}**)",
-        help="Ajoute ce suffixe à l’URL de l’app pour ouvrir directement ton environnement."
-    )
+    # # Info pratique : URL directe pour ton environnement
+    # base = st.query_params.get_url() if hasattr(st.query_params, "get_url") else st.experimental_get_query_params()
+    # # fallback simple : reconstruire l'URL "nue" sans params
+    # import os
+    # base_url = os.environ.get("STREAMLIT_SERVER_BASE_URL", "") or st.get_option("browser.serverAddress") or ""
+    # # si base_url est vide, on affiche un modèle générique :
+    # st.markdown(
+    #     f"🔗 URL à utiliser la prochaine fois : ?user_id={proposed} "
+    #     f"(par ex. **https://tonapp.streamlit.app/?user_id={proposed}**)",
+    #     help="Ajoute ce suffixe à l’URL de l’app pour ouvrir directement ton environnement."
+    # )
 
     st.stop()
-    
+
 def show_user_link(user_id):
     app_url = "https://planifavignon-05-hymtc4ahn5ap3e7pfetzvm.streamlit.app/"  
     user_link = f"{app_url}/?user_id={user_id}"
