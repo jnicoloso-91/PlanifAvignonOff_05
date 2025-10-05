@@ -64,6 +64,8 @@ def promote_hash_user_id_for_webapp_mode():
     </script>
     """, unsafe_allow_html=True)
 
+    st.write("DEBUG query:", dict(st.query_params))
+
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
 def app_boot():
