@@ -48,7 +48,7 @@ def promote_hash_user_id_for_webapp_mode():
     # """, height=0)
 
     # 1) Si l'URL a déjà ?user_id → on mémorise côté client et on continue
-    uid = st.query_params.get("user_id", [None])
+    uid = st.query_params.get("user_id", None)
     tracer.log(f"st.query_params: {uid} {type(uid)}", types=["main"])
     if uid:
     # if st.query_params.get("user_id"):
