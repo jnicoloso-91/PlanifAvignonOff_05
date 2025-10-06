@@ -178,10 +178,11 @@ def promote_hash_user_id_for_webapp_mode():
     # </script>
     # """, unsafe_allow_html=True)
 
-    # --- Gate: si pas de ?user_id, proposer 1 bouton qui applique l'ID stocké ---
+    # --- Gate: si pas de ?user_id, proposer ouverture ou création ---
     if not st.query_params.get("user_id"):
+        # --- Bloc HTML : bouton "Ouvrir ma session" si déjà un user_id en localStorage ---
         st.markdown("""
-        <div id="gate" style="font:16px system-ui, -apple-system, Segoe UI, Roboto, Arial; padding:2rem">
+        <div id="gate" style="font:16px system-ui,-apple-system,Segoe UI,Roboto,Arial; padding:2rem">
         <div id="hasUid" style="display:none">
             <p>Appuyer pour ouvrir votre session enregistrée.</p>
             <button id="openBtn" style="padding:.7rem 1rem">Ouvrir ma session</button>
@@ -210,24 +211,29 @@ def promote_hash_user_id_for_webapp_mode():
         </script>
         """, unsafe_allow_html=True)
 
-        # Si pas d'ID stocké, on demande un user_id et on l'enregistre (1 seul champ + bouton)
+        # --- Fallback Python: aucun ID stocké -> on le demande ---
         st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
-        typed = st.text_input("User ID", value=st.session_state["new_user_id"])
+        typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
+
         if st.button("OK") and typed:
-            # 1) mémoriser côté appareil (WebApp/Safari)
+            # (1) mettre à jour l'URL (source de vérité)
+            st.query_params.update(user_id=typed)
+            # (2) stocker pour la prochaine ouverture (dans le vrai localStorage)
             st.markdown(f"""
             <script>
-            try {{ window.localStorage.setItem('user_id', {typed!r}); }} catch(e) {{}}
             try {{
-                const u = new URL(window.location.href);
-                u.searchParams.set('user_id', {typed!r});
-                window.location.replace(u.toString());
-            }} catch(e) {{ window.location.reload(); }}
+                window.localStorage.setItem('user_id', {typed!r});
+            }} catch(e) {{}}
             </script>
             """, unsafe_allow_html=True)
-            st.stop()
+            # (3) relancer proprement
+            st.rerun()
 
         st.stop()
+
+    # --- À partir d’ici, on a un ?user_id valide ---
+    user_id = st.query_params.get("user_id")
+    st.session_state["user_id"] = user_id
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
