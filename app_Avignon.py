@@ -429,7 +429,6 @@ def main():
     rerun_trace()
 
     # Récupération du user_id dans l'URL de connexion
-    # manage_user_id_for_webapp_mode()
     user_id = get_user_id()
   
     # Connexion à la Google Sheet et lancement du GS Worker chargé de la sauvegarde Google Sheet en temps masqué (seulement si WITH_GOOGLE_SHEET est True)
@@ -452,7 +451,6 @@ def main():
 
     # Affichage du titre
     afficher_titre("Planificateur Avignon Off")
-    st.write(f"user_id: {get_user_id()}")
 
     # Affichage de la sidebar
     afficher_sidebar()
@@ -483,6 +481,9 @@ def main():
     
         # Affichage du statut du GS worker thread
         afficher_worker_status_discret()
+    
+        # Affichage du statut du GS worker thread
+        afficher_user_id()
     else:
         message = st.session_state.get("contexte_invalide_message")
         if message is not None:
