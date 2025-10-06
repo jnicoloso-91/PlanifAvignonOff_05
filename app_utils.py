@@ -1292,6 +1292,7 @@ def get_user_id():
 
         if "user_id" not in st.session_state:
             st.write("Pour commencer, cliquez ci-dessous pour ouvrir votre espace personnel.")
+            st.write(user_id_from_url)
             if "new_user_id" not in st.session_state:     
                 st.session_state["new_user_id"] = str(uuid.uuid4())[:8]
             new_user_id = st.session_state.new_user_id
