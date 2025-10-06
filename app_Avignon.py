@@ -147,7 +147,6 @@ def promote_hash_user_id_for_webapp_mode():
         #     st.rerun()
 
         # st.stop()
-        st.write(get_user_id())
 
     # ---------- À partir d'ici, on a ?user_id dans l'URL ----------
     user_id = st.query_params["user_id"]
@@ -214,6 +213,7 @@ def main():
 
     # Affichage du titre
     afficher_titre("Planificateur Avignon Off")
+    st.write(get_user_id())
 
     # Affichage de la sidebar
     afficher_sidebar()
