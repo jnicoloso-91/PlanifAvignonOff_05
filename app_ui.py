@@ -3266,6 +3266,10 @@ def afficher_worker_status_discret(with_pending=True):
     #     except Exception:
     #         pass    
 
+# Affichage du user_id
+def afficher_user_id():
+    st.sidebar.write(f"user_id: {get_user_id()}")
+
 # Affichage de la la sidebar min avec menus fichier et edition 
 # (le reste est affiché dans d'affichage de données en fonction du contexte)
 def afficher_sidebar():
