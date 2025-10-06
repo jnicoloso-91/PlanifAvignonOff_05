@@ -149,7 +149,7 @@ def promote_hash_user_id_for_webapp_mode():
         # st.stop()
 
     # ---------- À partir d'ici, on a ?user_id dans l'URL ----------
-    user_id = st.query_params["user_id"]
+    user_id = st.query_params.get("user_id")
     tracer.log(f"user_id: {user_id}", types=["main"])
     st.session_state["user_id"] = user_id
     # (Optionnel) resynchroniser localStorage si on arrive via une URL signée
