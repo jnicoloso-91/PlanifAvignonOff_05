@@ -7,7 +7,7 @@
 # - Mettre True pour debugger en local sous VsCode                                                #
 # - Mettre False avant d'intégrer dans GitHub                                                     #
 ###################################################################################################
-LOCAL = True
+LOCAL = False
 
 import streamlit as st
 import pandas as pd
@@ -219,3 +219,4 @@ def sauvegarder_ca():
             set_with_dataframe(worksheet, st.session_state.ca)
         except Exception as e:
             print(f"Erreur gsheets.sauvegarder_ca : {e}")
+
