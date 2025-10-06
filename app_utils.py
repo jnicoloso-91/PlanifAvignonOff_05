@@ -1282,9 +1282,13 @@ def get_user_id():
     if "user_id" not in st.session_state: # Garde pour le code à n'exécuter qu'un seule fois
         params = st.query_params
         user_id_from_url = params.get("user_id", None)
+        default_user_id = st.secrets.get("DEFAULT_USER_ID", None)
+        tracer.log(f"default_user_id: {default_user_id}", types=["main"])
 
         if user_id_from_url: 
             st.session_state["user_id"] = user_id_from_url
+        elif default_user_id:
+            st.session_state["user_id"] = default_user_id
 
         if "user_id" not in st.session_state:
             st.write("Pour commencer, cliquez ci-dessous pour ouvrir votre espace personnel.")
