@@ -26,7 +26,7 @@ def rerun_trace():
 # Différents essais pour permettre en webapp mode IOS de ne pas être obligé de redéfinir le user_id 
 # à chaque redémarrage vu que dans ce mode on ne peut pas utiliser une URL avec ?user_id=xxx.
 # Aucune des pistes envisagées ci-dessous ne fonctionne : utilisation du local storage 
-# de la webpp ou cookies associés à des JS script faisant des window.localtion.reload().
+# de la webpp ou cookies associés à des JS script faisant des window.location.reload().
 # En définitive deux solutions alternatives sont été développées, l'une s'appuyant sur une 
 # redirection effectuée par des pages HTML hébergées sur un domaine cloudflare (la webapp 
 # est branchée sur l'adresse de ce domaine app-avignon.pages.dev et les pages HTML s'occupent 
