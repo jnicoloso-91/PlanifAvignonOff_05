@@ -235,34 +235,109 @@ def promote_hash_user_id_for_webapp_mode():
     # user_id = st.query_params.get("user_id")
     # st.session_state["user_id"] = user_id
 
-    # ---- GATE: garantir ?user_id AVANT le reste, via cookie 1ʳᵉ partie ----
+    # # ---- GATE: garantir ?user_id AVANT le reste, via cookie 1ʳᵉ partie ----
+    # if not st.query_params.get("user_id"):
+    #     st.markdown("""
+    #     <div id="gate" style="font:16px system-ui,-apple-system,Segoe UI,Roboto,Arial; padding:2rem">
+    #     <div id="hasUid" style="display:none">
+    #         <p>Appuyer pour ouvrir votre session enregistrée.</p>
+    #         <button id="openBtn" style="padding:.7rem 1rem">Ouvrir ma session</button>
+    #     </div>
+    #     <div id="noUid" style="display:none">
+    #         <p>Aucune session enregistrée. Saisissez un identifiant ci-dessous.</p>
+    #     </div>
+    #     </div>
+    #     <script>
+    #     (function(){
+    #     function getCookie(n){
+    #         try{
+    #         return document.cookie.split('; ').find(r=>r.startsWith(n+'='))?.split('=')[1] || "";
+    #         }catch(e){ return ""; }
+    #     }
+    #     const uid = decodeURIComponent(getCookie('uid') || "");
+    #     const has = !!uid;
+    #     document.getElementById(has ? "hasUid" : "noUid").style.display = "block";
+    #     if (has) {
+    #         document.getElementById("openBtn").addEventListener("click", function(){
+    #         try{
+    #             const url = new URL(window.location.href);
+    #             url.searchParams.set('user_id', uid);
+    #             // navigation “dure” pour contourner les CSP/WebApp capricieuses
+    #             window.location.replace(url.toString());
+    #         }catch(e){ window.location.reload(); }
+    #         }, {once:true});
+    #     }
+    #     })();
+    #     </script>
+    #     """, unsafe_allow_html=True)
+
+    #     # Fallback Python : aucun cookie → demander et l’enregistrer en cookie
+    #     st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+    #     typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
+
+    #     if st.button("OK") and typed:
+    #         # 1) Écrire le cookie (max-age ~400 jours ; ITP iOS peut réduire mais reste persistant)
+    #         st.markdown(f"""
+    #         <script>
+    #         try {{
+    #         document.cookie = "uid={typed}; path=/; max-age=34560000; SameSite=Lax";
+    #         }} catch(e) {{}}
+    #         // Mettre aussi l'URL à jour puis naviguer
+    #         try {{
+    #         const u = new URL(window.location.href);
+    #         u.searchParams.set('user_id', {typed!r});
+    #         window.location.replace(u.toString());
+    #         }} catch(e) {{ window.location.reload(); }}
+    #         </script>
+    #         """, unsafe_allow_html=True)
+    #         st.stop()
+
+    #     st.stop()
+
+    # # ---- À partir d'ici, ?user_id est garanti ----
+    # user_id = st.query_params["user_id"]
+    # st.session_state["user_id"] = user_id
+
+    # # Optionnel : resynchroniser le cookie si on arrive via une URL signée
+    # st.markdown(f"""
+    # <script>
+    # try {{ document.cookie = "uid={user_id}; path=/; max-age=34560000; SameSite=Lax"; }} catch(e) {{}}
+    # </script>
+    # """, unsafe_allow_html=True)
+
+    # Si on a reçu uid_from_cookie → on force sa mise dans query_params user_id
+    params = st.query_params
+    if "uid_from_cookie" in params and "user_id" not in params:
+        st.query_params.update(user_id=params["uid_from_cookie"])
+        st.rerun()
+
+    # --- Étape 2 : gate principal ---
     if not st.query_params.get("user_id"):
         st.markdown("""
-        <div id="gate" style="font:16px system-ui,-apple-system,Segoe UI,Roboto,Arial; padding:2rem">
         <div id="hasUid" style="display:none">
-            <p>Appuyer pour ouvrir votre session enregistrée.</p>
-            <button id="openBtn" style="padding:.7rem 1rem">Ouvrir ma session</button>
+        <p>Appuyer pour ouvrir votre session enregistrée.</p>
+        <button id="openBtn" style="padding:.7rem 1rem">Ouvrir ma session</button>
         </div>
         <div id="noUid" style="display:none">
-            <p>Aucune session enregistrée. Saisissez un identifiant ci-dessous.</p>
-        </div>
+        <p>Aucune session enregistrée. Saisissez un identifiant ci-dessous.</p>
         </div>
         <script>
         (function(){
         function getCookie(n){
-            try{
-            return document.cookie.split('; ').find(r=>r.startsWith(n+'='))?.split('=')[1] || "";
-            }catch(e){ return ""; }
+            try{ return decodeURIComponent(
+            (document.cookie.split('; ')
+                .find(r=>r.startsWith(n+'='))||'')
+                .split('=')[1] || ''
+            );}catch(e){ return ''; }
         }
-        const uid = decodeURIComponent(getCookie('uid') || "");
+        const uid = getCookie('uid');
         const has = !!uid;
-        document.getElementById(has ? "hasUid" : "noUid").style.display = "block";
+        document.getElementById(has ? 'hasUid' : 'noUid').style.display = 'block';
         if (has) {
-            document.getElementById("openBtn").addEventListener("click", function(){
+            document.getElementById('openBtn').addEventListener('click', function(){
             try{
                 const url = new URL(window.location.href);
                 url.searchParams.set('user_id', uid);
-                // navigation “dure” pour contourner les CSP/WebApp capricieuses
                 window.location.replace(url.toString());
             }catch(e){ window.location.reload(); }
             }, {once:true});
@@ -271,19 +346,15 @@ def promote_hash_user_id_for_webapp_mode():
         </script>
         """, unsafe_allow_html=True)
 
-        # Fallback Python : aucun cookie → demander et l’enregistrer en cookie
+        # Fallback Python : pas de cookie -> on demande un ID
         st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
         typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
-
         if st.button("OK") and typed:
-            # 1) Écrire le cookie (max-age ~400 jours ; ITP iOS peut réduire mais reste persistant)
+            # Crée le cookie et met à jour l’URL directement
             st.markdown(f"""
             <script>
             try {{
             document.cookie = "uid={typed}; path=/; max-age=34560000; SameSite=Lax";
-            }} catch(e) {{}}
-            // Mettre aussi l'URL à jour puis naviguer
-            try {{
             const u = new URL(window.location.href);
             u.searchParams.set('user_id', {typed!r});
             window.location.replace(u.toString());
@@ -294,14 +365,16 @@ def promote_hash_user_id_for_webapp_mode():
 
         st.stop()
 
-    # ---- À partir d'ici, ?user_id est garanti ----
+    # --- Étape 3 : on a maintenant un user_id garanti ---
     user_id = st.query_params["user_id"]
     st.session_state["user_id"] = user_id
 
-    # Optionnel : resynchroniser le cookie si on arrive via une URL signée
+    # Synchroniser cookie (si arrivé via URL externe)
     st.markdown(f"""
     <script>
-    try {{ document.cookie = "uid={user_id}; path=/; max-age=34560000; SameSite=Lax"; }} catch(e) {{}}
+    try {{
+    document.cookie = "uid={user_id}; path=/; max-age=34560000; SameSite=Lax";
+    }} catch(e) {{}}
     </script>
     """, unsafe_allow_html=True)
 
