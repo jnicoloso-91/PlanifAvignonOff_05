@@ -473,17 +473,8 @@ def main():
         # Affichage du carnet d'adresses
         afficher_ca()      
 
-        # Affichage du menu activité de la sidebar
-        afficher_menu_activite()
-
-        # Affichage du menu carnet d'adresse de la sidebar
-        afficher_menu_ca()
-    
-        # Affichage du statut du GS worker thread
-        afficher_worker_status_discret()
-    
-        # Affichage du statut du GS worker thread
-        afficher_user_id()
+        # Affichage des menus de la sidebar
+        afficher_sidebar_menus()
     else:
         message = st.session_state.get("contexte_invalide_message")
         if message is not None:
