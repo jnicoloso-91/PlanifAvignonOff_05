@@ -1054,27 +1054,108 @@ class TelIconRenderer {
 }
 """)
 
+# JS_WEB_ICON_RENDERER = JsCode("""
+# class WebIconRenderer {
+#   init(params) {
+#     const e = document.createElement('div');
+#     e.style.display = 'flex';
+#     e.style.alignItems = 'center';
+#     e.style.justifyContent = 'center';
+#     e.style.width = '100%';
+#     e.style.cursor = 'pointer';
+
+#     const url = (params.value || '').trim();
+#     if (!url) {
+#       this.eGui = document.createTextNode('');
+#       return;
+#     }
+
+#     const a = document.createElement('a');
+#     a.href = url.startsWith('http') ? url : 'https://' + url;
+#     a.target = '_blank';
+#     a.rel = 'noopener noreferrer';
+#     a.title = 'Ouvrir le site';
+
+#     const icon = document.createElement('span');
+#     icon.textContent = '🌐';
+#     icon.style.fontSize = '1.1rem';
+#     icon.style.userSelect = 'none';
+#     a.appendChild(icon);
+
+#     // --- comportement iOS / Safari (ouvrir dans même onglet si nécessaire) ---
+#     a.addEventListener('click', (ev) => {
+#       try {
+#         if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+#           ev.preventDefault();
+#           window.top.location.href = a.href;
+#         }
+#       } catch (e) {}
+#     });
+
+#     e.appendChild(a);
+#     this.eGui = e;
+#   }
+
+#   getGui() {
+#     return this.eGui;
+#   }
+
+#   refresh() { return false; }
+# }
+# """)
+
 JS_WEB_ICON_RENDERER = JsCode("""
 class WebIconRenderer {
   init(params) {
+    // --- helpers ---
+    const ua = navigator.userAgent || "";
+    const isIOS =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+      (ua.includes("Mac") && "ontouchend" in window);
+    const isStandalone =
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      !!window.navigator.standalone;
+
+    function openPreferNewTab(u){
+      if (!u) return;
+      // iOS (surtout en PWA) : d'abord ouvrir une fenêtre liée au geste utilisateur
+      if (isIOS) {
+        try {
+          const w = window.open('about:blank', '_blank');
+          if (w) { w.location.href = u; return; }
+        } catch(_) {}
+      }
+      // Desktop/Android ou fallback iOS
+      try { window.open(u, '_blank', 'noopener'); return; } catch(_) {}
+      // Derniers recours (PWA iOS peut bloquer _blank) :
+      try { window.open(u, '_top'); return; } catch(_) {}
+      try { window.parent.location.href = u; return; } catch(_) {}
+      try { window.location.assign(u); } catch(_) {}
+    }
+
+    // --- cell UI ---
     const e = document.createElement('div');
     e.style.display = 'flex';
     e.style.alignItems = 'center';
     e.style.justifyContent = 'center';
     e.style.width = '100%';
     e.style.cursor = 'pointer';
+    e.style.touchAction = 'manipulation';
+    e.style.webkitUserSelect = 'none';
+    e.style.userSelect = 'none';
 
-    const url = (params.value || '').trim();
-    if (!url) {
-      this.eGui = document.createTextNode('');
-      return;
-    }
+    const raw = (params.value || '').trim();
+    if (!raw) { this.eGui = document.createTextNode(''); return; }
+
+    const href = /^https?:\\/\\//i.test(raw) ? raw : ('https://' + raw);
 
     const a = document.createElement('a');
-    a.href = url.startsWith('http') ? url : 'https://' + url;
+    a.href = href;
     a.target = '_blank';
-    a.rel = 'noopener noreferrer';
+    a.rel = 'noopener,noreferrer,external';
     a.title = 'Ouvrir le site';
+    a.style.textDecoration = 'none';
 
     const icon = document.createElement('span');
     icon.textContent = '🌐';
@@ -1082,27 +1163,22 @@ class WebIconRenderer {
     icon.style.userSelect = 'none';
     a.appendChild(icon);
 
-    // --- comportement iOS / Safari (ouvrir dans même onglet si nécessaire) ---
+    // Ne PAS preventDefault : on laisse le navigateur gérer,
+    // on stoppe juste la propagation pour ne pas perturber AG Grid.
     a.addEventListener('click', (ev) => {
-      try {
-        if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-          ev.preventDefault();
-          window.top.location.href = a.href;
-        }
-      } catch (e) {}
-    });
+      ev.stopPropagation();
+      // Appel explicite du helper pour fiabiliser iOS PWA
+      openPreferNewTab(href);
+    }, { passive: false });
 
     e.appendChild(a);
     this.eGui = e;
   }
-
-  getGui() {
-    return this.eGui;
-  }
-
-  refresh() { return false; }
+  getGui(){ return this.eGui; }
+  refresh(){ return false; }
 }
 """)
+
 
 def reprogrammation_request_set(idx, jour):
     st.session_state.setdefault("reprogrammation_request", 
