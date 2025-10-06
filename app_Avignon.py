@@ -155,28 +155,79 @@ def promote_hash_user_id_for_webapp_mode():
     # # (Optionnel) resynchroniser localStorage si on arrive via une URL signée
     # components.html(f"<script>localStorage.setItem('user_id','{user_id}');</script>", height=0)
 
-    # --- Gate: si l'URL n'a pas ?user_id, essayer de le reprendre du localStorage (top window) ---
-    st.markdown("""
-    <script>
-    (function(){
-    try {
-        var url = new URL(window.location.href);
-        if (!url.searchParams.get('user_id')) {
-        var uid = window.localStorage.getItem('user_id') || "";
-        if (uid) {
-            url.searchParams.set('user_id', uid);
-            if (history.replaceState) {
-            history.replaceState(null, "", url.toString());
-            window.location.reload();
-            } else {
-            window.location.replace(url.toString());
+    # # --- Gate: si l'URL n'a pas ?user_id, essayer de le reprendre du localStorage (top window) ---
+    # st.markdown("""
+    # <script>
+    # (function(){
+    # try {
+    #     var url = new URL(window.location.href);
+    #     if (!url.searchParams.get('user_id')) {
+    #     var uid = window.localStorage.getItem('user_id') || "";
+    #     if (uid) {
+    #         url.searchParams.set('user_id', uid);
+    #         if (history.replaceState) {
+    #         history.replaceState(null, "", url.toString());
+    #         window.location.reload();
+    #         } else {
+    #         window.location.replace(url.toString());
+    #         }
+    #     }
+    #     }
+    # } catch(e) {}
+    # })();
+    # </script>
+    # """, unsafe_allow_html=True)
+
+    # --- Gate: si pas de ?user_id, proposer 1 bouton qui applique l'ID stocké ---
+    if not st.query_params.get("user_id"):
+        st.markdown("""
+        <div id="gate" style="font:16px system-ui, -apple-system, Segoe UI, Roboto, Arial; padding:2rem">
+        <div id="hasUid" style="display:none">
+            <p>Appuyer pour ouvrir votre session enregistrée.</p>
+            <button id="openBtn" style="padding:.7rem 1rem">Ouvrir ma session</button>
+        </div>
+        <div id="noUid" style="display:none">
+            <p>Aucune session enregistrée. Saisissez un identifiant ci-dessous.</p>
+        </div>
+        </div>
+        <script>
+        (function(){
+        try{
+            const uid = window.localStorage.getItem('user_id') || "";
+            const has = !!uid;
+            document.getElementById(has ? "hasUid" : "noUid").style.display = "block";
+            if (has) {
+            document.getElementById("openBtn").addEventListener("click", function(){
+                try{
+                const url = new URL(window.location.href);
+                url.searchParams.set('user_id', uid);
+                window.location.replace(url.toString());
+                }catch(e){ window.location.reload(); }
+            }, {once:true});
             }
-        }
-        }
-    } catch(e) {}
-    })();
-    </script>
-    """, unsafe_allow_html=True)
+        }catch(e){}
+        })();
+        </script>
+        """, unsafe_allow_html=True)
+
+        # Si pas d'ID stocké, on demande un user_id et on l'enregistre (1 seul champ + bouton)
+        st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+        typed = st.text_input("User ID", value=st.session_state["new_user_id"])
+        if st.button("OK") and typed:
+            # 1) mémoriser côté appareil (WebApp/Safari)
+            st.markdown(f"""
+            <script>
+            try {{ window.localStorage.setItem('user_id', {typed!r}); }} catch(e) {{}}
+            try {{
+                const u = new URL(window.location.href);
+                u.searchParams.set('user_id', {typed!r});
+                window.location.replace(u.toString());
+            }} catch(e) {{ window.location.reload(); }}
+            </script>
+            """, unsafe_allow_html=True)
+            st.stop()
+
+        st.stop()
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
