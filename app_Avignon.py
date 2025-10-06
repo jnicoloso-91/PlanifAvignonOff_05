@@ -214,6 +214,7 @@ def main():
     # Affichage du titre
     afficher_titre("Planificateur Avignon Off")
     st.write(get_user_id())
+    st.write(dict(st.query_params))
 
     # Affichage de la sidebar
     afficher_sidebar()
