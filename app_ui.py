@@ -3226,6 +3226,7 @@ def afficher_worker_status(with_pending=True):
 
     color = "#16a34a" if alive else "#ef4444"   # vert / rouge
     title = "OK" if alive else "Hors ligne"
+    user_id = get_user_id() # Remplace Google&nbsp;Sheet
 
     if with_pending:
         if pending > 0:
@@ -3238,7 +3239,7 @@ def afficher_worker_status(with_pending=True):
             display:flex;align-items:center;gap:.5rem;
             font-size:0.90rem; line-height:1.2; margin:.25rem 0 .25rem .1rem;">
         <span title="{title}" style="color:{color};font-size:1rem;">●</span>
-        <span style="opacity:.9;">Google&nbsp;Sheet</span>
+        <span style="opacity:.9;">{user_id}</span>
         {"<span style='margin-left:auto;opacity:.6;font-variant-numeric:tabular-nums;'>"+str(pending)+"</span>" if pending>0 else ""}
         </div>
         """
@@ -3248,7 +3249,7 @@ def afficher_worker_status(with_pending=True):
             display:flex;align-items:center;gap:.5rem;
             font-size:0.90rem; line-height:1.2; margin:.25rem 0 .25rem .1rem;">
         <span title="{title}" style="color:{color};font-size:1rem;">●</span>
-        <span style="opacity:.9;">{get_user_id()}</span>
+        <span style="opacity:.9;">{user_id}</span>
         </div>
         """
     st.sidebar.markdown(html, unsafe_allow_html=True)
