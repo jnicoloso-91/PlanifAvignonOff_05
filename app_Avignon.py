@@ -305,96 +305,86 @@ def promote_hash_user_id_for_webapp_mode():
     # </script>
     # """, unsafe_allow_html=True)
 
-    # --- Étape 1 : injecte un JS pour remonter le cookie uid au tout premier run ---
-    st.markdown("""
-    <script>
-    (function(){
-    function getCookie(n){
-        try{
-        return decodeURIComponent(
-            (document.cookie.split('; ')
-            .find(r=>r.startsWith(n+'='))||'')
-            .split('=')[1] || ''
-        );
-        }catch(e){return '';}
-    }
-    const uid = getCookie('uid');
-    // Si on a un cookie mais pas encore uid_from_cookie dans l'URL -> on l'ajoute et on recharge
-    if (uid && !window.location.search.includes('uid_from_cookie=')) {
-        const u = new URL(window.location.href);
-        u.searchParams.set('uid_from_cookie', uid);
-        window.location.replace(u.toString());
-    }
-    })();
-    </script>
-    """, unsafe_allow_html=True)
-
-    # --- Étape 2 : si on reçoit uid_from_cookie et pas encore user_id, on met à jour et on relance ---
-    params = st.query_params
-    if "uid_from_cookie" in params and "user_id" not in params:
-        st.query_params.update(user_id=params["uid_from_cookie"])
-        st.rerun()
-
-    # --- Étape 3 : gate principal ---
+    # 1) Si l'URL n'a PAS encore ?user_id : on essaie le cookie 'uid' côté client
     if not st.query_params.get("user_id"):
         st.markdown("""
-        <div id="hasUid" style="display:none">
-        <p>Appuyer pour ouvrir votre session enregistrée.</p>
-        <button id="openBtn" style="padding:.7rem 1rem">Ouvrir ma session</button>
+        <div id="gate" style="font:16px system-ui,-apple-system,Segoe UI,Roboto,Arial; padding:2rem">
+        <div id="phase1">
+            <p>Ouverture de votre session…</p>
         </div>
-        <div id="noUid" style="display:none">
-        <p>Aucune session enregistrée. Saisissez un identifiant ci-dessous.</p>
+        <div id="phase2" style="display:none">
+            <p>Aucune session enregistrée. Saisissez votre identifiant ci-dessous.</p>
         </div>
+        </div>
+
         <script>
         (function(){
+        // 1) lire le cookie 'uid'
         function getCookie(n){
-            try{ return decodeURIComponent(
-            (document.cookie.split('; ')
+            try{
+            return decodeURIComponent(
+                (document.cookie.split('; ')
                 .find(r=>r.startsWith(n+'='))||'')
                 .split('=')[1] || ''
-            );}catch(e){ return ''; }
+            );
+            }catch(e){ return ''; }
         }
-        const uid = getCookie('uid');
-        const has = !!uid;
-        document.getElementById(has ? 'hasUid' : 'noUid').style.display = 'block';
-        if (has) {
-            document.getElementById('openBtn').addEventListener('click', function(){
+        var uid = getCookie('uid');
+
+        // 2) si on a un uid → on navigue immédiatement avec ?user_id
+        if (uid) {
             try{
-                const url = new URL(window.location.href);
-                url.searchParams.set('user_id', uid);
-                window.location.replace(url.toString());
-            }catch(e){ window.location.reload(); }
-            }, {once:true});
+            var u = new URL(window.location.href);
+            u.searchParams.set('user_id', uid);
+            window.location.replace(u.toString());
+            // NB: on ne révèle pas le fallback tant que cette navigation n'a pas essayé
+            }catch(e){
+            // en dernier recours
+            window.location.reload();
+            }
         }
+
+        // 3) au bout de ~1s, si rien ne s'est passé, on révèle le fallback
+        setTimeout(function(){
+            try{
+            // si on est toujours sur la même page sans ?user_id → montrer phase2
+            if (!new URL(window.location.href).searchParams.get('user_id')) {
+                document.getElementById('phase1').style.display = 'none';
+                document.getElementById('phase2').style.display = 'block';
+            }
+            }catch(e){}
+        }, 1200);
         })();
         </script>
         """, unsafe_allow_html=True)
 
-        # Fallback : demande d’un nouvel ID si pas de cookie
+        # 4) Fallback Python (ne s'affiche qu'après ~1,2s si la redirection n'a pas eu lieu)
         st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
         typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
         if st.button("OK") and typed:
-            # Écrit le cookie et met à jour l’URL
+            # a) pose/maj cookie 1ʳᵉ partie pour les prochains lancements
             st.markdown(f"""
             <script>
-            document.cookie = "uid={typed}; path=/; max-age=34560000; SameSite=Lax";
-            const u = new URL(window.location.href);
-            u.searchParams.set('user_id', {typed!r});
-            window.location.replace(u.toString());
+            try {{ document.cookie = "uid={typed}; path=/; max-age=34560000; SameSite=Lax"; }} catch(e) {{}}
+            try {{
+                const u = new URL(window.location.href);
+                u.searchParams.set('user_id', {typed!r});
+                window.location.replace(u.toString());
+            }} catch(e) {{ window.location.reload(); }}
             </script>
             """, unsafe_allow_html=True)
             st.stop()
 
         st.stop()
 
-    # --- Étape 4 : user_id garanti ---
+    # 5) À partir d'ici, on a un ?user_id garanti
     user_id = st.query_params["user_id"]
     st.session_state["user_id"] = user_id
 
-    # Sync cookie si besoin
+    # Synchroniser le cookie si on arrive via une URL signée (partage/QR)
     st.markdown(f"""
     <script>
-    document.cookie = "uid={user_id}; path=/; max-age=34560000; SameSite=Lax";
+    try {{ document.cookie = "uid={user_id}; path=/; max-age=34560000; SameSite=Lax"; }} catch(e) {{}}
     </script>
     """, unsafe_allow_html=True)
 
