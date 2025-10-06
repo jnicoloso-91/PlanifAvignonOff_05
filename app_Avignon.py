@@ -97,43 +97,43 @@ def promote_hash_user_id_for_webapp_mode():
     # st.session_state["user_id"] = user_id
     # tracer.log(f"user_id: {user_id}", types=["main"])
 
-    if not st.query_params.get("user_id"):
-        components.html("""
-        <!doctype html>
-        <meta charset="utf-8">
-        <script>
-        (function () {
-        try {
-            var url = new URL(window.location.href);
-            if (!url.searchParams.get('user_id')) {
-            var uid = localStorage.getItem('user_id') || "";
-            if (uid) {
-                // 1) Essai JS direct
-                url.searchParams.set('user_id', uid);
-                // On tente d'abord replaceState + reload (plus “doux”)
-                try {
-                history.replaceState(null, "", url.toString());
-                window.location.reload();
-                return;
-                } catch(e) {}
+    # if not st.query_params.get("user_id"):
+    #     components.html("""
+    #     <!doctype html>
+    #     <meta charset="utf-8">
+    #     <script>
+    #     (function () {
+    #     try {
+    #         var url = new URL(window.location.href);
+    #         if (!url.searchParams.get('user_id')) {
+    #         var uid = localStorage.getItem('user_id') || "";
+    #         if (uid) {
+    #             // 1) Essai JS direct
+    #             url.searchParams.set('user_id', uid);
+    #             // On tente d'abord replaceState + reload (plus “doux”)
+    #             try {
+    #             history.replaceState(null, "", url.toString());
+    #             window.location.reload();
+    #             return;
+    #             } catch(e) {}
 
-                // 2) Fallback: navigation dure
-                try {
-                window.location.replace(url.toString());
-                return;
-                } catch(e) {}
+    #             // 2) Fallback: navigation dure
+    #             try {
+    #             window.location.replace(url.toString());
+    #             return;
+    #             } catch(e) {}
 
-                // 3) Fallback ultime: meta refresh (bypass CSP/iframe parfois)
-                document.write('<meta http-equiv="refresh" content="0; url='
-                + url.toString().replace(/&/g,'&amp;') + '">');
-                return;
-            }
-            }
-        } catch(e) {}
-        // Si on arrive ici: pas d'user_id en localStorage -> laissons Python afficher le fallback
-        })();
-        </script>
-        """, height=0)
+    #             // 3) Fallback ultime: meta refresh (bypass CSP/iframe parfois)
+    #             document.write('<meta http-equiv="refresh" content="0; url='
+    #             + url.toString().replace(/&/g,'&amp;') + '">');
+    #             return;
+    #         }
+    #         }
+    #     } catch(e) {}
+    #     // Si on arrive ici: pas d'user_id en localStorage -> laissons Python afficher le fallback
+    #     })();
+    #     </script>
+    #     """, height=0)
 
     #     # Pas d'user_id en URL ni en localStorage -> on demande à l'utilisateur
     #     st.write("Pour commencer, saisis ton *User ID* (environnement) :")
@@ -154,6 +154,29 @@ def promote_hash_user_id_for_webapp_mode():
     # st.session_state["user_id"] = user_id
     # # (Optionnel) resynchroniser localStorage si on arrive via une URL signée
     # components.html(f"<script>localStorage.setItem('user_id','{user_id}');</script>", height=0)
+
+    # --- Gate: si l'URL n'a pas ?user_id, essayer de le reprendre du localStorage (top window) ---
+    st.markdown("""
+    <script>
+    (function(){
+    try {
+        var url = new URL(window.location.href);
+        if (!url.searchParams.get('user_id')) {
+        var uid = window.localStorage.getItem('user_id') || "";
+        if (uid) {
+            url.searchParams.set('user_id', uid);
+            if (history.replaceState) {
+            history.replaceState(null, "", url.toString());
+            window.location.reload();
+            } else {
+            window.location.replace(url.toString());
+            }
+        }
+        }
+    } catch(e) {}
+    })();
+    </script>
+    """, unsafe_allow_html=True)
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
