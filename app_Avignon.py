@@ -305,13 +305,37 @@ def promote_hash_user_id_for_webapp_mode():
     # </script>
     # """, unsafe_allow_html=True)
 
-    # Si on a reçu uid_from_cookie → on force sa mise dans query_params user_id
+    # --- Étape 1 : injecte un JS pour remonter le cookie uid au tout premier run ---
+    st.markdown("""
+    <script>
+    (function(){
+    function getCookie(n){
+        try{
+        return decodeURIComponent(
+            (document.cookie.split('; ')
+            .find(r=>r.startsWith(n+'='))||'')
+            .split('=')[1] || ''
+        );
+        }catch(e){return '';}
+    }
+    const uid = getCookie('uid');
+    // Si on a un cookie mais pas encore uid_from_cookie dans l'URL -> on l'ajoute et on recharge
+    if (uid && !window.location.search.includes('uid_from_cookie=')) {
+        const u = new URL(window.location.href);
+        u.searchParams.set('uid_from_cookie', uid);
+        window.location.replace(u.toString());
+    }
+    })();
+    </script>
+    """, unsafe_allow_html=True)
+
+    # --- Étape 2 : si on reçoit uid_from_cookie et pas encore user_id, on met à jour et on relance ---
     params = st.query_params
     if "uid_from_cookie" in params and "user_id" not in params:
         st.query_params.update(user_id=params["uid_from_cookie"])
         st.rerun()
 
-    # --- Étape 2 : gate principal ---
+    # --- Étape 3 : gate principal ---
     if not st.query_params.get("user_id"):
         st.markdown("""
         <div id="hasUid" style="display:none">
@@ -346,35 +370,31 @@ def promote_hash_user_id_for_webapp_mode():
         </script>
         """, unsafe_allow_html=True)
 
-        # Fallback Python : pas de cookie -> on demande un ID
+        # Fallback : demande d’un nouvel ID si pas de cookie
         st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
         typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
         if st.button("OK") and typed:
-            # Crée le cookie et met à jour l’URL directement
+            # Écrit le cookie et met à jour l’URL
             st.markdown(f"""
             <script>
-            try {{
             document.cookie = "uid={typed}; path=/; max-age=34560000; SameSite=Lax";
             const u = new URL(window.location.href);
             u.searchParams.set('user_id', {typed!r});
             window.location.replace(u.toString());
-            }} catch(e) {{ window.location.reload(); }}
             </script>
             """, unsafe_allow_html=True)
             st.stop()
 
         st.stop()
 
-    # --- Étape 3 : on a maintenant un user_id garanti ---
+    # --- Étape 4 : user_id garanti ---
     user_id = st.query_params["user_id"]
     st.session_state["user_id"] = user_id
 
-    # Synchroniser cookie (si arrivé via URL externe)
+    # Sync cookie si besoin
     st.markdown(f"""
     <script>
-    try {{
     document.cookie = "uid={user_id}; path=/; max-age=34560000; SameSite=Lax";
-    }} catch(e) {{}}
     </script>
     """, unsafe_allow_html=True)
 
