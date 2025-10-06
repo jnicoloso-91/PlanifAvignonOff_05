@@ -1,388 +1,221 @@
-##############
-# API SQLite #
-##############
+####################
+# API Google Sheet #
+####################
 
-import sqlite3
+###################################################################################################
+# A adapter selon fonctionnement local ou hébergé avec streamlit share community cloud via GitHub #
+# - Mettre True pour debugger en local sous VsCode                                                #
+# - Mettre False avant d'intégrer dans GitHub                                                     #
+###################################################################################################
+LOCAL = True
+
 import streamlit as st
 import pandas as pd
-import json
-import numpy as np
-from pathlib import Path
-from contextlib import contextmanager
-from pandas.api.types import is_scalar
+import gspread
+from gspread_dataframe import get_as_dataframe, set_with_dataframe
+from google.oauth2.service_account import Credentials
+import uuid
 
-from app_const import WITH_GOOGLE_SHEET, MARGE, DUREE_REPAS, DUREE_CAFE
-from app_utils import ajouter_options_date, get_options_date_from_uuid, minutes, to_iso_date, get_meta
-import sync_worker as wk
+from app_const import COLONNES_ATTENDUES, COLONNES_ATTENDUES_CARNET_ADRESSES
+from app_utils import curseur_normal, curseur_attente, minutes, to_iso_date, ajouter_options_date, get_meta, get_user_id
+from sync_worker import gs_set_client_for_worker
 
-DATA_DIR = Path.home() / "app_data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "app_avignon.db"
-
-# Colonnes persistées
-CORE_COLS_DICO = {
-    "Date": "INTEGER",
-    "Debut": "TEXT",
-    "Fin": "TEXT",
-    "Duree": "TEXT",
-    "Activite": "TEXT",
-    "Lieu": "TEXT",
-    "Relache": "TEXT",
-    "Reserve": "TEXT",
-    "Priorite": "INTEGER",
-    "Debut_dt": "TEXT",
-    "Duree_dt": "TEXT",
-    "Hyperlien": "TEXT",
-    "__options_date": "TEXT",
-    "__uuid": "TEXT PRIMARY KEY",
-}
-
-CORE_COLS = list(CORE_COLS_DICO.keys())
-
-# Colonnes non persistées
-VOLATILE_COLS = {
-    # ajouter ici toute autre colonne strictement "df_display"
-}
-
-META_COLS_DICO = {
-    "id": "INTEGER PRIMARY KEY DEFAULT 1",
-    "fn": "TEXT",
-    "fp": "TEXT",
-    "MARGE": "INTEGER",
-    "DUREE_REPAS": "INTEGER",
-    "DUREE_CAFE": "INTEGER",
-    "itineraire_app": "TEXT",
-    "city_default": "TEXT",
-    "traiter_pauses": "TEXT",
-    "periode_a_programmer_debut": "TEXT",
-    "periode_a_programmer_fin": "TEXT",
-}
-
-DEFAULT_META = {k: None for k in META_COLS_DICO if k != "id"}
-
-META_COLS = [c for c in META_COLS_DICO.keys() if c != "id"]  
-
-@contextmanager
-def _conn_rw():
-    con = sqlite3.connect(DB_PATH)
-    con.execute("PRAGMA foreign_keys=ON;")
-    con.execute("PRAGMA journal_mode=WAL;")
-    con.execute("PRAGMA synchronous=NORMAL;")
+def get_gs_client():
     try:
-        yield con
-        con.commit()
-    finally:
-        con.close()
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        return gspread.authorize(creds)
+    except Exception as e:
+        st.error(f"Erreur de connexion à Google Sheets : {e}")
+        return None
 
-def init_db():
-    ddl_cols = ",\n  ".join(f"{col} {sqltype}" for col, sqltype in CORE_COLS_DICO.items())
-    meta_cols = ",\n  ".join(f"{col} {sqltype}" for col, sqltype in META_COLS_DICO.items())
-    ddl = f"""
-    PRAGMA foreign_keys=ON;
-
-    CREATE TABLE IF NOT EXISTS df_principal (
-      {ddl_cols},
-      extras_json TEXT NOT NULL DEFAULT '{{}}'
-    );
-    
-    CREATE TABLE IF NOT EXISTS meta (
-      {meta_cols},
-      extras_json TEXT NOT NULL DEFAULT '{{}}'
-    );
-
-    CREATE TABLE IF NOT EXISTS carnet (
-      id TEXT PRIMARY KEY,
-      Nom TEXT,
-      Adresse TEXT,
-      Tel TEXT,
-      Web TEXT,
-      __uuid TEXT,
-      extras_json TEXT NOT NULL DEFAULT '{{}}'
-    );
-    """
-    with _conn_rw() as con:
-        con.executescript(ddl)
-
-def db_exists() -> bool:
-    return DB_PATH.exists() and DB_PATH.stat().st_size > 0
-
-def _strip_display_cols(df: pd.DataFrame) -> pd.DataFrame:
-    # enlève les colonnes strictement d'affichage
-    keep = [c for c in df.columns if c not in VOLATILE_COLS]
-    return df[keep].copy()
-
-def _split_core_extras(row: dict):
-    core = {k: row.get(k) for k in CORE_COLS if k in row}
-    extras = {k: v for k, v in row.items() if (k not in CORE_COLS and k not in VOLATILE_COLS)}
-    return core, extras
-
-def _merge_core_extras(df_core: pd.DataFrame) -> pd.DataFrame:
-    if "extras_json" not in df_core.columns or df_core.empty:
-        return df_core.drop(columns=[c for c in ("extras_json",) if c in df_core.columns], errors="ignore")
-    extras_df = pd.json_normalize(
-        df_core["extras_json"].apply(lambda s: json.loads(s) if isinstance(s, str) and s.startswith("{") else (s or {}))
-    )
-    out = pd.concat(
-        [df_core.drop(columns=["extras_json"]).reset_index(drop=True),
-         (extras_df if not extras_df.empty else pd.DataFrame(index=df_core.index)).reset_index(drop=True)],
-        axis=1
-    )
-    return out
-
-def _to_sql(v):
-    """Convertit toute valeur pandas/numpy 'missing' en None, et numpy scalars en Python natifs."""
-    # manquants pandas / numpy
-    try:
-        if pd.isna(v):
-            return None
-    except Exception:
-        pass
-    # numpy scalars -> python
-    if isinstance(v, (np.integer,)):
-        return int(v)
-    if isinstance(v, (np.floating,)):
-        # garde None déjà traité plus haut
-        return float(v)
-    # pandas Timestamp/Timedelta -> string
-    if hasattr(v, "isoformat"):  # Timestamp / datetime
+# @chrono
+def get_or_create_user_gsheets(user_id, spreadsheet_id):
+    gsheets = None
+    client = get_gs_client()
+    if client is not None:    
         try:
-            return v.isoformat()
-        except Exception:
-            pass
-    if str(type(v)).endswith("Timedelta'>"):
-        return str(v)
-    return v
+            sh = client.open_by_key(spreadsheet_id)
+        except Exception as e:
+            st.error(f"Impossible d'ouvrir la Google Sheet : {e}")
+            st.stop()    
 
-def _clean_jsonable(x):
-    """Nettoie récursivement pour que json.dumps fonctionne (NaN/NA->None, numpy->python)."""
-    # scalaires
-    if is_scalar(x) or x is None:
-        return _to_sql(x)
-    # dict
-    if isinstance(x, dict):
-        return {str(k): _clean_jsonable(v) for k, v in x.items()}
-    # list/tuple/set
-    if isinstance(x, (list, tuple, set)):
-        return [_clean_jsonable(v) for v in x]
-    # fallback objet
-    return _to_sql(x)
+        # Adaptation sheet_names selon fonctionnement local ou hébergé
+        if LOCAL: # Pour debugger en local
+            sheet_names = [f"data", f"meta", f"adrs"]                                            
+        else:     # Utilisation nominale en mode multiuser avec hébergement streamlit share community cloud
+            sheet_names = [f"data_{user_id}", f"meta_{user_id}", f"adrs_{user_id}"]     
 
-def charger_contexte():
-    with _conn_rw() as con:
-        df_core = pd.read_sql_query("SELECT * FROM df_principal", con)
-        df = _merge_core_extras(df_core)
-        meta_df = pd.read_sql_query("SELECT * FROM meta", con)
-        carnet = pd.read_sql_query("SELECT * FROM carnet", con)
+        gsheets = {}
+
+        for name in sheet_names:
+            try:
+                ws = sh.worksheet(name)
+            except gspread.WorksheetNotFound:
+                ws = sh.add_worksheet(title=name, rows=1000, cols=20)
+            gsheets[name.split("_")[0]] = ws  # 'data', 'meta', 'adrs'
+
+    return gsheets
+
+def connect(user_id):
+    if "gsheets" not in st.session_state:
+
+        try:
+            curseur_attente()
+            gsheets = get_or_create_user_gsheets(user_id, spreadsheet_id="1ytYrefEPzdJGy5w36ZAjW_QQTlvfZ17AH69JkiHQzZY")
+            st.session_state.gsheets = gsheets
+        except Exception as e:
+            curseur_normal()
+            print(f"Erreur à l'ouverture de la connexion avec la Google Sheet : {e}")
+            st.stop()
     
-    if meta_df.empty:
-        # ✅ renvoie un dict avec toutes les clés mais valeurs None
-        meta = DEFAULT_META.copy()
-    else:
-        # on prend la première ligne (ou adapte si plusieurs types)
-        row_dict = meta_df.iloc[0].to_dict()
-        meta = {k: row_dict.get(k, v) for k, v in DEFAULT_META.items()}
+    if "gsheets" in st.session_state:
+        gs_set_client_for_worker(st.session_state.gsheets)
 
-    ca = carnet.drop(columns=["id", "extras_json"])
+META_DICT = {
+    "fn": None,
+    "fp": None,
+    "MARGE": None,
+    "DUREE_REPAS": None,
+    "DUREE_CAFE": None,
+    "itineraire_app": None,
+    "city_default": None,
+    "traiter_pauses": None,
+    "periode_a_programmer_debut": None,
+    "periode_a_programmer_fin": None,
+}
+
+# 📥 Charge les infos persistées depuis la Google Sheet
+def charger_contexte():
+
+    def meta_getval(attr: str, meta_df: pd.DataFrame):
+        val = meta_df.at[0, attr] if attr in meta_df.columns and len(meta_df) > 0 else None
+        val = val if pd.notna(val) else None
+        return val
+
+    df = meta = ca= None
+    if "gsheets" in st.session_state:
+            
+        gsheets = st.session_state.gsheets
+
+        try:
+            worksheet = gsheets["data"]
+            df = get_as_dataframe(worksheet, evaluate_formulas=True)
+            df.dropna(how="all")
+        except Exception as e:
+            print(f"Erreur au chargement du DataFrame depuis la Google Sheet : {e}")
+        
+        if not all(col in df.columns for col in COLONNES_ATTENDUES):
+            print(f"Format de la Google Sheet invalide")
+            df = pd.DataFrame(columns=COLONNES_ATTENDUES)
+
+        try:
+            worksheet = gsheets["meta"]
+            meta_df = get_as_dataframe(worksheet, evaluate_formulas=True)
+            meta = {k: meta_getval(k, meta_df) for k in META_DICT.keys()}
+        except Exception as e:
+            print(f"Erreur au chargement des métadonnées depuis la Google Sheet : {e}")
+        
+        try:
+            worksheet = gsheets["adrs"]
+            ca = get_as_dataframe(worksheet, evaluate_formulas=True)
+        except Exception as e:
+            print(f"Erreur au chargement du carnet d'adresses depuis la Google Sheet : {e}")
+            ca = pd.DataFrame(columns=COLONNES_ATTENDUES_CARNET_ADRESSES)
     
     return df, meta, ca
 
-def sauvegarder_contexte(enqueue=True):
-    df = _strip_display_cols(st.session_state.df)
-    df = ajouter_options_date(df)
-    if "__uuid" not in df.columns:
-        raise ValueError("sql_sauvegarder_contexte: __uuid manquant dans df")
-
-    # upsert pour df
-    cols_sql = [c for c in CORE_COLS if c != "__uuid"] + ["extras_json"]
-    set_sql  = ",".join([f"{c}=excluded.{c}" for c in cols_sql])
-    sql_df = (
-        f"INSERT INTO df_principal (__uuid,{','.join(cols_sql)}) "
-        f"VALUES ({','.join(['?']*(len(cols_sql)+1))}) "
-        f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
-    )
-
-    # préparer df
-    rows_params = []
-    for _, row in df.iterrows():
-        core, extras = _split_core_extras(row.to_dict())
-        extras_json = json.dumps(_clean_jsonable(extras), ensure_ascii=False)
-        vals = [core.get("__uuid")] \
-             + [_to_sql(core.get(c)) for c in CORE_COLS if c != "__uuid"] \
-             + [extras_json]
-        rows_params.append(vals)
-
-    # préparer meta (upsert id=1, on écrase aussi les colonnes manquantes avec NULL)
-    meta = get_meta()
-    sql_meta = meta_vals = None
-    if meta is not None:
-        cols = ",".join(["id"] + META_COLS)
-        ph   = ",".join(["?"] * (1 + len(META_COLS)))
-        vals = [1] + [meta.get(c) for c in META_COLS]
-
-    # preparer carnet d'adresses
-    carnet = st.session_state.ca
-
-    with _conn_rw() as con:
-        con.execute("PRAGMA busy_timeout=30000")
-        con.execute("BEGIN IMMEDIATE")
-
-        # 🔥 reset total de df_principal puis réécriture
-        con.execute("DELETE FROM df_principal")
-        if rows_params:
-            con.executemany(sql_df, rows_params)
-
-        # meta : upsert complet (toutes colonnes dans META_COLS sont fixées, y compris à NULL)
-        con.execute("DELETE FROM meta")
-        if meta is not None:
-            con.execute(f"INSERT INTO meta ({cols}) VALUES ({ph})", vals)
-
-        # carnet d'adresses : reset puis insert
-        if isinstance(carnet, pd.DataFrame):
-            con.execute("DELETE FROM carnet")
-            if not carnet.empty:
-                cols = carnet.columns.tolist()
-                con.executemany(
-                    f"INSERT INTO carnet ({','.join(cols)}) VALUES ({','.join(['?']*len(cols))})",
-                    carnet.where(pd.notna(carnet), None).itertuples(index=False, name=None)
-                )
-    if enqueue:
-        wk.enqueue_save_full(df, meta, carnet)
-
-def sauvegarder_df():
-    df = _strip_display_cols(st.session_state.df)
-    df = ajouter_options_date(df)
-    if "__uuid" not in df.columns:
-        raise ValueError("sql_sauvegarder_df: __uuid manquant dans df")
-
-    # upsert pour df_principal
-    cols_sql = [c for c in CORE_COLS if c != "__uuid"] + ["extras_json"]
-    set_sql  = ",".join([f"{c}=excluded.{c}" for c in cols_sql])
-    sql_df = (
-        f"INSERT INTO df_principal (__uuid,{','.join(cols_sql)}) "
-        f"VALUES ({','.join(['?']*(len(cols_sql)+1))}) "
-        f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
-    )
-
-    # préparer les valeurs
-    rows_params = []
-    for _, row in df.iterrows():
-        core, extras = _split_core_extras(row.to_dict())
-        extras_json = json.dumps(_clean_jsonable(extras), ensure_ascii=False)
-        vals = [core.get("__uuid")] \
-             + [_to_sql(core.get(c)) for c in CORE_COLS if c != "__uuid"] \
-             + [extras_json]
-        rows_params.append(vals)
-
-    with _conn_rw() as con:
-        con.execute("PRAGMA busy_timeout=30000")
-        con.execute("BEGIN IMMEDIATE")
-
-        # 🔥 reset total de df_principal puis réécriture
-        con.execute("DELETE FROM df_principal")
-        if rows_params:
-            con.executemany(sql_df, rows_params)
-
-    wk.enqueue_save_df(df)
-
-def sauvegarder_row(index_df):
-    s = st.session_state.df.loc[index_df]
-    if isinstance(s, pd.DataFrame):
-        s = s.iloc[0]
-    row = s.to_dict()
-    if "__uuid" not in row:
-        raise ValueError("sql_sauvegarder_row: __uuid manquant")
-
-    # 🔹 Injecter __options_date depuis les df_display avant split core/extras
-    opt = get_options_date_from_uuid(row["__uuid"])
-    if opt is not None:
-        row["__options_date"] = opt  # ira dans extras_json
-
-    core, extras = _split_core_extras(row)
-    extras_json = json.dumps(_clean_jsonable(extras), ensure_ascii=False)
-
-    cols_sql = [c for c in CORE_COLS if c != "__uuid"] + ["extras_json"]
-    set_sql  = ",".join([f"{c}=excluded.{c}" for c in cols_sql])
-    sql_one  = (
-        f"INSERT INTO df_principal (__uuid,{','.join(cols_sql)}) "
-        f"VALUES ({','.join(['?']*(len(cols_sql)+1))}) "
-        f"ON CONFLICT(__uuid) DO UPDATE SET {set_sql}"
-    )
-    vals = [core.get("__uuid")] \
-         + [_to_sql(core.get(c)) for c in CORE_COLS if c != "__uuid"] \
-         + [extras_json]
-
-    with _conn_rw() as con:
-        con.execute("PRAGMA busy_timeout=30000")
-        con.execute("BEGIN IMMEDIATE")
-        con.execute(sql_one, vals)
-
-    wk.enqueue_save_row(row)
-
-ALLOWED_META_COLS = set(META_COLS) 
-
-def sauvegarder_param(param: str):
-    try:
-        if param not in ALLOWED_META_COLS:
-            raise ValueError(f"Paramètre inconnu : {param}")
-
-        if param == "MARGE":
-            value = minutes(st.session_state.MARGE)
-        elif param == "DUREE_REPAS":
-            value = minutes(st.session_state.DUREE_REPAS)
-        elif param == "DUREE_CAFE":
-            value = minutes(st.session_state.DUREE_CAFE)
-        elif param == "itineraire_app":
-            value = st.session_state.itineraire_app
-        elif param == "city_default":
-            value = st.session_state.city_default
-        elif param == "traiter_pauses":
-            value = str(st.session_state.traiter_pauses)
-        elif param == "periode_a_programmer_debut":
-            value = to_iso_date(st.session_state.periode_a_programmer_debut)
-        elif param == "periode_a_programmer_fin":
-            value = to_iso_date(st.session_state.periode_a_programmer_fin)
-        else:
-            # si colonne autorisée mais non gérée plus haut
-            value = st.session_state.get(param)
-
-        sql = f"""
-            INSERT INTO meta (id, {param})
-            VALUES (1, ?)
-            ON CONFLICT(id) DO UPDATE SET {param} = excluded.{param}
-        """
-        with _conn_rw() as con:
-            con.execute("PRAGMA busy_timeout=30000")
-            con.execute("BEGIN IMMEDIATE")
-            con.execute(sql, (value,))
-
-        wk.enqueue_save_param(param, value)
-
-    except Exception as e:
-        print(f"Erreur sqlite_sauvegarder_param : {e}")
-
-def sauvegarder_ca():
-    carnet = _strip_display_cols(st.session_state.get("ca"))
-    if not isinstance(carnet, pd.DataFrame):
-        wk.enqueue_save_ca(pd.DataFrame())  # vide côté GSheets aussi
-        return 0
-
-    # NaN -> None
-    carnet_sql = carnet.where(pd.notna(carnet), None)
-
-    # Écriture atomique
-    with _conn_rw() as con:
+# 📤 Sauvegarde l'ensemble des infos persistées dans la Google Sheet
+def sauvegarder_contexte():
+    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
         try:
-            con.execute("PRAGMA busy_timeout=30000")
-        except Exception:
-            pass
-        con.execute("BEGIN IMMEDIATE")
-        con.execute("DELETE FROM carnet")
-        if not carnet_sql.empty:
-            con.executemany(
-                f"INSERT INTO carnet ({','.join(carnet_sql.columns)}) VALUES ({','.join(['?']*len(carnet_sql.columns))})",
-                carnet_sql.itertuples(index=False, name=None)
-            )
-        # commit via contextmanager
+            gsheets = st.session_state.gsheets
 
-    # Push au worker (copie défensive)
-    wk.enqueue_save_ca(carnet_sql.copy())
+            worksheet = gsheets["data"]
+            worksheet.clear()
+            df = ajouter_options_date(st.session_state.df)
+            set_with_dataframe(worksheet, df)
+
+            worksheet = gsheets["meta"]
+            worksheet.clear()
+            set_with_dataframe(worksheet, pd.DataFrame([get_meta()]))
+
+            worksheet = gsheets["adrs"]
+            worksheet.clear()
+            set_with_dataframe(worksheet, st.session_state.ca)
+
+        except Exception as e:
+            print(f"Erreur gsheets.sauvegarder_contexte : {e}")
+
+# 📤 Sauvegarde le DataFrame dans la Google Sheet
+def sauvegarder_df():
+    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
+        try:
+            gsheets = st.session_state.gsheets
+            worksheet = gsheets["data"]
+            worksheet.clear()
+            set_with_dataframe(worksheet, st.session_state.df)
+        except Exception as e:
+            print(f"Erreur gsheets.sauvegarder_df : {e}")
+
+# Sauvegarde une ligne dans la Google Sheet
+def sauvegarder_row(index_df):
+    
+    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
+        try:
+            gsheets = st.session_state.gsheets
+            worksheet = gsheets["data"]
+
+            if "df" in st.session_state and st.session_state.df is not None:
+
+                # row_df = DataFrame d'une seule ligne
+                row_df = st.session_state.df.loc[[index_df]].copy()
+
+                set_with_dataframe(
+                    worksheet,                 # ta worksheet gspread
+                    row_df,
+                    row=int(index_df + 2),     # la ligne Google Sheet où écrire
+                    include_column_header=False,
+                    resize=False,
+                )
+
+        except Exception as e:
+            print(f"Erreur gsheets.sauvegarder_row : {e}")
+
+# 📤 Sauvegarde des params dans la Google Sheet
+def sauvegarder_param(param):
+    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
+        try:
+            gsheets = st.session_state.gsheets
+
+            worksheet = gsheets["meta"]
+            if param == "MARGE":
+                worksheet.update_acell("C2", minutes(st.session_state.MARGE))
+            elif param == "DUREE_REPAS":
+                worksheet.update_acell("D2", minutes(st.session_state.DUREE_REPAS))
+            elif param == "DUREE_CAFE":
+                worksheet.update_acell("E2", minutes(st.session_state.DUREE_CAFE))
+            elif param == "itineraire_app":
+                worksheet.update_acell("F2", st.session_state.itineraire_app)
+            elif param == "city_default":
+                worksheet.update_acell("G2", st.session_state.city_default)
+            elif param == "traiter_pauses":
+                worksheet.update_acell("H2", str(st.session_state.traiter_pauses))
+            elif param == "periode_a_programmer_debut":
+                worksheet.update_acell("I2", to_iso_date(st.session_state.periode_a_programmer_debut))
+            elif param == "periode_a_programmer_fin":
+                worksheet.update_acell("J2", to_iso_date(st.session_state.periode_a_programmer_fin))
+
+        except Exception as e:
+            print(f"Erreur gsheets.sauvegarder_param : {e}")
+
+# 📤 Sauvegarde le carnet d'adresses dans la Google Sheet
+def sauvegarder_ca():
+    if "gsheets" in st.session_state and st.session_state.gsheets is not None:
+        try:
+            gsheets = st.session_state.gsheets
+            worksheet = gsheets["adrs"]
+            worksheet.clear()
+            set_with_dataframe(worksheet, st.session_state.ca)
+        except Exception as e:
+            print(f"Erreur gsheets.sauvegarder_ca : {e}")
