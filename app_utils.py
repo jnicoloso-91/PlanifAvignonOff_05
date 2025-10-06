@@ -1286,8 +1286,14 @@ def get_user_id():
 
         if user_id_from_url: #[0]:
             st.session_state["user_id"] = user_id_from_url
-            # On mémorise aussi côté client (utile en WebApp iOS)
-            components.html(f"<script>localStorage.setItem('user_id','{user_id_from_url}');</script>", height=0)
+
+            # ÉCRITURE PERSISTANTE (top window)
+            st.markdown(f"""
+            <script>
+            try {{ window.localStorage.setItem('user_id', {user_id_from_url!r}); }} catch(e) {{}}
+            </script>
+            """, unsafe_allow_html=True)
+
             tracer.log(f"user_id_from_url stocké: {user_id_from_url[0]}", types=["main"])
 
         if "user_id" not in st.session_state:
@@ -1299,8 +1305,14 @@ def get_user_id():
             if st.button("Créer ma session privée"):
                 # a) mettre à jour l'URL (source de vérité)
                 st.query_params.update(user_id=new_user_id)
-                # b) mémoriser côté client (marche en WebApp et Safari)
-                components.html(f"<script>localStorage.setItem('user_id','{new_user_id}');</script>", height=0)
+
+                # ÉCRITURE PERSISTANTE (top window)
+                st.markdown(f"""
+                <script>
+                try {{ window.localStorage.setItem('user_id', {new_user_id!r}); }} catch(e) {{}}
+                </script>
+                """, unsafe_allow_html=True)
+
                 # c) synchroniser session et relancer proprement
                 st.session_state["user_id"] = new_user_id
                 st.rerun() 
