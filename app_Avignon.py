@@ -23,10 +23,9 @@ def rerun_trace():
     st.session_state.main_counter += 1
     tracer.log(f"____________MAIN {st.session_state.main_counter}______________", types=["gen","main"])
 
-# Script de promotion de #user_id/#session_id en ?user_id/?session_id (sans écraser la query existante) dans l'URL de connexion.
-# Permet de spécifier une URL de connexion utilisant #user_id au lieu de ?user_id pour le bon fonctionnement en mode WebApp sur IOS.
-# En effet en mode WebApp le ?user_id est ecrasé de l'URL et sans ce workaround l'appli ne pourrait pas démarrer avec une spécification de user_id.
-def promote_hash_user_id_for_webapp_mode():
+# Différents essais pour permettre en webapp mode IOS de ne pas etre obligé de redéfinir le user_id à chaque redémarrage vu que dance mode on ne peut pas utiliser ?user_id= dans l'URL.
+# Mais les pistes envisagées (utilisation du local storage de la webpp ou des cookies par des JS script faisant des window.localtion.reload()) ne fonctionnent pas.
+def manage_user_id_for_webapp_mode():
 
     # # Si l'URL n'a pas ?user_id, reprendre celui mémorisé localement (WebApp/Safari)
     # components.html("""
@@ -423,7 +422,7 @@ def main():
     rerun_trace()
 
     # Récupération du user_id dans l'URL de connexion
-    promote_hash_user_id_for_webapp_mode()
+    # manage_user_id_for_webapp_mode()
     user_id = get_user_id()
   
     # Connexion à la Google Sheet et lancement du GS Worker chargé de la sauvegarde Google Sheet en temps masqué (seulement si WITH_GOOGLE_SHEET est True)
