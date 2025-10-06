@@ -26,7 +26,8 @@ def rerun_trace():
 # Différents essais pour permettre en webapp mode IOS de ne pas etre obligé de redéfinir le user_id à chaque redémarrage vu que dance mode on ne peut pas utiliser ?user_id= dans l'URL.
 # Mais les pistes envisagées (utilisation du local storage de la webpp ou des cookies par des JS script faisant des window.localtion.reload()) ne fonctionnent pas.
 def manage_user_id_for_webapp_mode():
-
+    pass
+    ##########################################
     # # Si l'URL n'a pas ?user_id, reprendre celui mémorisé localement (WebApp/Safari)
     # components.html("""
     # <script>
@@ -46,6 +47,7 @@ def manage_user_id_for_webapp_mode():
     # </script>
     # """, height=0)
 
+    ##########################################
     # # 1) Si l'URL a déjà ?user_id → on mémorise côté client et on continue
     # uid = st.query_params.get("user_id", None)
     # tracer.log(f"st.query_params: {uid} {type(uid)}", types=["main"])
@@ -96,6 +98,7 @@ def manage_user_id_for_webapp_mode():
     # st.session_state["user_id"] = user_id
     # tracer.log(f"user_id: {user_id}", types=["main"])
 
+    ##########################################
     # if not st.query_params.get("user_id"):
     #     components.html("""
     #     <!doctype html>
@@ -154,6 +157,7 @@ def manage_user_id_for_webapp_mode():
     # # (Optionnel) resynchroniser localStorage si on arrive via une URL signée
     # components.html(f"<script>localStorage.setItem('user_id','{user_id}');</script>", height=0)
 
+    ##########################################
     # # --- Gate: si l'URL n'a pas ?user_id, essayer de le reprendre du localStorage (top window) ---
     # st.markdown("""
     # <script>
@@ -177,6 +181,7 @@ def manage_user_id_for_webapp_mode():
     # </script>
     # """, unsafe_allow_html=True)
 
+    ##########################################
     # # --- Gate: si pas de ?user_id, proposer ouverture ou création ---
     # if not st.query_params.get("user_id"):
     #     # --- Bloc HTML : bouton "Ouvrir ma session" si déjà un user_id en localStorage ---
@@ -234,6 +239,7 @@ def manage_user_id_for_webapp_mode():
     # user_id = st.query_params.get("user_id")
     # st.session_state["user_id"] = user_id
 
+    ##########################################
     # # ---- GATE: garantir ?user_id AVANT le reste, via cookie 1ʳᵉ partie ----
     # if not st.query_params.get("user_id"):
     #     st.markdown("""
@@ -304,88 +310,89 @@ def manage_user_id_for_webapp_mode():
     # </script>
     # """, unsafe_allow_html=True)
 
-    # 1) Si l'URL n'a PAS encore ?user_id : on essaie le cookie 'uid' côté client
-    if not st.query_params.get("user_id"):
-        st.markdown("""
-        <div id="gate" style="font:16px system-ui,-apple-system,Segoe UI,Roboto,Arial; padding:2rem">
-        <div id="phase1">
-            <p>Ouverture de votre session…</p>
-        </div>
-        <div id="phase2" style="display:none">
-            <p>Aucune session enregistrée. Saisissez votre identifiant ci-dessous.</p>
-        </div>
-        </div>
+    ##########################################
+    # # 1) Si l'URL n'a PAS encore ?user_id : on essaie le cookie 'uid' côté client
+    # if not st.query_params.get("user_id"):
+    #     st.markdown("""
+    #     <div id="gate" style="font:16px system-ui,-apple-system,Segoe UI,Roboto,Arial; padding:2rem">
+    #     <div id="phase1">
+    #         <p>Ouverture de votre session…</p>
+    #     </div>
+    #     <div id="phase2" style="display:none">
+    #         <p>Aucune session enregistrée. Saisissez votre identifiant ci-dessous.</p>
+    #     </div>
+    #     </div>
 
-        <script>
-        (function(){
-        // 1) lire le cookie 'uid'
-        function getCookie(n){
-            try{
-            return decodeURIComponent(
-                (document.cookie.split('; ')
-                .find(r=>r.startsWith(n+'='))||'')
-                .split('=')[1] || ''
-            );
-            }catch(e){ return ''; }
-        }
-        var uid = getCookie('uid');
+    #     <script>
+    #     (function(){
+    #     // 1) lire le cookie 'uid'
+    #     function getCookie(n){
+    #         try{
+    #         return decodeURIComponent(
+    #             (document.cookie.split('; ')
+    #             .find(r=>r.startsWith(n+'='))||'')
+    #             .split('=')[1] || ''
+    #         );
+    #         }catch(e){ return ''; }
+    #     }
+    #     var uid = getCookie('uid');
 
-        // 2) si on a un uid → on navigue immédiatement avec ?user_id
-        if (uid) {
-            try{
-            var u = new URL(window.location.href);
-            u.searchParams.set('user_id', uid);
-            window.location.replace(u.toString());
-            // NB: on ne révèle pas le fallback tant que cette navigation n'a pas essayé
-            }catch(e){
-            // en dernier recours
-            window.location.reload();
-            }
-        }
+    #     // 2) si on a un uid → on navigue immédiatement avec ?user_id
+    #     if (uid) {
+    #         try{
+    #         var u = new URL(window.location.href);
+    #         u.searchParams.set('user_id', uid);
+    #         window.location.replace(u.toString());
+    #         // NB: on ne révèle pas le fallback tant que cette navigation n'a pas essayé
+    #         }catch(e){
+    #         // en dernier recours
+    #         window.location.reload();
+    #         }
+    #     }
 
-        // 3) au bout de ~1s, si rien ne s'est passé, on révèle le fallback
-        setTimeout(function(){
-            try{
-            // si on est toujours sur la même page sans ?user_id → montrer phase2
-            if (!new URL(window.location.href).searchParams.get('user_id')) {
-                document.getElementById('phase1').style.display = 'none';
-                document.getElementById('phase2').style.display = 'block';
-            }
-            }catch(e){}
-        }, 1200);
-        })();
-        </script>
-        """, unsafe_allow_html=True)
+    #     // 3) au bout de ~1s, si rien ne s'est passé, on révèle le fallback
+    #     setTimeout(function(){
+    #         try{
+    #         // si on est toujours sur la même page sans ?user_id → montrer phase2
+    #         if (!new URL(window.location.href).searchParams.get('user_id')) {
+    #             document.getElementById('phase1').style.display = 'none';
+    #             document.getElementById('phase2').style.display = 'block';
+    #         }
+    #         }catch(e){}
+    #     }, 1200);
+    #     })();
+    #     </script>
+    #     """, unsafe_allow_html=True)
 
-        # 4) Fallback Python (ne s'affiche qu'après ~1,2s si la redirection n'a pas eu lieu)
-        st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
-        typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
-        if st.button("OK") and typed:
-            # a) pose/maj cookie 1ʳᵉ partie pour les prochains lancements
-            st.markdown(f"""
-            <script>
-            try {{ document.cookie = "uid={typed}; path=/; max-age=34560000; SameSite=Lax"; }} catch(e) {{}}
-            try {{
-                const u = new URL(window.location.href);
-                u.searchParams.set('user_id', {typed!r});
-                window.location.replace(u.toString());
-            }} catch(e) {{ window.location.reload(); }}
-            </script>
-            """, unsafe_allow_html=True)
-            st.stop()
+    #     # 4) Fallback Python (ne s'affiche qu'après ~1,2s si la redirection n'a pas eu lieu)
+    #     st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+    #     typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
+    #     if st.button("OK") and typed:
+    #         # a) pose/maj cookie 1ʳᵉ partie pour les prochains lancements
+    #         st.markdown(f"""
+    #         <script>
+    #         try {{ document.cookie = "uid={typed}; path=/; max-age=34560000; SameSite=Lax"; }} catch(e) {{}}
+    #         try {{
+    #             const u = new URL(window.location.href);
+    #             u.searchParams.set('user_id', {typed!r});
+    #             window.location.replace(u.toString());
+    #         }} catch(e) {{ window.location.reload(); }}
+    #         </script>
+    #         """, unsafe_allow_html=True)
+    #         st.stop()
 
-        st.stop()
+    #     st.stop()
 
-    # 5) À partir d'ici, on a un ?user_id garanti
-    user_id = st.query_params["user_id"]
-    st.session_state["user_id"] = user_id
+    # # 5) À partir d'ici, on a un ?user_id garanti
+    # user_id = st.query_params["user_id"]
+    # st.session_state["user_id"] = user_id
 
-    # Synchroniser le cookie si on arrive via une URL signée (partage/QR)
-    st.markdown(f"""
-    <script>
-    try {{ document.cookie = "uid={user_id}; path=/; max-age=34560000; SameSite=Lax"; }} catch(e) {{}}
-    </script>
-    """, unsafe_allow_html=True)
+    # # Synchroniser le cookie si on arrive via une URL signée (partage/QR)
+    # st.markdown(f"""
+    # <script>
+    # try {{ document.cookie = "uid={user_id}; path=/; max-age=34560000; SameSite=Lax"; }} catch(e) {{}}
+    # </script>
+    # """, unsafe_allow_html=True)
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
@@ -445,8 +452,7 @@ def main():
 
     # Affichage du titre
     afficher_titre("Planificateur Avignon Off")
-    st.write(get_user_id())
-    st.write(dict(st.query_params))
+    st.write(f"user_id: {get_user_id()}")
 
     # Affichage de la sidebar
     afficher_sidebar()
