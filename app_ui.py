@@ -3193,7 +3193,7 @@ def afficher_nom_activite_clickable(df, index_df, nom_activite=None, afficher_la
         st.rerun()
 
 # Affichage du status du GS Worker
-def afficher_worker_status():
+def afficher_worker_status_detail():
     st.sidebar.subheader("Google ")
     s = wk.get_sync_status()
     col1, col2 = st.sidebar.columns(2)
@@ -3217,7 +3217,7 @@ def afficher_worker_status():
     #     st_autorefresh(interval=1000, key="gsync_poll")
 
 # Affichage du status du GS Worker (version discrète)
-def afficher_worker_status_discret(with_pending=True):
+def afficher_worker_status(with_pending=True):
     s = wk.get_sync_status() if "wk" in globals() else {}
     alive   = bool(s.get("alive"))
     pending = int(s.get("pending", 0))
@@ -3248,7 +3248,7 @@ def afficher_worker_status_discret(with_pending=True):
             display:flex;align-items:center;gap:.5rem;
             font-size:0.90rem; line-height:1.2; margin:.25rem 0 .25rem .1rem;">
         <span title="{title}" style="color:{color};font-size:1rem;">●</span>
-        <span style="opacity:.9;">Google&nbsp;Sheet</span>
+        <span style="opacity:.9;">{get_user_id()}</span>
         </div>
         """
     st.sidebar.markdown(html, unsafe_allow_html=True)
@@ -3283,6 +3283,12 @@ def afficher_sidebar():
 
     with st.sidebar.expander("Edition"):
         afficher_controles_edition()
+
+# Affichage des menus complémentaitres de la sidebar
+def afficher_sidebar_menus():
+    afficher_menu_activite()
+    afficher_menu_ca()
+    afficher_worker_status()
 
 # Affichage du menu activité de la sidebar
 def afficher_menu_activite():
