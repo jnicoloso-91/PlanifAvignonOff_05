@@ -23,8 +23,18 @@ def rerun_trace():
     st.session_state.main_counter += 1
     tracer.log(f"____________MAIN {st.session_state.main_counter}______________", types=["gen","main"])
 
-# Différents essais pour permettre en webapp mode IOS de ne pas etre obligé de redéfinir le user_id à chaque redémarrage vu que dance mode on ne peut pas utiliser ?user_id= dans l'URL.
-# Mais les pistes envisagées (utilisation du local storage de la webpp ou des cookies par des JS script faisant des window.localtion.reload()) ne fonctionnent pas.
+# Différents essais pour permettre en webapp mode IOS de ne pas etre obligé de redéfinir le user_id 
+# à chaque redémarrage vu que dans ce mode on ne peut pas utiliser une URL avec ?user_id=xxx.
+# Aucune des pistes envisagées ci-dessous ne fonctionnent : utilisation du local storage 
+# de la webpp ou cookies associés à des JS script faisant des window.localtion.reload().
+# En définitive deux solutions alternatives sont été développées, l'une s'appuyant sur une 
+# redirection effectuée par des pages HTML hébergées sur un domaine cloudflare (la webapp 
+# est branchée sur l'adresse de ce domaine app-avignon.pages.dev et les pages HTML s'occupent 
+# de demander à l'utilisateur son user_id et de le rediriger vers l'adresse de l'appli en spécifiant
+# le bon ?user_id=). L'autre voie utilise une appli streamlit par user qui définit dans son
+# secrets.toml une variable DEFAULT_USER_ID utilisée par l'appli pour définir le user_id par défaut.
+# Les webapp utilisent ces applis avec DEFAULT_USER_ID pour brancher automatiquement l'utilisateur
+# de manière transparente sur le bon user_id.
 def manage_user_id_for_webapp_mode():
     pass
     ##########################################
