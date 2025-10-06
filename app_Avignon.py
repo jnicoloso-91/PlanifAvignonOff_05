@@ -135,18 +135,19 @@ def promote_hash_user_id_for_webapp_mode():
         </script>
         """, height=0)
 
-        # Pas d'user_id en URL ni en localStorage -> on demande à l'utilisateur
-        st.write("Pour commencer, saisis ton *User ID* (environnement) :")
-        st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
-        uid = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
-        if st.button("OK") and uid:
-            # On mémorise pour les prochains lancements (WebApp incluse)
-            components.html(f"<script>localStorage.setItem('user_id','{uid}');</script>", height=0)
-            # On met la query (source de vérité) puis on relance
-            st.query_params.update(user_id=uid)
-            st.rerun()
+        # # Pas d'user_id en URL ni en localStorage -> on demande à l'utilisateur
+        # st.write("Pour commencer, saisis ton *User ID* (environnement) :")
+        # st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+        # uid = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
+        # if st.button("OK") and uid:
+        #     # On mémorise pour les prochains lancements (WebApp incluse)
+        #     components.html(f"<script>localStorage.setItem('user_id','{uid}');</script>", height=0)
+        #     # On met la query (source de vérité) puis on relance
+        #     st.query_params.update(user_id=uid)
+        #     st.rerun()
 
-        st.stop()
+        # st.stop()
+        st.write(get_user_id())
 
     # ---------- À partir d'ici, on a ?user_id dans l'URL ----------
     user_id = st.query_params["user_id"]
