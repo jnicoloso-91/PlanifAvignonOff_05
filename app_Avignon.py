@@ -178,9 +178,65 @@ def promote_hash_user_id_for_webapp_mode():
     # </script>
     # """, unsafe_allow_html=True)
 
-    # --- Gate: si pas de ?user_id, proposer ouverture ou création ---
+    # # --- Gate: si pas de ?user_id, proposer ouverture ou création ---
+    # if not st.query_params.get("user_id"):
+    #     # --- Bloc HTML : bouton "Ouvrir ma session" si déjà un user_id en localStorage ---
+    #     st.markdown("""
+    #     <div id="gate" style="font:16px system-ui,-apple-system,Segoe UI,Roboto,Arial; padding:2rem">
+    #     <div id="hasUid" style="display:none">
+    #         <p>Appuyer pour ouvrir votre session enregistrée.</p>
+    #         <button id="openBtn" style="padding:.7rem 1rem">Ouvrir ma session</button>
+    #     </div>
+    #     <div id="noUid" style="display:none">
+    #         <p>Aucune session enregistrée. Saisissez un identifiant ci-dessous.</p>
+    #     </div>
+    #     </div>
+    #     <script>
+    #     (function(){
+    #     try{
+    #         const uid = window.localStorage.getItem('user_id') || "";
+    #         const has = !!uid;
+    #         document.getElementById(has ? "hasUid" : "noUid").style.display = "block";
+    #         if (has) {
+    #         document.getElementById("openBtn").addEventListener("click", function(){
+    #             try{
+    #             const url = new URL(window.location.href);
+    #             url.searchParams.set('user_id', uid);
+    #             window.location.replace(url.toString());
+    #             }catch(e){ window.location.reload(); }
+    #         }, {once:true});
+    #         }
+    #     }catch(e){}
+    #     })();
+    #     </script>
+    #     """, unsafe_allow_html=True)
+
+    #     # --- Fallback Python: aucun ID stocké -> on le demande ---
+    #     st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
+    #     typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
+
+    #     if st.button("OK") and typed:
+    #         # (1) mettre à jour l'URL (source de vérité)
+    #         st.query_params.update(user_id=typed)
+    #         # (2) stocker pour la prochaine ouverture (dans le vrai localStorage)
+    #         st.markdown(f"""
+    #         <script>
+    #         try {{
+    #             window.localStorage.setItem('user_id', {typed!r});
+    #         }} catch(e) {{}}
+    #         </script>
+    #         """, unsafe_allow_html=True)
+    #         # (3) relancer proprement
+    #         st.rerun()
+
+    #     st.stop()
+
+    # # --- À partir d’ici, on a un ?user_id valide ---
+    # user_id = st.query_params.get("user_id")
+    # st.session_state["user_id"] = user_id
+
+    # ---- GATE: garantir ?user_id AVANT le reste, via cookie 1ʳᵉ partie ----
     if not st.query_params.get("user_id"):
-        # --- Bloc HTML : bouton "Ouvrir ma session" si déjà un user_id en localStorage ---
         st.markdown("""
         <div id="gate" style="font:16px system-ui,-apple-system,Segoe UI,Roboto,Arial; padding:2rem">
         <div id="hasUid" style="display:none">
@@ -193,47 +249,61 @@ def promote_hash_user_id_for_webapp_mode():
         </div>
         <script>
         (function(){
-        try{
-            const uid = window.localStorage.getItem('user_id') || "";
-            const has = !!uid;
-            document.getElementById(has ? "hasUid" : "noUid").style.display = "block";
-            if (has) {
+        function getCookie(n){
+            try{
+            return document.cookie.split('; ').find(r=>r.startsWith(n+'='))?.split('=')[1] || "";
+            }catch(e){ return ""; }
+        }
+        const uid = decodeURIComponent(getCookie('uid') || "");
+        const has = !!uid;
+        document.getElementById(has ? "hasUid" : "noUid").style.display = "block";
+        if (has) {
             document.getElementById("openBtn").addEventListener("click", function(){
-                try{
+            try{
                 const url = new URL(window.location.href);
                 url.searchParams.set('user_id', uid);
+                // navigation “dure” pour contourner les CSP/WebApp capricieuses
                 window.location.replace(url.toString());
-                }catch(e){ window.location.reload(); }
+            }catch(e){ window.location.reload(); }
             }, {once:true});
-            }
-        }catch(e){}
+        }
         })();
         </script>
         """, unsafe_allow_html=True)
 
-        # --- Fallback Python: aucun ID stocké -> on le demande ---
+        # Fallback Python : aucun cookie → demander et l’enregistrer en cookie
         st.session_state.setdefault("new_user_id", uuid.uuid4().hex[:8])
         typed = st.text_input("User ID", value=st.session_state["new_user_id"], label_visibility="collapsed")
 
         if st.button("OK") and typed:
-            # (1) mettre à jour l'URL (source de vérité)
-            st.query_params.update(user_id=typed)
-            # (2) stocker pour la prochaine ouverture (dans le vrai localStorage)
+            # 1) Écrire le cookie (max-age ~400 jours ; ITP iOS peut réduire mais reste persistant)
             st.markdown(f"""
             <script>
             try {{
-                window.localStorage.setItem('user_id', {typed!r});
+            document.cookie = "uid={typed}; path=/; max-age=34560000; SameSite=Lax";
             }} catch(e) {{}}
+            // Mettre aussi l'URL à jour puis naviguer
+            try {{
+            const u = new URL(window.location.href);
+            u.searchParams.set('user_id', {typed!r});
+            window.location.replace(u.toString());
+            }} catch(e) {{ window.location.reload(); }}
             </script>
             """, unsafe_allow_html=True)
-            # (3) relancer proprement
-            st.rerun()
+            st.stop()
 
         st.stop()
 
-    # --- À partir d’ici, on a un ?user_id valide ---
-    user_id = st.query_params.get("user_id")
+    # ---- À partir d'ici, ?user_id est garanti ----
+    user_id = st.query_params["user_id"]
     st.session_state["user_id"] = user_id
+
+    # Optionnel : resynchroniser le cookie si on arrive via une URL signée
+    st.markdown(f"""
+    <script>
+    try {{ document.cookie = "uid={user_id}; path=/; max-age=34560000; SameSite=Lax"; }} catch(e) {{}}
+    </script>
+    """, unsafe_allow_html=True)
 
 # Opérations à ne faire qu'une seule fois au boot de l'appli
 @st.cache_resource
